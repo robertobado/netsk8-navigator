@@ -1,0 +1,75 @@
+version: 2
+
+project_name: netsk8-navigator
+
+# The frontend is built by the release workflow (pnpm build, producing
+# backend/internal/web/dist) *before* goreleaser runs, so every GOOS/GOARCH
+# binary below embeds the SPA via internal/web's go:embed.
+builds:
+  - id: netsk8-navigator
+    dir: backend
+    main: .
+    binary: netsk8-navigator
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: netsk8-navigator
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: git
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "merge conflict"
+
+release:
+  github:
+    owner: robertobado
+    name: netsk8-navigator
+  # v0.x / -rc / -beta tags are marked as a pre-release automatically.
+  prerelease: auto
+  footer: |
+    ## Instalação
+
+    Baixe o binário da sua plataforma acima, ou:
+
+    ```bash
+    docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Tag }}
+    ```
+
+    Instruções completas de build a partir do fonte no
+    [README](https://github.com/robertobado/netsk8-navigator#rodando-localmente).

@@ -1,0 +1,33 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+issues:
+  # Show every occurrence, not just the first 3 of each kind (the default) —
+  # a CI gate should surface everything in one pass, not drip-feed findings.
+  max-same-issues: 0
+  max-issues-per-linter: 0
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+  settings:
+    gosec:
+      excludes:
+        # G104 duplicates errcheck; avoids double-reporting the same finding.
+        - G104
+        # G706 (log injection) fires on every log.Printf with a %s of
+        # request-derived data — i.e. routine access logging. Not worth
+        # sprinkling #nosec over every log line in a local-only tool with no
+        # log aggregation that would render CRLF-injected content.
+        - G706
+
+formatters:
+  enable:
+    - gofmt

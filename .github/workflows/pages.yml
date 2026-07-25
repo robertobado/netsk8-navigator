@@ -1,0 +1,52 @@
+name: Deploy website (GitHub Pages)
+
+# Dormant until website/ exists: path-filtered, so it simply won't trigger on
+# unrelated pushes. workflow_dispatch is there for a manual first run once
+# the site's build tooling is chosen.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # PLACEHOLDER — website/ doesn't exist yet. Once its framework is
+      # chosen (Next.js static export, Astro, Vite, Hugo, ...), replace this
+      # step with the real install+build, and point actions/upload-pages-artifact
+      # below at the actual build output directory (e.g. website/dist).
+      - name: Build website
+        working-directory: website
+        run: |
+          echo "TODO: build the website/ static site here" >&2
+          exit 1
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

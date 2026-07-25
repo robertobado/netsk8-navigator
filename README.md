@@ -9,7 +9,27 @@
   O nome é uma homenagem ao velho Netscape Navigator.
 </p>
 
+<p align="center">
+  <a href="https://github.com/robertobado/netsk8-navigator/actions/workflows/ci.yml"><img src="https://github.com/robertobado/netsk8-navigator/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/robertobado/netsk8-navigator/releases/latest"><img src="https://img.shields.io/github/v/release/robertobado/netsk8-navigator" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/robertobado/netsk8-navigator" alt="License" /></a>
+</p>
+
 ---
+
+## Releases
+
+Binários prontos (Linux/macOS/Windows) + imagem Docker em cada
+[release](https://github.com/robertobado/netsk8-navigator/releases) — sem
+precisar de Go/Node instalados. Baixe o arquivo da sua plataforma, extraia e
+rode:
+
+```bash
+tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # ou linux_amd64, windows_amd64.zip, etc.
+./netsk8-navigator
+```
+
+Prefere rodar a partir do fonte ou via Docker? Veja as seções abaixo.
 
 ## O que é
 
