@@ -78,6 +78,22 @@ kubeconfig:
 #       value: "1"
 env: []
 
+# Extra volumes/volumeMounts, appended as-is to the pod/container spec — the
+# hook for mounting cloud provider credentials (AWS/GCP/Azure) that an
+# exec-based kubeconfig needs at runtime. See the README's "Cloud provider
+# authentication" section; typical usage with a custom image that has the
+# matching CLI installed (see Dockerfile.cloud-auth):
+#   extraVolumes:
+#     - name: aws-creds
+#       secret:
+#         secretName: aws-credentials
+#   extraVolumeMounts:
+#     - name: aws-creds
+#       mountPath: /home/nonroot/.aws
+#       readOnly: true
+extraVolumes: []
+extraVolumeMounts: []
+
 resources: {}
 #  requests:
 #    cpu: 100m

@@ -217,7 +217,7 @@ helm install netsk8-navigator ./charts/netsk8-navigator \
 ```
 
 **RBAC:** the chart's default `ClusterRole` grants the same broad,
-kubectl-equivalent access described in *Security model* below —
+kubectl-equivalent access described in *Security model* above —
 cluster-wide read/write on every resource, since that's what lets the app
 browse anything, apply manifests, exec into pods, and read Secret values.
 Set `rbac.create=false` and bind your own, more restricted Role to
@@ -233,6 +233,69 @@ who can reach it, ...).
 
 See [`values.yaml`](charts/netsk8-navigator/values.yaml) for every option
 (resources, ingress, node selectors, security contexts, ...).
+
+## Cloud provider authentication (exec plugins)
+
+Kubeconfigs for managed clusters (EKS, GKE, AKS, ...) almost always use an
+`exec:` credential plugin instead of a static token — the kubeconfig just
+names a command (`aws eks get-token`, `gke-gcloud-auth-plugin`,
+`kubelogin`, ...) and client-go runs it fresh for every request, so a
+short-lived cloud-issued token never has to sit in the kubeconfig file
+itself. This is part of why the backend is written in Go instead of calling
+the Kubernetes API directly from the frontend: exec plugins resolve
+natively, with no separate implementation needed per cloud (see
+[ARCHITECTURE.md](ARCHITECTURE.md)).
+
+The plugin still has to actually *run*, though — the command has to be
+installed, and its own credentials available, in whatever environment the
+backend process is in.
+
+- **From source, or the downloaded binary:** works with no extra setup —
+  it's your own shell, so your existing `aws`/`gcloud`/`az`/`kubelogin`
+  install and logged-in credentials are already there.
+- **Docker / Docker Compose:** the published image is `distroless` on
+  purpose (minimal, no shell, no CLIs) and can't run `aws eks get-token`
+  itself. [`Dockerfile.cloud-auth`](Dockerfile.cloud-auth) layers the AWS
+  CLI on top of the same binary instead of rebuilding it — the same pattern
+  works for GCP/Azure, swapping the installed CLI:
+
+  ```bash
+  docker build -f Dockerfile.cloud-auth -t netsk8-navigator:aws .
+  docker run --rm -p 127.0.0.1:8080:8080 \
+    -v "$(readlink -f ~/.kube/config):/kube/config:ro" -e KUBECONFIG=/kube/config \
+    -v "$HOME/.aws:/home/nonroot/.aws:ro" -e AWS_PROFILE=your-profile \
+    netsk8-navigator:aws
+  ```
+
+- **Kubernetes (Helm):** same idea, one level up — build/push a custom
+  image the same way, point `image.repository`/`image.tag` at it, and mount
+  the matching cloud credentials via `extraVolumes`/`extraVolumeMounts`:
+
+  ```yaml
+  image:
+    repository: ghcr.io/your-org/netsk8-navigator-aws
+    tag: latest
+  kubeconfig:
+    enabled: true
+    secretName: my-kubeconfig
+  env:
+    - name: AWS_PROFILE
+      value: your-profile
+  extraVolumes:
+    - name: aws-creds
+      secret:
+        secretName: aws-credentials
+  extraVolumeMounts:
+    - name: aws-creds
+      mountPath: /home/nonroot/.aws
+      readOnly: true
+  ```
+
+  (`kubectl create secret generic aws-credentials --from-file=credentials=$HOME/.aws/credentials`)
+
+None of this applies if you're only browsing the cluster the app is
+deployed into — the default in-cluster service account fallback needs no
+exec plugin at all.
 
 ## Contributing
 

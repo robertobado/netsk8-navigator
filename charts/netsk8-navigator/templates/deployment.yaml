@@ -84,6 +84,9 @@ spec:
               mountPath: {{ .Values.kubeconfig.mountPath }}
               readOnly: true
             {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: home
           emptyDir: {}
@@ -94,6 +97,9 @@ spec:
             items:
               - key: {{ .Values.kubeconfig.secretKey }}
                 path: {{ .Values.kubeconfig.secretKey }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
