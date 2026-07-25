@@ -63,13 +63,13 @@ release:
   # v0.x / -rc / -beta tags are marked as a pre-release automatically.
   prerelease: auto
   footer: |
-    ## Instalação
+    ## Installation
 
-    Baixe o binário da sua plataforma acima, ou:
+    Download the binary for your platform above, or:
 
     ```bash
     docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Version }}
     ```
 
-    Instruções completas de build a partir do fonte no
-    [README](https://github.com/robertobado/netsk8-navigator#rodando-localmente).
+    Full instructions for building from source in the
+    [README](https://github.com/robertobado/netsk8-navigator#running-locally).

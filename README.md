@@ -5,8 +5,8 @@
 <h1 align="center">Netsk8 Navigator</h1>
 
 <p align="center">
-  Um navegador de clusters Kubernetes pelo browser — pense em Lens ou k9s, só que web.<br/>
-  O nome é uma homenagem ao velho Netscape Navigator.
+  A Kubernetes cluster navigator in the browser — think Lens or k9s, but web.<br/>
+  The name is a tribute to the old Netscape Navigator.
 </p>
 
 <p align="center">
@@ -27,71 +27,72 @@
 
 ## Releases
 
-Binários prontos (Linux/macOS/Windows) + imagem Docker em cada
-[release](https://github.com/robertobado/netsk8-navigator/releases) — sem
-precisar de Go/Node instalados. Baixe o arquivo da sua plataforma, extraia e
-rode:
+Ready-to-run binaries (Linux/macOS/Windows) + a Docker image on every
+[release](https://github.com/robertobado/netsk8-navigator/releases) — no
+need for Go/Node installed. Download the file for your platform, extract it
+and run:
 
 ```bash
-tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # ou linux_amd64, windows_amd64.zip, etc.
+tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # or linux_amd64, windows_amd64.zip, etc.
 ./netsk8-navigator
 ```
 
-Prefere rodar a partir do fonte ou via Docker? Veja as seções abaixo.
+Prefer running from source or via Docker? See the sections below.
 
-## O que é
+## What it is
 
-Netsk8 Navigator é uma SPA que lê seu `kubeconfig` e navega qualquer cluster
-Kubernetes (recursos padrão + CRDs) através de um backend Go fino que fala
-diretamente com a API do cluster. Sem instalar nada no cluster, sem agente,
-sem estado além das suas preferências locais.
+Netsk8 Navigator is an SPA that reads your `kubeconfig` and browses any
+Kubernetes cluster (standard resources + CRDs) through a thin Go backend
+that talks directly to the cluster API. Nothing installed on the cluster,
+no agent, no state beyond your local preferences.
 
-- Tabelas com todos os recursos padrão (Workloads, Rede, Config, Storage,
-  RBAC, Governança, Cluster) — filtráveis, com expansão de linha para
-  relações (Node → workloads, Namespace → recursos, ConfigMap/Secret →
-  consumidores, …).
-- Browser genérico de CRDs de rota (Gateway API, Traefik IngressRoute, Istio
+- Tables for all standard resources (Workloads, Network, Config, Storage,
+  RBAC, Governance, Cluster) — filterable, with row expansion for
+  relationships (Node → workloads, Namespace → resources, ConfigMap/Secret →
+  consumers, …).
+- Generic browser for route CRDs (Gateway API, Traefik IngressRoute, Istio
   VirtualService, Contour).
-- Detalhe + manifesto YAML (editor Monaco) para leitura e edição in-place.
-- Logs, exec e eventos de pods em tempo real (SSE/WebSocket).
-- Métricas de CPU/memória (cluster, node, pod) quando o cluster expõe
-  `metrics-server` ou Prometheus.
-- Multi-cluster: troca de contexto do kubeconfig sem reiniciar nada.
-- Multi-versão: cada recurso é resolvido via discovery/RESTMapper no
-  momento da requisição, então funciona em qualquer versão do Kubernetes
-  que o cluster sirva.
+- Detail view + YAML manifest (Monaco editor) for in-place reading and
+  editing.
+- Real-time pod logs, exec, and events (SSE/WebSocket).
+- CPU/memory metrics (cluster, node, pod) when the cluster exposes
+  `metrics-server` or Prometheus.
+- Multi-cluster: switch kubeconfig context without restarting anything.
+- Multi-version: each resource is resolved via discovery/RESTMapper at
+  request time, so it works against any Kubernetes version the cluster
+  serves.
 
-## Arquitetura
+## Architecture
 
 ```text
-backend/    Go — client-go dynamic client + discovery RESTMapper, API REST fina
+backend/    Go — client-go dynamic client + discovery RESTMapper, thin REST API
 frontend/   React + Vite + TypeScript — Tailwind v4, TanStack Table/Query, Monaco
 ```
 
-O design é **catalog-driven**: adicionar um recurso padrão é uma entrada no
-catálogo do backend (`backend/internal/api/catalog.go`) + uma entrada no
-catálogo do frontend (`frontend/src/lib/resources.tsx`) — nenhum handler ou
-view novos. Detalhes completos do padrão de extensão em
+The design is **catalog-driven**: adding a standard resource is one entry
+in the backend catalog (`backend/internal/api/catalog.go`) + one entry in
+the frontend catalog (`frontend/src/lib/resources.tsx`) — no new handlers
+or views. Full details on the extension pattern in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Rodando localmente
+## Running locally
 
-Pré-requisitos: Go 1.26+, Node 20+, [pnpm](https://pnpm.io).
+Prerequisites: Go 1.26+, Node 20+, [pnpm](https://pnpm.io).
 
 ```bash
-# Backend — API em http://127.0.0.1:8080 (lê ~/.kube/config, ou $KUBECONFIG)
+# Backend — API at http://127.0.0.1:8080 (reads ~/.kube/config, or $KUBECONFIG)
 cd backend
 go run .
 
-# Frontend — dev server em http://localhost:5173, com proxy /api → :8080
+# Frontend — dev server at http://localhost:5173, proxying /api → :8080
 cd frontend
 pnpm install
 pnpm dev
 ```
 
-Abra `http://localhost:5173`.
+Open `http://localhost:5173`.
 
-### Comandos úteis
+### Useful commands
 
 ```bash
 # Backend
@@ -99,25 +100,25 @@ cd backend && go build ./... && go vet ./... && go test ./...
 
 # Frontend
 cd frontend && pnpm exec tsc -b && pnpm build   # typecheck + build
-cd frontend && pnpm exec oxlint src              # lint (linter oficial do projeto)
+cd frontend && pnpm exec oxlint src              # lint (the project's linter)
 ```
 
-## Binário único (sem Vite, sem processo separado)
+## Single binary (no Vite, no separate process)
 
-Buildar o frontend antes do backend embute a SPA no binário Go
-(`internal/web`, via `go:embed`) — um processo só, uma porta só, API e UI
-juntas:
+Building the frontend before the backend embeds the SPA into the Go binary
+(`internal/web`, via `go:embed`) — one process, one port, API and UI
+together:
 
 ```bash
-cd frontend && pnpm install && pnpm build   # gera backend/internal/web/dist
+cd frontend && pnpm install && pnpm build   # generates backend/internal/web/dist
 cd ../backend && go build -o netsk8-navigator .
-ADDR=127.0.0.1:8080 ./netsk8-navigator      # abra http://127.0.0.1:8080
+ADDR=127.0.0.1:8080 ./netsk8-navigator      # open http://127.0.0.1:8080
 ```
 
-Sem o passo do `pnpm build`, `go build` continua funcionando normalmente —
-só não há UI embutida (o log diz "no embedded frontend build"); é o
-caminho normal quando você só quer a API, ou está iterando no backend em
-dev.
+Without the `pnpm build` step, `go build` still works normally — there's
+just no embedded UI (the log says "no embedded frontend build"); this is
+the normal path when you only want the API, or you're iterating on the
+backend in dev.
 
 ## Docker
 
@@ -128,14 +129,14 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   netsk8-navigator
 ```
 
-Mapeie a porta só para `127.0.0.1` do host (como acima) para manter o
-mesmo modelo de segurança — sem isso, `-p 8080:8080` expõe o backend
-sem autenticação para qualquer coisa na sua rede.
+Map the port to `127.0.0.1` on the host only (as above) to keep the same
+security model — without that, `-p 8080:8080` exposes the backend without
+authentication to anything on your network.
 
-Se `~/.kube/config` for um **symlink para fora de `~/.kube`** (comum com
-ferramentas que trocam de contexto trocando o link, ex. ambientes com
-vários clusters), o mount acima não resolve o alvo — o container só
-enxerga o próprio `~/.kube`. Monte o arquivo real:
+If `~/.kube/config` is a **symlink pointing outside `~/.kube`** (common
+with tools that switch contexts by swapping the link, e.g. environments
+with multiple clusters), the mount above won't resolve the target — the
+container only sees its own `~/.kube`. Mount the real file instead:
 
 ```bash
 docker run --rm -p 127.0.0.1:8080:8080 \
@@ -143,21 +144,21 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   netsk8-navigator
 ```
 
-## Modelo de segurança
+## Security model
 
-Este backend **não tem autenticação, não tem TLS, e usa CORS `*`**. Ele
-também pode mutar o cluster (aplicar manifests via o editor Monaco), abrir
-um `exec` em qualquer pod, e retornar valores decodificados de `Secret`s.
-Ele foi pensado para uso **local, na sua máquina, com o seu próprio
-kubeconfig** — o mesmo nível de confiança de rodar `kubectl` diretamente.
+This backend **has no authentication, no TLS, and uses CORS `*`**. It can
+also mutate the cluster (apply manifests via the Monaco editor), open an
+`exec` session in any pod, and return decoded `Secret` values. It's meant
+for **local use, on your own machine, with your own kubeconfig** — the
+same trust level as running `kubectl` directly.
 
-- Por padrão o backend escuta apenas em `127.0.0.1:8080` (loopback). Só
-  mude `ADDR` para expor em outra interface se você entender as
-  implicações — isso equivale a dar a qualquer processo/máquina que
-  alcance a porta o mesmo acesso que suas credenciais de kubeconfig têm.
-- Não rode isso como serviço compartilhado ou atrás de um proxy exposto à
-  internet sem colocar autenticação/autorização na frente.
+- By default the backend listens only on `127.0.0.1:8080` (loopback). Only
+  change `ADDR` to expose it on another interface if you understand the
+  implications — that grants any process/machine that can reach the port
+  the same access your kubeconfig credentials have.
+- Don't run this as a shared service or behind an internet-facing proxy
+  without putting authentication/authorization in front of it.
 
-## Licença
+## License
 
 [MIT](LICENSE)
