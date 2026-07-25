@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Icone Netsk8s.png" width="96" alt="Netsk8 Navigator" />
+  <img src="logo.png" width="120" alt="Netsk8 Navigator" />
 </p>
 
 <h1 align="center">Netsk8 Navigator</h1>
