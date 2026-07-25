@@ -184,6 +184,9 @@ self-contained change. Before opening a PR, make sure `go build ./... && go
 vet ./... && go test ./...` (backend) and `pnpm exec tsc -b && pnpm build &&
 pnpm exec oxlint src` (frontend) all pass — the same checks run in CI.
 
+Want to help translate the app instead? See [TRANSLATIONS.md](TRANSLATIONS.md) —
+no Go or build tooling knowledge needed, just one file to edit.
+
 ## License
 
 [MIT](LICENSE)
