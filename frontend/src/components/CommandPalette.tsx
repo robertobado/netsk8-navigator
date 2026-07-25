@@ -36,7 +36,7 @@ export function CommandPalette({
       open={open}
       onOpenChange={onOpenChange}
       label="Command palette"
-      className="fixed left-1/2 top-[20%] z-[100] w-full max-w-xl -translate-x-1/2 overflow-hidden rounded-2xl border bg-popover/95 shadow-2xl shadow-black/50 backdrop-blur-2xl"
+      className="fixed left-1/2 top-[20%] z-[100] w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-2xl border bg-popover/95 shadow-2xl shadow-black/50 backdrop-blur-2xl"
       overlayClassName="fixed inset-0 z-[99] bg-black/50 backdrop-blur-sm"
     >
       <Command.Input

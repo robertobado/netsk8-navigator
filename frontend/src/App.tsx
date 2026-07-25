@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Boxes, CircleAlert, CircleDot, Layers, Server } from 'lucide-react'
+import { Activity, Boxes, CircleAlert, CircleDot, Layers, Menu, Server } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useLivePods } from '@/lib/useLivePods'
-import { shortContext } from '@/lib/utils'
+import { cn, shortContext } from '@/lib/utils'
 import { ContextSwitcher } from '@/components/ContextSwitcher'
 import { NamespaceSelect } from '@/components/NamespaceSelect'
 import { ResourceNav } from '@/components/ResourceNav'
@@ -71,8 +71,11 @@ function AppMain() {
   const setView = (v: string) => {
     window.location.hash = v
     setViewState(v)
+    setSidebarOpen(false)
   }
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // Off-canvas below `lg`; the sidebar is always visible at `lg` and above.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const vanta = useVantaSettings()
   const t = useT()
 
@@ -131,8 +134,16 @@ function AppMain() {
     <>
       <VantaBackground enabled={vanta.enabled} effect={vanta.effect} opacity={vanta.opacity} />
       <div className="relative z-10 flex h-screen">
-        {/* Sidebar */}
-        <aside className="flex w-72 shrink-0 flex-col gap-4 border-r bg-background/40 p-4 backdrop-blur-xl">
+        {/* Backdrop (mobile/tablet only, shown while the sidebar is open) */}
+        {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />}
+
+        {/* Sidebar: off-canvas below `lg`, static + always visible at `lg`+ */}
+        <aside
+          className={cn(
+            'fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 -translate-x-full flex-col gap-4 border-r bg-background/95 p-4 backdrop-blur-xl transition-transform duration-300 lg:static lg:translate-x-0 lg:bg-background/40',
+            sidebarOpen && 'translate-x-0',
+          )}
+        >
           <div className="flex items-center gap-2.5 px-1 pt-1">
             <span className="shrink-0 drop-shadow-lg">
               <NavigatorLoader size={40} sky="green" />
@@ -159,19 +170,28 @@ function AppMain() {
 
         {/* Main */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="relative z-30 flex items-center justify-between gap-4 border-b bg-background/30 px-6 py-4 backdrop-blur-xl">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Server className="size-3.5" />
-                <span className="truncate">{ctx ? shortContext(ctx) : '—'}</span>
-                <span className="text-border">/</span>
-                <span>{ns || t('app.allNamespaces')}</span>
+          <header className="relative z-30 flex items-center justify-between gap-4 border-b bg-background/30 px-4 py-4 backdrop-blur-xl lg:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="-ml-1 shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+                aria-label={t('app.openMenu')}
+              >
+                <Menu className="size-5" />
+              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Server className="size-3.5" />
+                  <span className="truncate">{ctx ? shortContext(ctx) : '—'}</span>
+                  <span className="text-border">/</span>
+                  <span>{ns || t('app.allNamespaces')}</span>
+                </div>
+                <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{viewTitle}</h2>
               </div>
-              <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{viewTitle}</h2>
             </div>
           </header>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 lg:p-5">
             {contextsQ.isError && <ErrorBanner message={(contextsQ.error as Error).message} />}
 
             {!ctx && !contextsQ.isError && (

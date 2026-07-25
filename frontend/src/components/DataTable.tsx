@@ -195,19 +195,19 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-2xl border bg-card/60 backdrop-blur-xl">
-      <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 gap-y-2 border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">{title}</h2>
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground tabular-nums">{table.getFilteredRowModel().rows.length}</span>
           {headerExtra}
         </div>
-        <div className="flex items-center gap-2 rounded-lg border bg-background/50 px-2.5">
-          <Search className="size-3.5 text-muted-foreground" />
+        <div className="flex w-full items-center gap-2 rounded-lg border bg-background/50 px-2.5 sm:w-auto">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder={t('Filter...')}
-            className="w-52 bg-transparent py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+            className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-muted-foreground sm:w-52"
           />
         </div>
       </div>
@@ -217,9 +217,12 @@ export function DataTable<T>({
           <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b">
-                {hasExpand && <th className="w-6" />}
-                {hg.headers.map((h) => (
-                  <th key={h.id} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                {hasExpand && <th className="sticky left-0 z-20 w-6 bg-card" />}
+                {hg.headers.map((h, i) => (
+                  <th
+                    key={h.id}
+                    className={cn('px-4 py-2.5 text-left text-xs font-medium text-muted-foreground', !hasExpand && i === 0 && 'sticky left-0 z-20 bg-card')}
+                  >
                     <div className="inline-flex items-center gap-1">
                       <button className="inline-flex items-center gap-1 transition-colors hover:text-foreground" onClick={h.column.getToggleSortingHandler()}>
                         {typeof h.column.columnDef.header === 'string' ? t(h.column.columnDef.header) : flexRender(h.column.columnDef.header, h.getContext())}
@@ -251,12 +254,12 @@ export function DataTable<T>({
                     className={cn('transition-colors hover:bg-accent/40', sub ? '' : 'border-b border-border/50', clickable && 'cursor-pointer')}
                   >
                     {hasExpand && (
-                      <td className="pl-3 align-top text-muted-foreground">
+                      <td className="sticky left-0 z-[5] bg-card pl-3 align-top text-muted-foreground">
                         {exp && <ChevronRight className={cn('mt-2.5 size-3.5 transition-transform', isOpen && 'rotate-90')} />}
                       </td>
                     )}
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="max-w-[24rem] truncate px-4 py-2.5 align-top">
+                    {row.getVisibleCells().map((cell, i) => (
+                      <td key={cell.id} className={cn('max-w-[24rem] truncate px-4 py-2.5 align-top', !hasExpand && i === 0 && 'sticky left-0 z-[5] bg-card')}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
