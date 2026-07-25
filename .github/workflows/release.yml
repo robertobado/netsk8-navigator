@@ -42,6 +42,12 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      # `pnpm build` empties dist/ first (emptyOutDir), which deletes the
+      # tracked .gitkeep placeholder — goreleaser refuses to release with a
+      # dirty git tree, so restore it before running.
+      - name: Restore dist/.gitkeep (wiped by the frontend build)
+        run: git checkout -- backend/internal/web/dist/.gitkeep
+
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
