@@ -566,3 +566,125 @@ func TestNodeLabel(t *testing.T) {
 		t.Errorf("nodeLabel(missing) = %q, want em dash", got)
 	}
 }
+
+func TestReplicaSetDetail(t *testing.T) {
+	d := replicaSetDetail(&appsv1.ReplicaSet{
+		ObjectMeta: meta("web-abc123", "prod"),
+		Spec:       appsv1.ReplicaSetSpec{Replicas: int32Ptr(3)},
+		Status:     appsv1.ReplicaSetStatus{ReadyReplicas: 3, Replicas: 3, AvailableReplicas: 3},
+	})
+	if d.Kind != "ReplicaSet" || d.Status[0].Value != "3/3" || d.Status[0].Tone != "ok" {
+		t.Errorf("got kind=%q status=%+v", d.Kind, d.Status[0])
+	}
+}
+
+func TestStatefulSetDetail(t *testing.T) {
+	d := statefulSetDetail(&appsv1.StatefulSet{
+		ObjectMeta: meta("db", "prod"),
+		Spec: appsv1.StatefulSetSpec{
+			Replicas:            int32Ptr(3),
+			ServiceName:         "db-headless",
+			UpdateStrategy:      appsv1.StatefulSetUpdateStrategy{Type: appsv1.RollingUpdateStatefulSetStrategyType},
+			PodManagementPolicy: appsv1.ParallelPodManagement,
+		},
+		Status: appsv1.StatefulSetStatus{ReadyReplicas: 2, CurrentReplicas: 3, UpdatedReplicas: 3},
+	})
+	if d.Status[0].Value != "2/3" || d.Status[0].Tone != "warn" {
+		t.Errorf("Ready chip = %+v", d.Status[0])
+	}
+	if len(d.Sections) != 1 || d.Sections[0].Items[0].Value != "db-headless" {
+		t.Errorf("Sections = %+v", d.Sections)
+	}
+}
+
+func TestDaemonSetDetail(t *testing.T) {
+	d := daemonSetDetail(&appsv1.DaemonSet{
+		ObjectMeta: meta("node-exporter", "monitoring"),
+		Spec:       appsv1.DaemonSetSpec{UpdateStrategy: appsv1.DaemonSetUpdateStrategy{Type: appsv1.RollingUpdateDaemonSetStrategyType}},
+		Status: appsv1.DaemonSetStatus{
+			NumberReady: 3, DesiredNumberScheduled: 3, CurrentNumberScheduled: 3,
+			UpdatedNumberScheduled: 3, NumberMisscheduled: 0,
+		},
+	})
+	if d.Status[0].Value != "3/3" || d.Status[0].Tone != "ok" {
+		t.Errorf("Ready chip = %+v", d.Status[0])
+	}
+	if d.Status[3].Label != "Misscheduled" || d.Status[3].Tone != "muted" {
+		t.Errorf("Misscheduled chip = %+v, want muted (0 misscheduled is good)", d.Status[3])
+	}
+}
+
+func TestPvDetail(t *testing.T) {
+	d := pvDetail(&corev1.PersistentVolume{
+		ObjectMeta: meta("pv-1", ""),
+		Spec: corev1.PersistentVolumeSpec{
+			ClaimRef:                      &corev1.ObjectReference{Namespace: "prod", Name: "data"},
+			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
+			PersistentVolumeSource:        corev1.PersistentVolumeSource{CSI: &corev1.CSIPersistentVolumeSource{Driver: "ebs.csi.aws.com"}},
+		},
+		Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeBound},
+	})
+	if d.Status[0].Value != "Bound" || d.Status[0].Tone != "ok" {
+		t.Errorf("Status chip = %+v", d.Status[0])
+	}
+	if len(d.Refs) != 1 || d.Refs[0].Name != "data" || d.Refs[0].Group != "Claim" {
+		t.Errorf("Refs = %+v", d.Refs)
+	}
+}
+
+func TestIngressClassDetail(t *testing.T) {
+	d := ingressClassDetail(&networkingv1.IngressClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "nginx", Annotations: map[string]string{"ingressclass.kubernetes.io/is-default-class": "true"}},
+		Spec:       networkingv1.IngressClassSpec{Controller: "k8s.io/ingress-nginx"},
+	})
+	if d.Status[0].Value != "k8s.io/ingress-nginx" {
+		t.Errorf("Controller chip = %+v", d.Status[0])
+	}
+	if d.Status[1].Value != "Yes" || d.Status[1].Tone != "ok" {
+		t.Errorf("Default chip = %+v", d.Status[1])
+	}
+}
+
+func TestClusterRoleDetail(t *testing.T) {
+	d := clusterRoleDetail(&rbacv1.ClusterRole{
+		ObjectMeta: meta("cluster-admin-ish", ""),
+		Rules:      []rbacv1.PolicyRule{{Verbs: []string{"*"}, Resources: []string{"*"}, APIGroups: []string{"*"}}},
+	})
+	if d.Status[0].Label != "Rules" || d.Status[0].Value != "1" {
+		t.Errorf("Rules chip = %+v", d.Status[0])
+	}
+	if len(d.Sections) != 1 || d.Sections[0].Title != "Rules (verbs → resources)" {
+		t.Errorf("Sections = %+v", d.Sections)
+	}
+}
+
+func TestClusterRoleBindingDetail(t *testing.T) {
+	d := clusterRoleBindingDetail(&rbacv1.ClusterRoleBinding{
+		ObjectMeta: meta("cluster-admins", ""),
+		RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "cluster-admin"},
+		Subjects:   []rbacv1.Subject{{Kind: "Group", Name: "admins"}},
+	})
+	if d.Kind != "ClusterRoleBinding" || d.Namespace != "" {
+		t.Errorf("got kind=%q namespace=%q, want cluster-scoped", d.Kind, d.Namespace)
+	}
+	if len(d.Refs) != 1 || d.Refs[0].Namespace != "" || d.Refs[0].Name != "cluster-admin" {
+		t.Errorf("Refs = %+v, want a namespaceless ClusterRole ref", d.Refs)
+	}
+}
+
+func TestLimitRangeDetail(t *testing.T) {
+	d := limitRangeDetail(&corev1.LimitRange{
+		ObjectMeta: meta("defaults", "prod"),
+		Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{
+			Type:    corev1.LimitTypeContainer,
+			Default: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")},
+			Min:     corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+		}}},
+	})
+	if len(d.Sections) != 1 || d.Sections[0].Title != "Container" {
+		t.Fatalf("Sections = %+v", d.Sections)
+	}
+	if len(d.Sections[0].Items) != 2 {
+		t.Errorf("got %d items, want 2 (default cpu + min cpu)", len(d.Sections[0].Items))
+	}
+}

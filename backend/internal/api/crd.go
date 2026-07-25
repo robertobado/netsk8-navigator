@@ -368,9 +368,9 @@ func valueSummary(v any) string {
 	case float64:
 		return fmt.Sprintf("%g", t)
 	case []any:
-		return fmt.Sprintf("%d itens", len(t))
+		return fmt.Sprintf("%d items", len(t))
 	case map[string]any:
-		return fmt.Sprintf("{%d campos}", len(t))
+		return fmt.Sprintf("{%d fields}", len(t))
 	}
 	return "—"
 }
