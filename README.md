@@ -39,6 +39,12 @@
 </p>
 
 <p align="center">
+  <img src="https://forthebadge.com/badges/powered-by-electricity.svg" alt="Powered by Electricity" />
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" />
+  <img src="https://img.shields.io/badge/uptime-it's_complicated-yellow" alt="Uptime: it's complicated" />
+</p>
+
+<p align="center">
   <img src="docs/screenshots/overview.png" alt="Netsk8 Navigator — cluster overview with live metrics and a live pods table" width="100%" />
 </p>
 
