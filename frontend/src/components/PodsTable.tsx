@@ -473,7 +473,7 @@ export function PodsTable({
             if (!u) return <span className="text-xs text-muted-foreground">—</span>
             return <MiniGauge g={kind === 'cores' ? u.cpu : u.memory} kind={kind} />
           },
-        }) as (typeof cols)[number]
+        }) as unknown as (typeof cols)[number]
       cols.splice(3, 0, usageCol('cpu', 'CPU', 'cores', cpuBasis, setCpuBasis), usageCol('mem', 'Mem', 'bytes', memBasis, setMemBasis))
     }
     return cols as ColumnDef<PodRow, unknown>[]
