@@ -104,6 +104,17 @@ Mapeie a porta só para `127.0.0.1` do host (como acima) para manter o
 mesmo modelo de segurança — sem isso, `-p 8080:8080` expõe o backend
 sem autenticação para qualquer coisa na sua rede.
 
+Se `~/.kube/config` for um **symlink para fora de `~/.kube`** (comum com
+ferramentas que trocam de contexto trocando o link, ex. ambientes com
+vários clusters), o mount acima não resolve o alvo — o container só
+enxerga o próprio `~/.kube`. Monte o arquivo real:
+
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -v "$(readlink -f ~/.kube/config):/kube/config:ro" -e KUBECONFIG=/kube/config \
+  netsk8-navigator
+```
+
 ## Modelo de segurança
 
 Este backend **não tem autenticação, não tem TLS, e usa CORS `*`**. Ele
