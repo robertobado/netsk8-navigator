@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Agent handoff scratch doc — internal notes, not for the public repo
+Memory.md
+
+# Go
+backend/backend-bin
+backend/*.exe
+/dist/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.swp

@@ -1,0 +1,152 @@
+@import 'tailwindcss';
+
+/*
+  netk8s-navigator design system — dark-first, modern, non-generic.
+  Tokens live as CSS variables and are mapped into Tailwind via @theme inline
+  (the shadcn/ui-on-Tailwind-v4 convention), so utilities like bg-card,
+  text-muted-foreground, border-border all resolve to these values.
+*/
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --color-brand: var(--brand);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+:root {
+  --radius: 0.75rem;
+  /* Deep slate/indigo dark theme with an electric primary. */
+  --background: oklch(0.16 0.014 265);
+  --foreground: oklch(0.97 0.005 265);
+  --card: oklch(0.19 0.016 265);
+  --card-foreground: oklch(0.97 0.005 265);
+  --popover: oklch(0.2 0.016 265);
+  --popover-foreground: oklch(0.97 0.005 265);
+  --primary: oklch(0.68 0.17 265);
+  --primary-foreground: oklch(0.15 0.02 265);
+  --muted: oklch(0.26 0.015 265);
+  --muted-foreground: oklch(0.68 0.02 265);
+  --accent: oklch(0.28 0.03 265);
+  --accent-foreground: oklch(0.97 0.005 265);
+  --border: oklch(0.28 0.015 265);
+  --ring: oklch(0.68 0.17 265);
+  --ok: oklch(0.72 0.16 155);
+  --warn: oklch(0.78 0.15 75);
+  --err: oklch(0.65 0.2 25);
+  /* Brand teal, sampled from the logo emblem (~#35bec0). */
+  --brand: oklch(0.75 0.1 195);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient glow behind the app for depth. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, oklch(0.68 0.17 265 / 0.14), transparent 60%),
+    radial-gradient(50rem 40rem at 100% 0%, oklch(0.72 0.16 195 / 0.1), transparent 55%);
+  z-index: 0;
+}
+
+/* Carousel item transitions (re-triggered by changing the element's React key). */
+@keyframes nk-blur {
+  from {
+    opacity: 0;
+    filter: blur(7px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+.nk-blur {
+  animation: nk-blur 0.5s ease both;
+}
+@keyframes nk-slide {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.nk-slide {
+  animation: nk-slide 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Continuous "conveyor" marquee: the track holds two identical halves and slides
+   left by exactly one half, so the wrap is seamless. Pauses on hover. */
+@keyframes nk-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.nk-marquee {
+  animation: nk-marquee linear infinite;
+  will-change: transform;
+}
+.nk-marquee:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nk-blur,
+  .nk-slide {
+    animation: none;
+  }
+  .nk-marquee {
+    animation: none;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent);
+  border-radius: 999px;
+  border: 2px solid var(--color-background);
+}

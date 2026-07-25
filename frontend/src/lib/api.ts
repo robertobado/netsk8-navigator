@@ -1,0 +1,696 @@
+// Typed client for the netsk8s-navigator Go backend. All calls go through the
+// Vite dev proxy (/api -> :8080), so relative URLs work in dev and prod.
+
+export interface ContextInfo {
+  name: string
+  cluster: string
+  user: string
+  namespace: string
+  server: string
+  current: boolean
+}
+
+export interface Overview {
+  nodes: number
+  readyNodes: number
+  pods: number
+  namespaces: number
+  running: number
+  pending: number
+  failed: number
+}
+
+export interface Pod {
+  name: string
+  namespace: string
+  status: string
+  ready: number
+  total: number
+  restarts: number
+  node: string
+  ip: string
+  age: string
+  containers: string[]
+  ownerKind: string
+  ownerName: string
+  reason: string
+  deletedAt: string
+  finalizers: string[]
+}
+
+export interface NamespaceInfo {
+  name: string
+  status: string
+  age: string
+}
+
+export interface PendingInfo {
+  since: string
+  reason: string
+  message: string
+}
+
+export interface EventView {
+  type: string // Normal | Warning
+  reason: string
+  message: string
+  count: number
+  first: string
+  last: string
+  source: string
+  // Involved object — populated only by the cluster-wide events list.
+  objectKind?: string
+  objectNamespace?: string
+  objectName?: string
+}
+
+export interface IssueItem {
+  kind: 'pod' | 'node'
+  namespace?: string
+  name: string
+  since: string // when it entered the state (RFC3339)
+  reason: string
+  message: string
+  containers?: string[]
+}
+export interface Issues {
+  pending: IssueItem[]
+  failed: IssueItem[]
+  nodesNotReady: IssueItem[]
+}
+
+// A route-like CRD (Gateway API, Traefik, Istio, Contour) served by the cluster.
+export interface RouteKind {
+  group: string
+  version: string
+  resource: string
+  kind: string
+  namespaced: boolean
+  label: string
+  order: number
+}
+export interface CRDItem {
+  name: string
+  namespace: string
+  age: string
+  hosts: string
+  refs: string
+}
+
+export interface Deployment {
+  name: string
+  namespace: string
+  ready: string
+  upToDate: number
+  available: number
+  status: string
+  age: string
+}
+
+export interface Service {
+  name: string
+  namespace: string
+  type: string
+  clusterIP: string
+  externalIP: string
+  ports: string
+  age: string
+}
+
+export interface Ingress {
+  name: string
+  namespace: string
+  class: string
+  hosts: string
+  address: string
+  age: string
+}
+
+export interface ConfigMap {
+  name: string
+  namespace: string
+  keys: number
+  age: string
+}
+
+export interface Secret {
+  name: string
+  namespace: string
+  type: string
+  keys: number
+  age: string
+}
+
+// Cluster-scoped resources (no namespace).
+export interface Namespace {
+  name: string
+  status: string
+  age: string
+}
+export interface NodeRow {
+  name: string
+  status: string
+  roles: string
+  version: string
+  age: string
+}
+
+export interface PVCMountPoint {
+  container: string
+  path: string
+}
+export interface PVCMount {
+  pod: string
+  mounts: PVCMountPoint[] | null
+}
+export interface PVC {
+  name: string
+  namespace: string
+  status: string
+  volume: string
+  capacity: string
+  accessModes: string
+  storageClass: string
+  mountedBy: PVCMount[] | null // pods (same namespace) currently mounting the claim
+  age: string
+}
+export interface PV {
+  name: string
+  capacity: string
+  accessModes: string
+  reclaim: string
+  status: string
+  claim: string
+  storageClass: string
+  age: string
+}
+export interface StorageClass {
+  name: string
+  provisioner: string
+  reclaim: string
+  binding: string
+  default: boolean
+  age: string
+}
+export interface HPA {
+  name: string
+  namespace: string
+  reference: string
+  minPods: number
+  maxPods: number
+  replicas: number
+  age: string
+}
+export interface EndpointSlice {
+  name: string
+  namespace: string
+  service: string
+  addressType: string
+  ready: number
+  total: number
+  ports: string
+  age: string
+}
+export interface NetworkPolicy {
+  name: string
+  namespace: string
+  podSelector: string
+  policyTypes: string
+  age: string
+}
+export interface IngressClass {
+  name: string
+  controller: string
+  default: boolean
+  age: string
+}
+export interface ServiceAccountRow {
+  name: string
+  namespace: string
+  secrets: number
+  age: string
+}
+export interface Role {
+  name: string
+  namespace: string // empty for ClusterRole
+  rules: number
+  age: string
+}
+export interface RoleBinding {
+  name: string
+  namespace: string // empty for ClusterRoleBinding
+  role: string
+  subjects: string[] | null // formatted subjects (SA "ns/name", user:/group:)
+  age: string
+}
+export interface ResourceQuota {
+  name: string
+  namespace: string
+  age: string
+}
+export interface LimitRange {
+  name: string
+  namespace: string
+  age: string
+}
+export interface PDB {
+  name: string
+  namespace: string
+  criteria: string
+  current: number
+  desired: number
+  allowed: number
+  age: string
+}
+export interface PriorityClass {
+  name: string
+  value: number
+  globalDefault: boolean
+  preemption: string
+  age: string
+}
+export interface RuntimeClass {
+  name: string
+  handler: string
+  age: string
+}
+
+export interface StatefulSet {
+  name: string
+  namespace: string
+  ready: string
+  service: string
+  age: string
+}
+export interface ReplicaSet {
+  name: string
+  namespace: string
+  ready: string
+  ownerKind: string
+  ownerName: string
+  revision: string
+  current: boolean
+  age: string
+}
+export interface DaemonSet {
+  name: string
+  namespace: string
+  ready: string
+  upToDate: number
+  available: number
+  age: string
+}
+export interface Job {
+  name: string
+  namespace: string
+  completions: string
+  status: string
+  age: string
+}
+export interface CronJob {
+  name: string
+  namespace: string
+  schedule: string
+  suspend: boolean
+  active: number
+  lastSchedule: string
+  age: string
+}
+
+// Node row expansion: pods on the node, grouped by their top-level workload.
+export interface NodeWorkloadGroup {
+  kind: string // Deployment | StatefulSet | DaemonSet | Job | Pod (standalone) | …
+  slug: string // manifest slug for the detail drawer ("" when not openable)
+  namespace: string
+  name: string
+  pods: Pod[]
+}
+// Namespace row expansion: a namespace's resources grouped by type.
+export interface NsNameRef {
+  name: string
+  namespace: string
+}
+export interface NamespaceGroup {
+  kind: string
+  slug: ManifestKind
+  items: NsNameRef[]
+}
+
+// ServiceAccount row expansion: the bindings that grant it + pods running as it.
+export interface BindingRef {
+  kind: string
+  slug: ManifestKind
+  namespace: string
+  name: string
+}
+export interface SAUsage {
+  bindings: BindingRef[]
+  pods: Pod[]
+}
+
+export interface Monitoring {
+  available: boolean // Prometheus-compatible time-series backend
+  kind?: string
+  namespace?: string
+  service?: string
+  port?: number
+  metricsServer?: boolean // metrics-server → instantaneous gauges
+}
+export interface Gauge {
+  used: number
+  request?: number // pod: summed container requests
+  limit?: number // pod: summed container limits (0 = none set)
+  total: number // effective ceiling (limit→request for pods; allocatable for node/cluster); 0 = unbounded
+  unit: string
+}
+export interface Usage {
+  available: boolean
+  cpu?: Gauge
+  memory?: Gauge
+}
+export interface PodUsageEntry {
+  cpu: Gauge
+  memory: Gauge
+}
+export interface PodsUsage {
+  available: boolean
+  items?: Record<string, PodUsageEntry> // keyed by "<namespace>/<name>"
+}
+export interface NodeUsageItem {
+  name: string
+  cpu: Gauge
+  memory: Gauge
+}
+export interface NodesUsage {
+  available: boolean
+  items?: NodeUsageItem[] // sorted by peak utilization, desc
+}
+export interface MetricPoint {
+  t: number
+  v: number
+}
+export interface MetricSeries {
+  points: MetricPoint[]
+  unit: string
+}
+export interface Metrics {
+  available: boolean
+  source?: string
+  cpu?: MetricSeries
+  memory?: MetricSeries
+}
+
+export interface TopoNode {
+  id: string
+  kind: 'pod' | 'deployment' | 'service'
+  name: string
+  status: string
+}
+export interface TopoEdge {
+  source: string
+  target: string
+}
+export interface TopoGraph {
+  nodes: TopoNode[]
+  edges: TopoEdge[]
+}
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`/api${path}`)
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`
+    try {
+      const body = await res.json()
+      if (body?.error) msg = body.error
+    } catch {
+      /* ignore non-JSON error bodies */
+    }
+    throw new Error(msg)
+  }
+  return res.json() as Promise<T>
+}
+
+// Context names can be EKS ARNs containing slashes — encode each path segment.
+const enc = (s: string) => encodeURIComponent(s)
+
+const nsQuery = (namespace?: string) => (namespace ? `?namespace=${enc(namespace)}` : '')
+
+export const api = {
+  contexts: () => get<ContextInfo[]>('/contexts'),
+  overview: (ctx: string) => get<Overview>(`/contexts/${enc(ctx)}/overview`),
+  namespaces: (ctx: string) => get<NamespaceInfo[]>(`/contexts/${enc(ctx)}/namespaces`),
+  pods: (ctx: string, ns?: string) => get<Pod[]>(`/contexts/${enc(ctx)}/pods${nsQuery(ns)}`),
+  podPending: (ctx: string, ns: string, name: string) =>
+    get<PendingInfo>(`/contexts/${enc(ctx)}/pods/${enc(ns)}/${enc(name)}/pending`),
+  events: (ctx: string, ns: string, name: string, kind?: string) =>
+    get<EventView[]>(`/contexts/${enc(ctx)}/events/${enc(ns)}/${enc(name)}${kind ? `?kind=${enc(kind)}` : ''}`),
+  allEvents: (ctx: string, ns?: string) => get<EventView[]>(`/contexts/${enc(ctx)}/events${nsQuery(ns)}`),
+  workloadPods: (ctx: string, kind: ManifestKind, ns: string, name: string) =>
+    get<Pod[]>(`/contexts/${enc(ctx)}/pods-of/${kind}/${enc(ns)}/${enc(name)}`),
+  nodeWorkloads: (ctx: string, node: string) =>
+    get<NodeWorkloadGroup[]>(`/contexts/${enc(ctx)}/node-workloads/${enc(node)}`),
+  namespaceSummary: (ctx: string, ns: string) =>
+    get<NamespaceGroup[]>(`/contexts/${enc(ctx)}/namespace-summary/${enc(ns)}`),
+  serviceAccountUsage: (ctx: string, ns: string, name: string) =>
+    get<SAUsage>(`/contexts/${enc(ctx)}/serviceaccount-usage/${enc(ns)}/${enc(name)}`),
+  consumers: (ctx: string, kind: 'configmap' | 'secret', ns: string, name: string) =>
+    get<Pod[]>(`/contexts/${enc(ctx)}/consumers/${kind}/${enc(ns)}/${enc(name)}`),
+  // Catalog-driven list: any standard resource by its plural name (backend catalog).
+  list: <T = unknown>(ctx: string, resource: string, ns?: string) =>
+    get<T[]>(`/contexts/${enc(ctx)}/resources/${resource}${nsQuery(ns)}`),
+  topology: (ctx: string, ns: string) =>
+    get<TopoGraph>(`/contexts/${enc(ctx)}/topology?namespace=${enc(ns)}`),
+  monitoring: (ctx: string) => get<Monitoring>(`/contexts/${enc(ctx)}/monitoring`),
+  issues: (ctx: string) => get<Issues>(`/contexts/${enc(ctx)}/issues`),
+  routeKinds: (ctx: string) => get<RouteKind[]>(`/contexts/${enc(ctx)}/routekinds`),
+  crdList: (ctx: string, rk: { group: string; version: string; resource: string }, ns?: string) =>
+    get<CRDItem[]>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}${nsQuery(ns)}`),
+  podsUsage: (ctx: string, ns?: string) => get<PodsUsage>(`/contexts/${enc(ctx)}/podusage${nsQuery(ns)}`),
+  nodesUsage: (ctx: string) => get<NodesUsage>(`/contexts/${enc(ctx)}/nodeusage`),
+  deploymentsUsage: (ctx: string, ns?: string) => get<PodsUsage>(`/contexts/${enc(ctx)}/deploymentusage${nsQuery(ns)}`),
+  usage: (ctx: string, scope: 'cluster' | 'pod' | 'node', params?: { namespace?: string; name?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.namespace) qs.set('namespace', params.namespace)
+    if (params?.name) qs.set('name', params.name)
+    const s = qs.toString()
+    return get<Usage>(`/contexts/${enc(ctx)}/usage/${scope}${s ? `?${s}` : ''}`)
+  },
+  metrics: (ctx: string, scope: 'cluster' | 'pod' | 'node', params?: { namespace?: string; name?: string; range?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.namespace) q.set('namespace', params.namespace)
+    if (params?.name) q.set('name', params.name)
+    if (params?.range) q.set('range', params.range)
+    const qs = q.toString()
+    return get<Metrics>(`/contexts/${enc(ctx)}/metrics/${scope}${qs ? `?${qs}` : ''}`)
+  },
+}
+
+/** Manifest kind (singular) accepted by the manifest endpoint. */
+export type ManifestKind =
+  | 'pod'
+  | 'deployment'
+  | 'service'
+  | 'ingress'
+  | 'configmap'
+  | 'replicaset'
+  | 'statefulset'
+  | 'daemonset'
+  | 'job'
+  | 'cronjob'
+  | 'node'
+  | 'namespace'
+  | 'secret'
+  | 'pvc'
+  | 'pv'
+  | 'storageclass'
+  | 'hpa'
+  | 'endpointslice'
+  | 'networkpolicy'
+  | 'ingressclass'
+  | 'serviceaccount'
+  | 'role'
+  | 'clusterrole'
+  | 'rolebinding'
+  | 'clusterrolebinding'
+  | 'resourcequota'
+  | 'limitrange'
+  | 'poddisruptionbudget'
+  | 'priorityclass'
+  | 'runtimeclass'
+
+// Every k8s Kind we can open a drawer for → its manifest slug. Used to make an
+// event's involved object clickable, and (as a superset) for owner links.
+const KIND_TO_SLUG: Record<string, ManifestKind> = {
+  Pod: 'pod',
+  Deployment: 'deployment',
+  Service: 'service',
+  Ingress: 'ingress',
+  ConfigMap: 'configmap',
+  ReplicaSet: 'replicaset',
+  StatefulSet: 'statefulset',
+  DaemonSet: 'daemonset',
+  Job: 'job',
+  CronJob: 'cronjob',
+  Node: 'node',
+  Namespace: 'namespace',
+  Secret: 'secret',
+  PersistentVolumeClaim: 'pvc',
+  PersistentVolume: 'pv',
+  StorageClass: 'storageclass',
+  HorizontalPodAutoscaler: 'hpa',
+  EndpointSlice: 'endpointslice',
+  NetworkPolicy: 'networkpolicy',
+  IngressClass: 'ingressclass',
+  ServiceAccount: 'serviceaccount',
+  Role: 'role',
+  ClusterRole: 'clusterrole',
+  RoleBinding: 'rolebinding',
+  ClusterRoleBinding: 'clusterrolebinding',
+  ResourceQuota: 'resourcequota',
+  LimitRange: 'limitrange',
+  PodDisruptionBudget: 'poddisruptionbudget',
+  PriorityClass: 'priorityclass',
+  RuntimeClass: 'runtimeclass',
+}
+
+/** Maps a k8s ownerReference/controller/involvedObject Kind to our manifest slug. */
+export function kindToSlug(kind: string): ManifestKind | null {
+  return KIND_TO_SLUG[kind] ?? null
+}
+
+export interface DetailKV {
+  label: string
+  value: string
+}
+export interface DetailChip {
+  label: string
+  value: string
+  tone: 'ok' | 'warn' | 'err' | 'muted'
+}
+export interface DetailSection {
+  title: string
+  items: DetailKV[]
+}
+export interface DetailRef {
+  group: string
+  kind: ManifestKind
+  namespace: string
+  name: string
+  note?: string // optional secondary line (e.g. an endpoint's IP)
+}
+export interface DetailBlock {
+  title: string
+  body: string
+  masked?: boolean // Secret values — hidden until the user reveals them
+}
+export interface PortView {
+  name?: string
+  port: string
+  protocol?: string
+  extra?: string
+}
+export interface ResourceDetail {
+  kind: string
+  name: string
+  namespace: string
+  age: string
+  ownerKind: string
+  ownerName: string
+  status: DetailChip[]
+  sections: DetailSection[]
+  selector: Record<string, string> | null
+  images: DetailKV[]
+  conditions: DetailChip[]
+  labels: Record<string, string> | null
+  refs: DetailRef[] | null
+  blocks: DetailBlock[] | null
+  hosts: string[] | null
+  ports: PortView[] | null
+}
+
+/** Kinds that have a structured detail view (others fall back to YAML only). */
+export const KINDS_WITH_DETAIL = new Set<ManifestKind>([
+  'pod',
+  'node',
+  'namespace',
+  'secret',
+  'pvc',
+  'pv',
+  'storageclass',
+  'hpa',
+  'endpointslice',
+  'networkpolicy',
+  'ingressclass',
+  'serviceaccount',
+  'role',
+  'clusterrole',
+  'rolebinding',
+  'clusterrolebinding',
+  'resourcequota',
+  'limitrange',
+  'poddisruptionbudget',
+  'priorityclass',
+  'runtimeclass',
+  'deployment',
+  'replicaset',
+  'statefulset',
+  'daemonset',
+  'job',
+  'cronjob',
+  'service',
+  'ingress',
+  'configmap',
+])
+
+export function getDetail(ctx: string, kind: ManifestKind, namespace: string, name: string) {
+  return get<ResourceDetail>(`/contexts/${enc(ctx)}/detail/${kind}/${enc(namespace || '-')}/${enc(name)}`)
+}
+
+export async function getManifest(ctx: string, kind: ManifestKind, namespace: string, name: string) {
+  // Node is cluster-scoped; the endpoint still needs a namespace segment.
+  const ns = namespace || '-'
+  const r = await get<{ yaml: string }>(`/contexts/${enc(ctx)}/manifest/${kind}/${enc(ns)}/${enc(name)}`)
+  return r.yaml
+}
+
+export function crdDetail(ctx: string, rk: { group: string; version: string; resource: string }, namespace: string, name: string) {
+  const ns = namespace || '-'
+  return get<ResourceDetail>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}/${enc(ns)}/${enc(name)}/detail`)
+}
+
+export async function crdManifest(ctx: string, rk: { group: string; version: string; resource: string }, namespace: string, name: string) {
+  const ns = namespace || '-'
+  const r = await get<{ yaml: string }>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}/${enc(ns)}/${enc(name)}/manifest`)
+  return r.yaml
+}
+
+export async function applyManifest(ctx: string, kind: ManifestKind, namespace: string, name: string, yaml: string) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/manifest/${kind}/${enc(namespace || '-')}/${enc(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yaml }),
+  })
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`
+    try {
+      const b = await res.json()
+      if (b?.error) msg = b.error
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg)
+  }
+}
+
+/** SSE URL for streaming a pod container's logs. */
+export function logsURL(ctx: string, namespace: string, pod: string, container?: string) {
+  const c = container ? `?container=${enc(container)}` : ''
+  return `/api/contexts/${enc(ctx)}/pods/${enc(namespace)}/${enc(pod)}/logs${c}`
+}
+
+/** WebSocket URL for an interactive exec session into a pod container. */
+export function execURL(ctx: string, namespace: string, pod: string, container?: string) {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const c = container ? `?container=${enc(container)}` : ''
+  return `${proto}://${window.location.host}/api/contexts/${enc(ctx)}/pods/${enc(namespace)}/${enc(pod)}/exec${c}`
+}
