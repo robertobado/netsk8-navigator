@@ -89,8 +89,10 @@ func (m *Manager) Contexts() []ContextInfo {
 }
 
 // ClientFor returns a cached clientset for the given context name, building it
-// (and running any exec auth plugin) on first use.
-func (m *Manager) ClientFor(contextName string) (*kubernetes.Clientset, error) {
+// (and running any exec auth plugin) on first use. Returns the kubernetes.Interface
+// (rather than the concrete *Clientset) so the API layer can depend on an
+// interface and be tested against client-go's fake clientset.
+func (m *Manager) ClientFor(contextName string) (kubernetes.Interface, error) {
 	m.mu.RLock()
 	if c, ok := m.clients[contextName]; ok {
 		m.mu.RUnlock()

@@ -58,7 +58,7 @@ func (s *Server) handleMonitoring(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) discoverProm(ctx context.Context, client *kubernetes.Clientset, contextName string) *promSource {
+func (s *Server) discoverProm(ctx context.Context, client kubernetes.Interface, contextName string) *promSource {
 	s.monMu.Lock()
 	if r, ok := s.mon[contextName]; ok {
 		s.monMu.Unlock()
@@ -192,7 +192,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func metricQueries(ctx context.Context, client *kubernetes.Clientset, scope, ns, name string) (cpu, mem string, err error) {
+func metricQueries(ctx context.Context, client kubernetes.Interface, scope, ns, name string) (cpu, mem string, err error) {
 	switch scope {
 	case "cluster":
 		return `sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))`,
@@ -217,7 +217,7 @@ func metricQueries(ctx context.Context, client *kubernetes.Clientset, scope, ns,
 
 // nodeInstanceRegex builds a regex matching node-exporter's `instance` label,
 // which is usually the node's internal IP (":port" optional) or its name.
-func nodeInstanceRegex(ctx context.Context, client *kubernetes.Clientset, node string) string {
+func nodeInstanceRegex(ctx context.Context, client kubernetes.Interface, node string) string {
 	alts := []string{regexpEscape(node)}
 	if n, err := client.CoreV1().Nodes().Get(ctx, node, metav1.GetOptions{}); err == nil {
 		for _, a := range n.Status.Addresses {
@@ -241,7 +241,7 @@ func parseRange(s string) time.Duration {
 	return time.Hour
 }
 
-func (s *Server) promQueryRange(ctx context.Context, client *kubernetes.Clientset, src *promSource, query string, start, end time.Time, step time.Duration) ([]metricPoint, error) {
+func (s *Server) promQueryRange(ctx context.Context, client kubernetes.Interface, src *promSource, query string, start, end time.Time, step time.Duration) ([]metricPoint, error) {
 	params := map[string]string{
 		"query": query,
 		"start": strconv.FormatInt(start.Unix(), 10),

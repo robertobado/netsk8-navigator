@@ -36,7 +36,7 @@ func (s *Server) handlePodPending(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func pendingReason(ctx context.Context, client *kubernetes.Clientset, pod *corev1.Pod) (reason, message string) {
+func pendingReason(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) (reason, message string) {
 	// 1) Not scheduled yet (the most common Pending cause).
 	for _, c := range pod.Status.Conditions {
 		if c.Type == corev1.PodScheduled && c.Status != corev1.ConditionTrue {
@@ -64,7 +64,7 @@ func pendingReason(ctx context.Context, client *kubernetes.Clientset, pod *corev
 	return "Pending", ""
 }
 
-func latestWarning(ctx context.Context, client *kubernetes.Clientset, pod *corev1.Pod) (reason, message string) {
+func latestWarning(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) (reason, message string) {
 	events, err := client.CoreV1().Events(pod.Namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: "involvedObject.name=" + pod.Name,
 	})

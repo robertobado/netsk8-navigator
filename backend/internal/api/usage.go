@@ -30,7 +30,7 @@ type mUsage struct {
 
 // hasMetricsServer reports whether the Metrics API (metrics-server) is served,
 // enabling instantaneous CPU/memory gauges even without Prometheus. Cached.
-func (s *Server) hasMetricsServer(ctx context.Context, client *kubernetes.Clientset, name string) bool {
+func (s *Server) hasMetricsServer(ctx context.Context, client kubernetes.Interface, name string) bool {
 	s.monMu.Lock()
 	if v, ok := s.msCache[name]; ok {
 		s.monMu.Unlock()
@@ -341,7 +341,7 @@ func (s *Server) handleDeploymentsUsage(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"available": true, "items": items})
 }
 
-func usageFor(ctx context.Context, client *kubernetes.Clientset, scope, ns, name string) (cpu, mem gauge, err error) {
+func usageFor(ctx context.Context, client kubernetes.Interface, scope, ns, name string) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
 	switch scope {
 	case "node":
@@ -354,7 +354,7 @@ func usageFor(ctx context.Context, client *kubernetes.Clientset, scope, ns, name
 	return cpu, mem, errUnknownScope
 }
 
-func nodeUsage(ctx context.Context, client *kubernetes.Clientset, name string) (cpu, mem gauge, err error) {
+func nodeUsage(ctx context.Context, client kubernetes.Interface, name string) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
 	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes/" + name).DoRaw(ctx)
 	if err != nil {
@@ -376,7 +376,7 @@ func nodeUsage(ctx context.Context, client *kubernetes.Clientset, name string) (
 	return cpu, mem, nil
 }
 
-func podUsage(ctx context.Context, client *kubernetes.Clientset, ns, name string) (cpu, mem gauge, err error) {
+func podUsage(ctx context.Context, client kubernetes.Interface, ns, name string) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
 	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/namespaces/" + ns + "/pods/" + name).DoRaw(ctx)
 	if err != nil {
@@ -412,7 +412,7 @@ func podUsage(ctx context.Context, client *kubernetes.Clientset, ns, name string
 	return cpu, mem, nil
 }
 
-func clusterUsage(ctx context.Context, client *kubernetes.Clientset) (cpu, mem gauge, err error) {
+func clusterUsage(ctx context.Context, client kubernetes.Interface) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
 	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes").DoRaw(ctx)
 	if err != nil {

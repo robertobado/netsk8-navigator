@@ -12,14 +12,30 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
 )
 
+// clusterManager is the subset of *kube.Manager the API layer depends on, kept
+// as an interface so handlers can be tested against client-go fakes instead of
+// a live cluster. *kube.Manager satisfies it with no changes on its side.
+type clusterManager interface {
+	Contexts() []kube.ContextInfo
+	ConfigPath() string
+	ClientFor(contextName string) (kubernetes.Interface, error)
+	DynamicFor(contextName string) (dynamic.Interface, error)
+	ResolveResource(contextName, resource string) (kube.Resource, error)
+	RESTConfigFor(contextName string) (*rest.Config, error)
+	PodWatcherFor(contextName string) (*kube.PodWatcher, error)
+}
+
 // Server wires the kube manager and preferences store into an http.Handler.
 type Server struct {
-	mgr *kube.Manager
+	mgr clusterManager
 	cfg *config.Store
 
 	monMu   sync.Mutex
@@ -27,7 +43,7 @@ type Server struct {
 	msCache map[string]bool      // context -> metrics-server availability (cached)
 }
 
-func NewServer(mgr *kube.Manager, cfg *config.Store) *Server {
+func NewServer(mgr clusterManager, cfg *config.Store) *Server {
 	return &Server{mgr: mgr, cfg: cfg, mon: make(map[string]monResult), msCache: make(map[string]bool)}
 }
 

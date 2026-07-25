@@ -20,7 +20,14 @@ var distFS embed.FS
 // no frontend build is embedded, so main.go can fall back to API-only mode —
 // the case during local dev, where the Vite dev server serves the UI instead.
 func Handler() http.Handler {
-	sub, err := fs.Sub(distFS, "dist")
+	return spaHandler(distFS)
+}
+
+// spaHandler holds the routing logic, parameterized over the embedded FS so
+// it's testable against an in-memory fs.FS instead of the real (and, outside
+// a built frontend, environment-dependent) embedded dist/ directory.
+func spaHandler(embedded fs.FS) http.Handler {
+	sub, err := fs.Sub(embedded, "dist")
 	if err != nil {
 		return nil
 	}
