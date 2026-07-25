@@ -1241,6 +1241,11 @@ func podDetail(p *corev1.Pod) *resourceDetail {
 		{Label: "QoS", Value: string(p.Status.QOSClass), Tone: "muted"},
 	}
 	d.Images = imagesOf(p.Spec)
+	for _, c := range p.Spec.Containers {
+		for _, cp := range c.Ports {
+			d.Ports = append(d.Ports, portView{Name: cp.Name, Port: fmt.Sprintf("%d", cp.ContainerPort), Protocol: string(cp.Protocol), Extra: c.Name})
+		}
+	}
 	d.Sections = append(d.Sections, section{Title: "Info", Items: []kv{
 		{Label: "Node", Value: p.Spec.NodeName},
 		{Label: "Pod IP", Value: p.Status.PodIP},

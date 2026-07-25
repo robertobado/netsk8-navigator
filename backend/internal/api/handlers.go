@@ -44,6 +44,9 @@ type Server struct {
 	monMu   sync.Mutex
 	mon     map[string]monResult // context -> discovered Prometheus source (cached)
 	msCache map[string]bool      // context -> metrics-server availability (cached)
+
+	pfMu sync.Mutex
+	pf   map[string]*pfSession // port-forward id -> active session
 }
 
 // NewServer wires a Server. corsOrigin is the one extra origin (besides the
@@ -55,6 +58,7 @@ func NewServer(mgr clusterManager, cfg *config.Store, corsOrigin string) *Server
 		mgr: mgr, cfg: cfg, corsOrigin: corsOrigin,
 		upgrader: websocket.Upgrader{CheckOrigin: wsOriginAllowed(corsOrigin)},
 		mon:      make(map[string]monResult), msCache: make(map[string]bool),
+		pf: make(map[string]*pfSession),
 	}
 }
 
@@ -84,6 +88,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/contexts/{ctx}/manifest/{kind}/{namespace}/{name}", s.handleDeleteResource)
 	mux.HandleFunc("PUT /api/contexts/{ctx}/scale/{kind}/{namespace}/{name}", s.handleScaleResource)
 	mux.HandleFunc("POST /api/contexts/{ctx}/rollout-restart/{kind}/{namespace}/{name}", s.handleRestartRollout)
+	mux.HandleFunc("GET /api/contexts/{ctx}/rollout-history/{kind}/{namespace}/{name}", s.handleRolloutHistory)
+	mux.HandleFunc("POST /api/contexts/{ctx}/rollout-undo/{kind}/{namespace}/{name}", s.handleRolloutUndo)
+	mux.HandleFunc("POST /api/contexts/{ctx}/portforward/{namespace}/{name}", s.handleStartPortForward)
+	mux.HandleFunc("DELETE /api/contexts/{ctx}/portforward/{id}", s.handleStopPortForward)
+	mux.HandleFunc("GET /api/contexts/{ctx}/portforward", s.handleListPortForwards)
 	mux.HandleFunc("GET /api/contexts/{ctx}/topology", s.handleTopology)
 	mux.HandleFunc("GET /api/contexts/{ctx}/monitoring", s.handleMonitoring)
 	mux.HandleFunc("GET /api/contexts/{ctx}/metrics/{scope}", s.handleMetrics)

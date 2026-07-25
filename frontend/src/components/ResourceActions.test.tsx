@@ -8,11 +8,13 @@ import { ResourceActions } from './ResourceActions'
 // Identity translator — decouples these tests from i18n dictionary content.
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string) => key }))
 
-const { deleteResourceMock, scaleResourceMock, restartRolloutMock, getDetailMock } = vi.hoisted(() => ({
+const { deleteResourceMock, scaleResourceMock, restartRolloutMock, getDetailMock, rolloutHistoryMock, rolloutUndoMock } = vi.hoisted(() => ({
   deleteResourceMock: vi.fn(),
   scaleResourceMock: vi.fn(),
   restartRolloutMock: vi.fn(),
   getDetailMock: vi.fn(),
+  rolloutHistoryMock: vi.fn(),
+  rolloutUndoMock: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -20,8 +22,11 @@ vi.mock('@/lib/api', () => ({
   scaleResource: scaleResourceMock,
   restartRollout: restartRolloutMock,
   getDetail: getDetailMock,
+  rolloutHistory: rolloutHistoryMock,
+  rolloutUndo: rolloutUndoMock,
   SCALABLE_KINDS: new Set(['deployment', 'statefulset', 'replicaset']),
   RESTARTABLE_KINDS: new Set(['deployment', 'statefulset', 'daemonset']),
+  HISTORY_KINDS: new Set(['deployment']),
 }))
 
 function renderWithClient(ui: ReactElement) {
@@ -34,6 +39,8 @@ beforeEach(() => {
   scaleResourceMock.mockReset().mockResolvedValue(undefined)
   restartRolloutMock.mockReset().mockResolvedValue(undefined)
   getDetailMock.mockReset().mockResolvedValue({ replicas: 2 })
+  rolloutHistoryMock.mockReset().mockResolvedValue([])
+  rolloutUndoMock.mockReset().mockResolvedValue(undefined)
 })
 
 describe('ResourceActions', () => {

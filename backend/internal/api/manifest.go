@@ -119,9 +119,30 @@ func (s *Server) handleApplyManifest(w http.ResponseWriter, r *http.Request) {
 	if res.Namespaced {
 		ns = r.PathValue("namespace")
 	}
-	audit(r, "apply-manifest", "kind", kind, "namespace", ns, "name", r.PathValue("name"))
-	if _, err := dyn.Resource(res.GVR).Namespace(ns).Update(ctx, obj, metav1.UpdateOptions{}); err != nil {
+
+	// ?dryRun=true validates + runs admission/defaulting server-side without
+	// persisting, so the frontend can preview what applying would actually do
+	// (and surface validation errors) before committing for real.
+	dryRun := r.URL.Query().Get("dryRun") == "true"
+	opts := metav1.UpdateOptions{}
+	if dryRun {
+		opts.DryRun = []string{metav1.DryRunAll}
+	} else {
+		audit(r, "apply-manifest", "kind", kind, "namespace", ns, "name", r.PathValue("name"))
+	}
+	updated, err := dyn.Resource(res.GVR).Namespace(ns).Update(ctx, obj, opts)
+	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	if dryRun {
+		cleanUnstructured(updated)
+		data, err := yaml.Marshal(updated.Object)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"yaml": string(data)})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "applied"})

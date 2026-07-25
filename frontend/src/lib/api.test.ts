@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { deleteResource, restartRollout, scaleResource } from './api'
+import {
+  applyManifest,
+  deleteResource,
+  listPortForwards,
+  restartRollout,
+  rolloutHistory,
+  rolloutUndo,
+  scaleResource,
+  startPortForward,
+  stopPortForward,
+} from './api'
 
 function mockFetch(ok: boolean, body?: unknown, status = 200, statusText = 'OK') {
   const fn = vi.fn().mockResolvedValue({ ok, status, statusText, json: async () => body })
@@ -65,5 +75,74 @@ describe('restartRollout', () => {
     const fetchMock = mockFetch(true)
     await restartRollout('my-ctx', 'deployment', 'prod', 'web')
     expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/rollout-restart/deployment/prod/web', { method: 'POST' })
+  })
+})
+
+describe('applyManifest', () => {
+  it('does a plain PUT with no query string by default', async () => {
+    const fetchMock = mockFetch(true)
+    const result = await applyManifest('my-ctx', 'deployment', 'prod', 'web', 'yaml-here')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/manifest/deployment/prod/web', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'yaml-here' }),
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it('adds ?dryRun=true and returns the previewed yaml when requested', async () => {
+    const fetchMock = mockFetch(true, { yaml: 'previewed-yaml' })
+    const result = await applyManifest('my-ctx', 'deployment', 'prod', 'web', 'yaml-here', { dryRun: true })
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/manifest/deployment/prod/web?dryRun=true', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'yaml-here' }),
+    })
+    expect(result).toBe('previewed-yaml')
+  })
+})
+
+describe('rollout history/undo', () => {
+  it('rolloutHistory fetches the revision list', async () => {
+    const fetchMock = mockFetch(true, [{ revision: 1, images: ['app:v1'], createdAt: '2026-01-01T00:00:00Z', current: true }])
+    const result = await rolloutHistory('my-ctx', 'deployment', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/rollout-history/deployment/prod/web')
+    expect(result).toHaveLength(1)
+  })
+
+  it('rolloutUndo sends a POST with the target revision', async () => {
+    const fetchMock = mockFetch(true)
+    await rolloutUndo('my-ctx', 'deployment', 'prod', 'web', 1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/rollout-undo/deployment/prod/web', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toRevision: 1 }),
+    })
+  })
+})
+
+describe('port-forward', () => {
+  it('startPortForward sends a POST with the port and returns id/localPort', async () => {
+    const fetchMock = mockFetch(true, { id: 'abc', localPort: 54321 })
+    const result = await startPortForward('my-ctx', 'prod', 'web-1', 8080)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/portforward/prod/web-1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port: 8080 }),
+    })
+    expect(result).toEqual({ id: 'abc', localPort: 54321 })
+  })
+
+  it('stopPortForward sends a DELETE', async () => {
+    const fetchMock = mockFetch(true)
+    await stopPortForward('my-ctx', 'abc')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/portforward/abc', { method: 'DELETE' })
+  })
+
+  it('listPortForwards fetches active sessions', async () => {
+    const fetchMock = mockFetch(true, [{ id: 'abc', namespace: 'prod', pod: 'web-1', port: 8080, localPort: 54321 }])
+    const result = await listPortForwards('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/portforward')
+    expect(result).toHaveLength(1)
   })
 })

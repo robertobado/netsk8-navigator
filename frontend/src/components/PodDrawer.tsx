@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Box, Bell, ChevronDown, FileCode2, LayoutList, ScrollText, TerminalSquare, X } from 'lucide-react'
+import { Box, Bell, ChevronDown, FileCode2, LayoutList, Network, ScrollText, TerminalSquare, X } from 'lucide-react'
 import type { Pod } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
@@ -9,9 +9,11 @@ import { ManifestPanelLazy as ManifestPanel } from './ManifestPanelLazy'
 import { DetailView } from './DetailView'
 import { EventsPanel } from './EventsPanel'
 import { ResourceActions } from './ResourceActions'
+import { PortForwardPanel } from './PortForwardPanel'
+import { useT } from '@/lib/i18n'
 import type { DrawerTarget } from './ResourceDrawer'
 
-type Tab = 'detail' | 'events' | 'logs' | 'terminal' | 'yaml'
+type Tab = 'detail' | 'events' | 'logs' | 'terminal' | 'forward' | 'yaml'
 
 export function PodDrawer({
   pod,
@@ -24,6 +26,7 @@ export function PodDrawer({
   onClose: () => void
   onOpenResource?: (t: DrawerTarget) => void
 }) {
+  const t = useT()
   const [tab, setTab] = useState<Tab>('detail')
   const [container, setContainer] = useState<string | undefined>()
 
@@ -81,6 +84,7 @@ export function PodDrawer({
                 <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label="Eventos" />
                 <TabButton active={tab === 'logs'} onClick={() => setTab('logs')} icon={ScrollText} label="Logs" />
                 <TabButton active={tab === 'terminal'} onClick={() => setTab('terminal')} icon={TerminalSquare} label="Terminal" />
+                <TabButton active={tab === 'forward'} onClick={() => setTab('forward')} icon={Network} label={t('Forward')} />
                 <TabButton active={tab === 'yaml'} onClick={() => setTab('yaml')} icon={FileCode2} label="YAML" />
               </div>
               {(tab === 'logs' || tab === 'terminal') && pod.containers.length > 0 && (
@@ -118,6 +122,7 @@ export function PodDrawer({
               {tab === 'terminal' && (
                 <TerminalPanel key={`term-${pod.name}-${container}`} ctx={ctx} namespace={pod.namespace} pod={pod.name} container={container} />
               )}
+              {tab === 'forward' && <PortForwardPanel key={`fwd-${pod.name}`} ctx={ctx} namespace={pod.namespace} name={pod.name} />}
               {tab === 'yaml' && <ManifestPanel key={`yaml-${pod.name}`} ctx={ctx} kind="pod" namespace={pod.namespace} name={pod.name} editable={false} />}
             </div>
           </>

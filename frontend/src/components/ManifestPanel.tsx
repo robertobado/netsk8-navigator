@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import Editor from '@monaco-editor/react'
+import Editor, { DiffEditor } from '@monaco-editor/react'
 import { AlertTriangle, Check, Copy, Loader2, Lock, RotateCcw, Save } from 'lucide-react'
 import '@/lib/monaco'
 import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
@@ -10,7 +10,10 @@ import { useT } from '@/lib/i18n'
 type State = 'loading' | 'ready' | 'error'
 
 // Monaco-based YAML viewer/editor for a resource manifest. Editing mutates the
-// live cluster, so applying requires an explicit two-step confirm.
+// live cluster, so applying goes through a server-side dry-run first: the
+// frontend previews a diff of what the API server would actually produce
+// (including its own defaulting) and surfaces validation errors before
+// anything is committed for real.
 export function ManifestPanel({
   ctx,
   kind,
@@ -29,7 +32,11 @@ export function ManifestPanel({
   const [error, setError] = useState('')
   const [value, setValue] = useState('')
   const original = useRef('')
+  // `confirming` = a dry-run succeeded and we're showing its diff, waiting on
+  // the user to confirm the real (non-dry-run) apply.
   const [confirming, setConfirming] = useState(false)
+  const [previewYaml, setPreviewYaml] = useState('')
+  const [previewing, setPreviewing] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -68,6 +75,20 @@ export function ManifestPanel({
 
   const dirty = value !== original.current
 
+  const preview = async () => {
+    setPreviewing(true)
+    setError('')
+    try {
+      const result = await applyManifest(ctx, kind, namespace, name, value, { dryRun: true })
+      setPreviewYaml(result ?? value)
+      setConfirming(true)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
   const apply = async () => {
     setApplying(true)
     setError('')
@@ -97,48 +118,70 @@ export function ManifestPanel({
       <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {!editable && <Lock className="size-3" />}
-          {editable ? 'YAML' : `YAML · ${t('read-only')}`}
+          {confirming ? t('Reviewing changes') : editable ? 'YAML' : `YAML · ${t('read-only')}`}
         </span>
-        <button
-          onClick={copy}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          title={t('Copy YAML')}
-        >
-          {copied ? <Check className="size-3.5 text-[color:var(--ok)]" /> : <Copy className="size-3.5" />}
-          {copied ? t('Copied') : t('Copy')}
-        </button>
+        {!confirming && (
+          <button
+            onClick={copy}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title={t('Copy YAML')}
+          >
+            {copied ? <Check className="size-3.5 text-[color:var(--ok)]" /> : <Copy className="size-3.5" />}
+            {copied ? t('Copied') : t('Copy')}
+          </button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <Editor
-          height="100%"
-          language="yaml"
-          theme={NETSK8_THEME}
-          beforeMount={ensureNetsk8Theme}
-          value={value}
-          onChange={(v) => setValue(v ?? '')}
-          options={{
-            readOnly: !editable,
-            minimap: { enabled: false },
-            fontSize: 13,
-            lineHeight: 1.6,
-            fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-            fontLigatures: true,
-            scrollBeyondLastLine: false,
-            tabSize: 2,
-            renderWhitespace: 'none',
-            renderLineHighlight: editable ? 'all' : 'none',
-            guides: { indentation: true, highlightActiveIndentation: true },
-            folding: true,
-            smoothScrolling: true,
-            cursorBlinking: 'smooth',
-            overviewRulerLanes: 0,
-            hideCursorInOverviewRuler: true,
-            overviewRulerBorder: false,
-            scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
-            padding: { top: 12, bottom: 12 },
-            contextmenu: editable,
-          }}
-        />
+        {confirming ? (
+          <DiffEditor
+            height="100%"
+            language="yaml"
+            theme={NETSK8_THEME}
+            beforeMount={ensureNetsk8Theme}
+            original={original.current}
+            modified={previewYaml}
+            options={{
+              readOnly: true,
+              renderSideBySide: true,
+              minimap: { enabled: false },
+              fontSize: 13,
+              lineHeight: 1.6,
+              fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+              scrollBeyondLastLine: false,
+            }}
+          />
+        ) : (
+          <Editor
+            height="100%"
+            language="yaml"
+            theme={NETSK8_THEME}
+            beforeMount={ensureNetsk8Theme}
+            value={value}
+            onChange={(v) => setValue(v ?? '')}
+            options={{
+              readOnly: !editable,
+              minimap: { enabled: false },
+              fontSize: 13,
+              lineHeight: 1.6,
+              fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+              fontLigatures: true,
+              scrollBeyondLastLine: false,
+              tabSize: 2,
+              renderWhitespace: 'none',
+              renderLineHighlight: editable ? 'all' : 'none',
+              guides: { indentation: true, highlightActiveIndentation: true },
+              folding: true,
+              smoothScrolling: true,
+              cursorBlinking: 'smooth',
+              overviewRulerLanes: 0,
+              hideCursorInOverviewRuler: true,
+              overviewRulerBorder: false,
+              scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
+              padding: { top: 12, bottom: 12 },
+              contextmenu: editable,
+            }}
+          />
+        )}
       </div>
 
       {editable && (
@@ -158,23 +201,25 @@ export function ManifestPanel({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--err)]/90 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {applying ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                {t('Confirm')}
+                {t('Confirm apply')}
               </button>
               <button onClick={() => setConfirming(false)} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-                {t('Cancel')}
+                {t('Back to edit')}
               </button>
             </>
           ) : (
             <>
               <button
-                onClick={() => setConfirming(true)}
-                disabled={!dirty}
+                onClick={preview}
+                disabled={!dirty || previewing}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                   dirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
+                  previewing && 'opacity-50',
                 )}
               >
-                <Save className="size-4" /> {t('Apply')}
+                {previewing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                {t('Preview')}
               </button>
               {dirty && (
                 <button

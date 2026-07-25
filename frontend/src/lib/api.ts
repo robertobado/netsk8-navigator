@@ -671,13 +671,27 @@ async function throwIfError(res: Response): Promise<void> {
   throw new Error(msg)
 }
 
-export async function applyManifest(ctx: string, kind: ManifestKind, namespace: string, name: string, yaml: string) {
-  const res = await fetch(`/api/contexts/${enc(ctx)}/manifest/${kind}/${enc(namespace || '-')}/${enc(name)}`, {
+// dryRun asks the API server to validate + run admission/defaulting without
+// persisting, returning the YAML it would have produced — used to preview a
+// change (and surface validation errors) before applying for real.
+export async function applyManifest(
+  ctx: string,
+  kind: ManifestKind,
+  namespace: string,
+  name: string,
+  yaml: string,
+  opts?: { dryRun?: boolean },
+): Promise<string | undefined> {
+  const qs = opts?.dryRun ? '?dryRun=true' : ''
+  const res = await fetch(`/api/contexts/${enc(ctx)}/manifest/${kind}/${enc(namespace || '-')}/${enc(name)}${qs}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ yaml }),
   })
   await throwIfError(res)
+  if (!opts?.dryRun) return undefined
+  const body = (await res.json()) as { yaml: string }
+  return body.yaml
 }
 
 /** Kinds whose replica count can be changed without editing YAML. */
@@ -702,6 +716,56 @@ export async function scaleResource(ctx: string, kind: ManifestKind, namespace: 
 export async function restartRollout(ctx: string, kind: ManifestKind, namespace: string, name: string) {
   const res = await fetch(`/api/contexts/${enc(ctx)}/rollout-restart/${kind}/${enc(namespace || '-')}/${enc(name)}`, { method: 'POST' })
   await throwIfError(res)
+}
+
+/** Kinds with revision history (undo) available — see docs/FEATURE_GAP_ANALYSIS.md for why StatefulSet/DaemonSet aren't included yet. */
+export const HISTORY_KINDS = new Set<ManifestKind>(['deployment'])
+
+export interface RevisionInfo {
+  revision: number
+  images: string[]
+  createdAt: string
+  current: boolean
+}
+
+export function rolloutHistory(ctx: string, kind: ManifestKind, namespace: string, name: string) {
+  return get<RevisionInfo[]>(`/contexts/${enc(ctx)}/rollout-history/${kind}/${enc(namespace)}/${enc(name)}`)
+}
+
+export async function rolloutUndo(ctx: string, kind: ManifestKind, namespace: string, name: string, toRevision: number) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/rollout-undo/${kind}/${enc(namespace)}/${enc(name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ toRevision }),
+  })
+  await throwIfError(res)
+}
+
+export interface PortForwardSession {
+  id: string
+  namespace: string
+  pod: string
+  port: number
+  localPort: number
+}
+
+export async function startPortForward(ctx: string, namespace: string, name: string, port: number): Promise<{ id: string; localPort: number }> {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/portforward/${enc(namespace)}/${enc(name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port }),
+  })
+  await throwIfError(res)
+  return res.json()
+}
+
+export async function stopPortForward(ctx: string, id: string) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/portforward/${enc(id)}`, { method: 'DELETE' })
+  await throwIfError(res)
+}
+
+export function listPortForwards(ctx: string) {
+  return get<PortForwardSession[]>(`/contexts/${enc(ctx)}/portforward`)
 }
 
 /** SSE URL for streaming a pod container's logs. */

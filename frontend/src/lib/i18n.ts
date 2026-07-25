@@ -193,6 +193,26 @@ const pt: Dict = {
   'Restart rollout': 'Reiniciar rollout',
   'Restart this rollout now?': 'Reiniciar este rollout agora?',
   'Restart triggered': 'Reinício disparado',
+  History: 'Histórico',
+
+  // --- RolloutHistory ---
+  'Rollout history': 'Histórico de rollout',
+  'No revision history yet.': 'Ainda não há histórico de revisões.',
+  Revision: 'Revisão',
+  Current: 'Atual',
+  Undo: 'Reverter',
+
+  // --- PortForwardPanel ---
+  Forward: 'Encaminhar',
+  'This pod exposes no container ports.': 'Este pod não expõe portas de container.',
+  'Start forwarding': 'Iniciar encaminhamento',
+  Stop: 'Parar',
+
+  // --- ManifestPanel diff/dry-run ---
+  'Reviewing changes': 'Revisando alterações',
+  'Confirm apply': 'Confirmar aplicação',
+  'Back to edit': 'Voltar a editar',
+  Preview: 'Pré-visualizar',
 
   // --- TopologyView ---
   'Select a namespace at the top to view the topology.': 'Selecione um namespace no topo para visualizar a topologia.',

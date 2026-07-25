@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, Loader2, RefreshCw, Scaling, Trash2 } from 'lucide-react'
-import { deleteResource, getDetail, restartRollout, scaleResource, RESTARTABLE_KINDS, SCALABLE_KINDS, type ManifestKind } from '@/lib/api'
+import { AlertTriangle, Check, History, Loader2, RefreshCw, Scaling, Trash2 } from 'lucide-react'
+import { deleteResource, getDetail, restartRollout, scaleResource, HISTORY_KINDS, RESTARTABLE_KINDS, SCALABLE_KINDS, type ManifestKind } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
+import { RolloutHistory } from './RolloutHistory'
 
 interface ActionProps {
   ctx: string
@@ -32,6 +33,7 @@ export function ResourceActions({ ctx, kind, namespace, name, editable, onDelete
     <div className="flex flex-wrap items-center gap-3 border-b px-5 py-2.5">
       {SCALABLE_KINDS.has(kind) && <ScaleAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
       {RESTARTABLE_KINDS.has(kind) && <RestartAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
+      {HISTORY_KINDS.has(kind) && <HistoryAction ctx={ctx} kind={kind} namespace={namespace} name={name} />}
       <DeleteAction
         ctx={ctx}
         kind={kind}
@@ -257,5 +259,21 @@ function RestartAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionPr
     >
       <RefreshCw className="size-4" /> {t('Restart rollout')}
     </button>
+  )
+}
+
+function HistoryAction({ ctx, namespace, name }: Readonly<ActionProps>) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <History className="size-4" /> {t('History')}
+      </button>
+      <RolloutHistory ctx={ctx} namespace={namespace} name={name} open={open} onClose={() => setOpen(false)} />
+    </>
   )
 }
