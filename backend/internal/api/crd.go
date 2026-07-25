@@ -22,11 +22,11 @@ type routeCandidate struct {
 
 var routeCandidates = map[string]routeCandidate{
 	// Gateway API (Envoy Gateway, Istio, Contour, ...)
-	"gateway.networking.k8s.io/gateways":    {"Gateways", 1},
-	"gateway.networking.k8s.io/httproutes":  {"HTTPRoutes", 2},
-	"gateway.networking.k8s.io/grpcroutes":  {"GRPCRoutes", 3},
-	"gateway.networking.k8s.io/tcproutes":   {"TCPRoutes", 4},
-	"gateway.networking.k8s.io/tlsroutes":   {"TLSRoutes", 5},
+	"gateway.networking.k8s.io/gateways":   {"Gateways", 1},
+	"gateway.networking.k8s.io/httproutes": {"HTTPRoutes", 2},
+	"gateway.networking.k8s.io/grpcroutes": {"GRPCRoutes", 3},
+	"gateway.networking.k8s.io/tcproutes":  {"TCPRoutes", 4},
+	"gateway.networking.k8s.io/tlsroutes":  {"TLSRoutes", 5},
 	// Traefik
 	"traefik.io/ingressroutes":          {"IngressRoutes", 10},
 	"traefik.io/ingressroutetcps":       {"IngressRoute TCP", 11},
@@ -302,9 +302,10 @@ func crdConditions(d *resourceDetail, obj map[string]any) {
 		t, _ := cm["type"].(string)
 		st, _ := cm["status"].(string)
 		tone := "muted"
-		if st == "True" {
+		switch st {
+		case "True":
 			tone = "ok"
-		} else if st == "False" {
+		case "False":
 			tone = "err"
 		}
 		d.Conditions = append(d.Conditions, chip{Label: t, Value: st, Tone: tone})

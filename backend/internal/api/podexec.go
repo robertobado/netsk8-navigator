@@ -37,7 +37,7 @@ func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Prefer bash, fall back to sh, with a sane TERM. Note: `exec bash || exec sh`
 	// does NOT work — when bash is missing, `exec` makes the non-interactive shell

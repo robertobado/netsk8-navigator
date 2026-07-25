@@ -59,7 +59,7 @@ func readJSONBody(r *http.Request) (json.RawMessage, error) {
 func writeRaw(w http.ResponseWriter, raw json.RawMessage) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(raw)
+	_, _ = w.Write(raw) //nolint:gosec // application/json response, not rendered as HTML
 }
 
 type jsonError struct{}

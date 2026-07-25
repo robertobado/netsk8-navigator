@@ -13,7 +13,7 @@ import (
 
 // Event is a single change broadcast to SSE subscribers.
 type Event struct {
-	Type   string  `json:"type"`             // ADDED | MODIFIED | DELETED | SYNCED
+	Type   string   `json:"type"`             // ADDED | MODIFIED | DELETED | SYNCED
 	Object *PodView `json:"object,omitempty"` // nil for SYNCED
 }
 

@@ -48,7 +48,7 @@ func TestStore_PersistsToDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // path is t.TempDir()-derived, test-controlled
 	if err != nil {
 		t.Fatalf("expected the file to exist after SetApp: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestNewStore_ResolvesPathAndToleratesCorruptFile(t *testing.T) {
 		t.Skipf("no resolvable config dir in this environment: %v", err)
 	}
 	full := filepath.Join(wantDir, "netsk8")
-	if err := os.MkdirAll(full, 0o755); err != nil {
+	if err := os.MkdirAll(full, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	// A corrupt pre-existing file should be tolerated, not fatal.

@@ -78,7 +78,7 @@ func (s *Store) SetCluster(ctx string, raw json.RawMessage) error {
 
 // save writes the store atomically (temp file + rename).
 func (s *Store) save() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
 		return err
 	}
 	out, err := json.MarshalIndent(s.data, "", "  ")

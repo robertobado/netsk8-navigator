@@ -289,9 +289,10 @@ func workloadConditions(conds []appsv1.DeploymentCondition) []chip {
 	out := []chip{}
 	for _, c := range conds {
 		tone := "muted"
-		if c.Status == corev1.ConditionTrue {
+		switch c.Status {
+		case corev1.ConditionTrue:
 			tone = "ok"
-		} else if c.Status == corev1.ConditionFalse {
+		case corev1.ConditionFalse:
 			tone = "err"
 		}
 		out = append(out, chip{Label: string(c.Type), Value: string(c.Status), Tone: tone})
@@ -378,7 +379,7 @@ func cronJobDetail(o *batchv1.CronJob) *resourceDetail {
 	}
 	d.Status = []chip{
 		{Label: "Estado", Value: suspendVal, Tone: suspendTone},
-		countChip("Jobs ativos", int32(len(o.Status.Active)), "muted"),
+		countChip("Jobs ativos", int32(len(o.Status.Active)), "muted"), //nolint:gosec // active job count, always tiny
 	}
 	last := "—"
 	if o.Status.LastScheduleTime != nil {
@@ -501,7 +502,7 @@ func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 
 func configMapDetail(o *corev1.ConfigMap) *resourceDetail {
 	d := base("ConfigMap", o.ObjectMeta)
-	d.Status = []chip{countChip("Chaves", int32(len(o.Data)+len(o.BinaryData)), "muted")}
+	d.Status = []chip{countChip("Chaves", int32(len(o.Data)+len(o.BinaryData)), "muted")} //nolint:gosec // key count, always tiny
 
 	keys := make([]string, 0, len(o.Data))
 	for k := range o.Data {
@@ -552,7 +553,7 @@ func secretDetail(o *corev1.Secret) *resourceDetail {
 	d := base("Secret", o.ObjectMeta)
 	d.Status = []chip{
 		{Label: "Tipo", Value: orDash(string(o.Type)), Tone: "muted"},
-		countChip("Chaves", int32(len(o.Data)), "muted"),
+		countChip("Chaves", int32(len(o.Data)), "muted"), //nolint:gosec // key count, always tiny
 	}
 	keys := make([]string, 0, len(o.Data))
 	for k := range o.Data {
@@ -739,9 +740,10 @@ func hpaDetail(o *autoscalingv2.HorizontalPodAutoscaler) *resourceDetail {
 	}
 	for _, c := range o.Status.Conditions {
 		tone := "muted"
-		if c.Status == corev1.ConditionTrue {
+		switch c.Status {
+		case corev1.ConditionTrue:
 			tone = "ok"
-		} else if c.Status == corev1.ConditionFalse {
+		case corev1.ConditionFalse:
 			tone = "warn"
 		}
 		d.Conditions = append(d.Conditions, chip{Label: string(c.Type), Value: string(c.Status), Tone: tone})
@@ -818,7 +820,7 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 	v := kube.ToEndpointSliceView(o)
 	d.Status = []chip{
 		{Label: "Tipo", Value: orDash(v.AddressType), Tone: "muted"},
-		replicaChip("Prontos", int32(v.Ready), int32(v.Total)),
+		replicaChip("Prontos", int32(v.Ready), int32(v.Total)), //nolint:gosec // endpoint counts, always tiny
 	}
 	if svc := o.Labels["kubernetes.io/service-name"]; svc != "" {
 		d.Refs = append(d.Refs, detailRef{Group: "Service", Kind: "service", Namespace: o.Namespace, Name: svc})
@@ -978,7 +980,7 @@ func serviceAccountDetail(o *corev1.ServiceAccount) *resourceDetail {
 		}
 	}
 	d.Status = []chip{
-		countChip("Secrets", int32(len(o.Secrets)), "muted"),
+		countChip("Secrets", int32(len(o.Secrets)), "muted"), //nolint:gosec // secret ref count, always tiny
 		{Label: "Automount token", Value: automount, Tone: "muted"},
 	}
 	for _, s := range o.Secrets {
@@ -1017,7 +1019,7 @@ func formatRules(rules []rbacv1.PolicyRule) []kv {
 
 func roleDetail(o *rbacv1.Role) *resourceDetail {
 	d := base("Role", o.ObjectMeta)
-	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")}
+	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
 	if len(o.Rules) > 0 {
 		d.Sections = append(d.Sections, section{Title: "Regras (verbos → recursos)", Items: formatRules(o.Rules)})
 	}
@@ -1026,7 +1028,7 @@ func roleDetail(o *rbacv1.Role) *resourceDetail {
 
 func clusterRoleDetail(o *rbacv1.ClusterRole) *resourceDetail {
 	d := base("ClusterRole", o.ObjectMeta)
-	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")}
+	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
 	if len(o.Rules) > 0 {
 		d.Sections = append(d.Sections, section{Title: "Regras (verbos → recursos)", Items: formatRules(o.Rules)})
 	}
@@ -1039,7 +1041,7 @@ func bindingDetail(kind, ns string, m metav1.ObjectMeta, roleRef rbacv1.RoleRef,
 	d := base(kind, m)
 	d.Status = []chip{
 		{Label: "Role", Value: roleRef.Kind + "/" + roleRef.Name, Tone: "muted"},
-		countChip("Sujeitos", int32(len(subjects)), "muted"),
+		countChip("Sujeitos", int32(len(subjects)), "muted"), //nolint:gosec // subject count, always tiny
 	}
 	// Link to the referenced role (Role is namespaced; ClusterRole is not).
 	roleSlug := ""
@@ -1224,7 +1226,7 @@ func podDetail(p *corev1.Pod) *resourceDetail {
 	}
 	d.Status = []chip{
 		{Label: "Status", Value: kube.PodPhase(p), Tone: phaseTone(kube.PodPhase(p))},
-		replicaChip("Ready", int32(ready), int32(total)),
+		replicaChip("Ready", int32(ready), int32(total)), //nolint:gosec // container counts, always tiny
 		countChip("Restarts", restarts, boolTone(restarts == 0)),
 		{Label: "QoS", Value: string(p.Status.QOSClass), Tone: "muted"},
 	}

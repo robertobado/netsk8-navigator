@@ -146,7 +146,7 @@ func failedDetail(p *corev1.Pod) (reason, message string, since time.Time) {
 					message = t.Message
 				}
 			}
-			if t.FinishedAt.Time.After(since) {
+			if t.FinishedAt.After(since) {
 				since = t.FinishedAt.Time
 			}
 		}

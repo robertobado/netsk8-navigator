@@ -53,7 +53,7 @@ func (s *Server) handlePodWatch(w http.ResponseWriter, r *http.Request) {
 			writeSSE(w, ev)
 			flusher.Flush()
 		case <-keepalive.C:
-			fmt.Fprint(w, ": keepalive\n\n")
+			_, _ = fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
 		}
 	}
@@ -64,5 +64,5 @@ func writeSSE(w http.ResponseWriter, ev kube.Event) {
 	if err != nil {
 		return
 	}
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 }

@@ -264,7 +264,7 @@ func (s *Server) handleDeploymentsUsage(w http.ResponseWriter, r *http.Request) 
 	}
 	var pm struct {
 		Items []struct {
-			Metadata struct{ Name, Namespace string } `json:"metadata"`
+			Metadata   struct{ Name, Namespace string } `json:"metadata"`
 			Containers []struct {
 				Usage mUsage `json:"usage"`
 			} `json:"containers"`

@@ -16,7 +16,7 @@ func writeSSEData(w http.ResponseWriter, line []byte) {
 	if err != nil {
 		return
 	}
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 }
 
 // handlePodLogs streams a pod container's logs as SSE, following new lines.
@@ -47,7 +47,7 @@ func (s *Server) handlePodLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

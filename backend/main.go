@@ -3,9 +3,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/api"
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
@@ -13,7 +15,16 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/web"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=...".
+// GoReleaser sets it to the release tag; plain `go build` leaves it "dev".
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
+		fmt.Println("netsk8s-navigator " + version)
+		return
+	}
+
 	addr := os.Getenv("ADDR")
 	if addr == "" {
 		// Loopback-only by default: this backend has no auth and can mutate the
@@ -45,8 +56,16 @@ func main() {
 		log.Print("no embedded frontend build — run the Vite dev server separately (pnpm dev)")
 	}
 
-	log.Printf("netsk8s-navigator backend listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	// ReadHeaderTimeout guards against slow-header attacks; Read/WriteTimeout are
+	// deliberately left unset (0 = no limit) — logs/exec/watch are long-lived SSE
+	// and WebSocket streams that must not be cut off by a fixed deadline.
+	httpSrv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	log.Printf("netsk8s-navigator %s backend listening on %s", version, addr)
+	if err := httpSrv.ListenAndServe(); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

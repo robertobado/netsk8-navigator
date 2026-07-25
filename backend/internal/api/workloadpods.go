@@ -67,10 +67,10 @@ func (s *Server) handleWorkloadPods(w http.ResponseWriter, r *http.Request) {
 	for i := range pods.Items {
 		p := &pods.Items[i]
 		matched := false
-		switch {
-		case kind == "service":
+		switch kind {
+		case "service":
 			matched = len(svcSelector) > 0 && labelsMatch(svcSelector, p.Labels)
-		case kind == "deployment":
+		case "deployment":
 			matched = ownedByRS(p, rsOwned)
 		default:
 			matched = ownedBy(p, targetKind, name)
