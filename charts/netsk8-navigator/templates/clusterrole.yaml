@@ -1,4 +1,4 @@
-{{- if .Values.rbac.create }}
+{{- if and .Values.rbac.create (eq .Values.rbac.mode "full") }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -7,11 +7,32 @@ metadata:
     {{- include "netsk8-navigator.labels" . | nindent 4 }}
 rules:
   # Full access to every resource, cluster-wide — see the comment on
-  # `rbac.create` in values.yaml for why this mirrors the app's own
+  # `rbac.mode` in values.yaml for why this mirrors the app's own
   # documented (local, kubectl-equivalent) trust model.
   - apiGroups: ["*"]
     resources: ["*"]
     verbs: ["*"]
   - nonResourceURLs: ["*"]
     verbs: ["*"]
+{{- end }}
+{{- if and .Values.rbac.create (eq .Values.rbac.mode "readOnly") }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "netsk8-navigator.fullname" . }}-crd-viewer
+  labels:
+    {{- include "netsk8-navigator.labels" . | nindent 4 }}
+rules:
+  # The built-in "view" ClusterRole (bound in clusterrolebinding.yaml) has no
+  # notion of third-party CRDs — grant read on the route CRDs this app's
+  # generic CRD browser also supports (Gateway API, Traefik, Istio, Contour).
+  - apiGroups:
+      - gateway.networking.k8s.io
+      - traefik.io
+      - traefik.containo.us
+      - networking.istio.io
+      - projectcontour.io
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
 {{- end }}

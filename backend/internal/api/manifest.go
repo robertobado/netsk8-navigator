@@ -119,6 +119,7 @@ func (s *Server) handleApplyManifest(w http.ResponseWriter, r *http.Request) {
 	if res.Namespaced {
 		ns = r.PathValue("namespace")
 	}
+	audit(r, "apply-manifest", "kind", kind, "namespace", ns, "name", r.PathValue("name"))
 	if _, err := dyn.Resource(res.GVR).Namespace(ns).Update(ctx, obj, metav1.UpdateOptions{}); err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return

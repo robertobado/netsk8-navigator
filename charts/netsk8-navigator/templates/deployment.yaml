@@ -42,13 +42,23 @@ spec:
             # 0.0.0.0 so the Service can reach the pod — a pod's network
             # namespace is already the isolation boundary (unlike a bare
             # machine, where loopback-only is the default for a reason: see
-            # the main README's Security model). Auth, if you need it, goes
-            # in front (Ingress, OAuth2 proxy, NetworkPolicy, ...).
+            # the main README's Security model). Set auth.enabled (below) for
+            # built-in HTTP Basic Auth, or front it yourself (Ingress, OAuth2
+            # proxy, NetworkPolicy, ...).
             - name: ADDR
               value: "0.0.0.0:{{ .Values.service.port }}"
             {{- if .Values.kubeconfig.enabled }}
             - name: KUBECONFIG
               value: "{{ .Values.kubeconfig.mountPath }}/{{ .Values.kubeconfig.secretKey }}"
+            {{- end }}
+            {{- if .Values.auth.enabled }}
+            - name: AUTH_USER
+              value: {{ .Values.auth.user | quote }}
+            - name: AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auth.existingSecret is required when auth.enabled is true" .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.secretKey }}
             {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}

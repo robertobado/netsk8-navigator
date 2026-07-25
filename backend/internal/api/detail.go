@@ -154,6 +154,12 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	if kind == "secret" {
+		// The decoded values are in the response body below (masked only in the
+		// UI, until the user clicks reveal) — so the sensitive read happens here,
+		// not on some later "reveal" request.
+		audit(r, "read-secret", "namespace", r.PathValue("namespace"), "name", r.PathValue("name"))
+	}
 	if enrich, ok := detailEnrichers[kind]; ok {
 		enrich(ctx, s, r.PathValue("ctx"), r.PathValue("namespace"), r.PathValue("name"), d)
 	}

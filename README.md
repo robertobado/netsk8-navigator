@@ -201,18 +201,45 @@ or views. Full details on the extension pattern in
 
 ## Security model
 
-This backend **has no authentication, no TLS, and uses CORS `*`**. It can
-also mutate the cluster (apply manifests via the Monaco editor), open an
-`exec` session in any pod, and return decoded `Secret` values. It's meant
-for **local use, on your own machine, with your own kubeconfig** — the
-same trust level as running `kubectl` directly.
+By default, this backend **has no authentication, no TLS, and sends no CORS
+headers beyond same-origin**. It can also mutate the cluster (apply
+manifests via the Monaco editor), open an `exec` session in any pod, and
+return decoded `Secret` values. Out of the box it's meant for **local use,
+on your own machine, with your own kubeconfig** — the same trust level as
+running `kubectl` directly.
 
 - By default the backend listens only on `127.0.0.1:8080` (loopback). Only
   change `ADDR` to expose it on another interface if you understand the
   implications — that grants any process/machine that can reach the port
   the same access your kubeconfig credentials have.
 - Don't run this as a shared service or behind an internet-facing proxy
-  without putting authentication/authorization in front of it.
+  without turning on at least one of the options below (or fronting it with
+  your own auth).
+
+**Opt-in hardening** — all off by default, so local use stays zero-config:
+
+- **`AUTH_PASSWORD`** (+ optional `AUTH_USER`, default `admin`) — turns on
+  HTTP Basic Auth for the whole app. Basic Auth rather than a bearer token:
+  once the browser authenticates, it automatically replays the same
+  credentials on every later request — including the live-pods SSE feed
+  and the exec terminal's WebSocket, neither of which browser JS can attach
+  a custom header to.
+- **`CORS_ORIGIN`** — allows one extra origin to call the API cross-origin
+  (and to open the exec terminal's WebSocket). Unset by default: the
+  embedded single-binary deployment is same-origin already and needs none,
+  and the documented split dev setup (`pnpm dev` + `go run .`) works without
+  it too, since Vite's own proxy already keeps the browser's requests
+  same-origin.
+- **`TLS_CERT` / `TLS_KEY`** — serve HTTPS directly (both must be set
+  together). Most Kubernetes setups should terminate TLS at an Ingress
+  instead (see below); this is for bare Docker/binary deployments that need
+  TLS with no reverse proxy in front.
+- **Audit log** — always on, no flag needed. Every manifest apply, pod exec
+  session, and Secret detail read logs one `AUDIT` line (action, resource,
+  source address) to stdout. There's no per-user identity to attribute it
+  to (see above), so this is a trail of *what* happened and *from where*,
+  not *who* — pair it with `AUTH_PASSWORD` (or your own auth) if you need
+  the latter.
 
 ## Kubernetes (Helm)
 
@@ -237,20 +264,32 @@ helm install netsk8-navigator ./charts/netsk8-navigator \
   --set kubeconfig.secretName=my-kubeconfig
 ```
 
-**RBAC:** the chart's default `ClusterRole` grants the same broad,
+**RBAC:** `rbac.mode` (default `full`) grants the same broad,
 kubectl-equivalent access described in *Security model* above —
 cluster-wide read/write on every resource, since that's what lets the app
 browse anything, apply manifests, exec into pods, and read Secret values.
-Set `rbac.create=false` and bind your own, more restricted Role to
-`serviceAccount.name` if you want a scoped-down deployment (e.g. read-only,
-or limited to specific namespaces).
+For a safer default on a shared cluster, set `rbac.mode=readOnly`: it binds
+Kubernetes' own built-in `view` ClusterRole instead (broad read, no apply,
+no pod exec, and — the same restriction `view` has always had — no Secret
+values). Set `rbac.create=false` to manage RBAC yourself entirely.
 
-**Security:** this backend still has no built-in authentication once
-deployed to a cluster. `service.type` defaults to `ClusterIP` (not reachable
-outside the cluster on its own) — if you enable the chart's `ingress` or
-switch to a `LoadBalancer`, put your own authentication in front of it
-(an authenticated Ingress, an OAuth2 proxy, a NetworkPolicy restricting
-who can reach it, ...).
+**Authentication:** set `auth.enabled=true` (+ `auth.existingSecret`, a
+Secret with a `password` key) for the same built-in HTTP Basic Auth
+described in *Security model* above:
+
+```bash
+kubectl create secret generic netsk8-navigator-auth --from-literal=password=<your-password>
+helm install netsk8-navigator ./charts/netsk8-navigator \
+  --set auth.enabled=true \
+  --set auth.existingSecret=netsk8-navigator-auth
+```
+
+Otherwise this backend still has no authentication once deployed.
+`service.type` defaults to `ClusterIP` (not reachable outside the cluster on
+its own) — if you enable the chart's `ingress` or switch to a
+`LoadBalancer`, turn on `auth.enabled` or put your own authentication in
+front of it (an authenticated Ingress, an OAuth2 proxy, a NetworkPolicy
+restricting who can reach it, ...).
 
 See [`values.yaml`](charts/netsk8-navigator/values.yaml) for every option
 (resources, ingress, node selectors, security contexts, ...).

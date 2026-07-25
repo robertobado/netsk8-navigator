@@ -46,14 +46,24 @@ serviceAccount:
   annotations: {}
 
 rbac:
-  # Creates a ClusterRole + ClusterRoleBinding granting this Deployment full
-  # read/write access to every resource in every namespace — the same
-  # kubectl-equivalent trust level the app assumes everywhere else (see the
-  # README). This is what lets it browse any resource, apply manifests,
-  # exec into pods, and read Secret values, cluster-wide. Set to false to
-  # manage RBAC yourself and bind `serviceAccount.name` to something more
-  # restricted (e.g. read-only, or scoped to specific namespaces).
+  # Whether the chart manages RBAC at all. Set to false to bring your own
+  # (bind `serviceAccount.name` to a Role/ClusterRole you manage yourself —
+  # e.g. scoped to specific namespaces).
   create: true
+  # "full": ClusterRole granting full read/write access to every resource in
+  #   every namespace — the same kubectl-equivalent trust level the app
+  #   assumes everywhere else (see the README's Security model). This is
+  #   what lets it browse any resource, apply manifests, exec into pods, and
+  #   read Secret values, cluster-wide.
+  # "readOnly": binds Kubernetes' own built-in "view" ClusterRole instead —
+  #   broad get/list/watch, deliberately EXCLUDING Secret values (the same
+  #   restriction "view" has always had) — plus read access to the route
+  #   CRDs this app also browses (Gateway API, Traefik, Istio, Contour). No
+  #   apply, no pod exec, no Secret values. Note that Kubernetes RBAC can't
+  #   express "read everything except Secrets" as a single custom rule —
+  #   this mode works by reusing the cluster's own vetted "view" role rather
+  #   than trying to reinvent it.
+  mode: full
 
 # By default the app is given NO kubeconfig, so it falls back to this pod's
 # own in-cluster service account and talks only to the cluster it's running
@@ -72,10 +82,25 @@ kubeconfig:
   # $KUBECONFIG. Rarely needs changing.
   mountPath: /etc/netsk8-navigator/kubeconfig
 
-# Extra environment variables, e.g.:
+auth:
+  # HTTP Basic Auth for the whole app (see the README's Security model) —
+  # off by default, matching the local/binary/Docker default of no
+  # authentication. Create the Secret yourself first:
+  #   kubectl create secret generic netsk8-navigator-auth --from-literal=password=<your-password>
+  enabled: false
+  user: admin
+  existingSecret: ""
+  secretKey: password
+
+# Extra environment variables. Also where a couple of advanced, rarely-needed
+# backend options live — see the README's Security model for both:
 #   env:
-#     - name: SOME_FLAG
-#       value: "1"
+#     - name: CORS_ORIGIN       # allow one extra origin to call the API cross-origin
+#       value: "https://example.com"
+#     - name: TLS_CERT          # native TLS (most setups should terminate TLS at
+#       value: /tls/tls.crt     # an Ingress instead — see ingress.tls above)
+#     - name: TLS_KEY
+#       value: /tls/tls.key
 env: []
 
 # Extra volumes/volumeMounts, appended as-is to the pod/container spec — the

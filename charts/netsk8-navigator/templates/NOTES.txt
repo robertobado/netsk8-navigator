@@ -26,6 +26,13 @@ No Ingress is enabled. Reach it with:
 then open http://127.0.0.1:8080
 {{- end }}
 
+{{- if .Values.auth.enabled }}
+
+HTTP Basic Auth is enabled (user "{{ .Values.auth.user }}", password from
+Secret "{{ .Values.auth.existingSecret }}").
+{{- else }}
+
 Remember: this backend has no built-in authentication (see the main repo's
-README "Security model" section). Don't expose it beyond the cluster
-without putting your own auth in front of it.
+README "Security model" section — set `auth.enabled` for one). Don't expose
+it beyond the cluster without putting your own auth in front of it.
+{{- end }}

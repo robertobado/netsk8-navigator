@@ -116,7 +116,7 @@ func newTestServer(t *testing.T, objs ...runtime.Object) *Server {
 	if err != nil {
 		t.Fatalf("config.NewStore: %v", err)
 	}
-	return NewServer(newFakeManager(objs...), cfg)
+	return NewServer(newFakeManager(objs...), cfg, "")
 }
 
 // doRequest sends method+path through the real routing/middleware stack

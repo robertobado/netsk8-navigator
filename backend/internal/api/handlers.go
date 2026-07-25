@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
@@ -35,16 +36,26 @@ type clusterManager interface {
 
 // Server wires the kube manager and preferences store into an http.Handler.
 type Server struct {
-	mgr clusterManager
-	cfg *config.Store
+	mgr        clusterManager
+	cfg        *config.Store
+	corsOrigin string
+	upgrader   websocket.Upgrader
 
 	monMu   sync.Mutex
 	mon     map[string]monResult // context -> discovered Prometheus source (cached)
 	msCache map[string]bool      // context -> metrics-server availability (cached)
 }
 
-func NewServer(mgr clusterManager, cfg *config.Store) *Server {
-	return &Server{mgr: mgr, cfg: cfg, mon: make(map[string]monResult), msCache: make(map[string]bool)}
+// NewServer wires a Server. corsOrigin is the one extra origin (besides the
+// documented dev-server ones) allowed to call the API cross-origin and to
+// open the exec terminal's WebSocket — see CORS_ORIGIN in the README's
+// Security model section. Pass "" for the default same-origin-only posture.
+func NewServer(mgr clusterManager, cfg *config.Store, corsOrigin string) *Server {
+	return &Server{
+		mgr: mgr, cfg: cfg, corsOrigin: corsOrigin,
+		upgrader: websocket.Upgrader{CheckOrigin: wsOriginAllowed(corsOrigin)},
+		mon:      make(map[string]monResult), msCache: make(map[string]bool),
+	}
 }
 
 // Routes builds the mux. Go 1.22+ pattern routing means no external router dep.
@@ -88,7 +99,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}", s.handleCRDList)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/manifest", s.handleCRDManifest)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/detail", s.handleCRDDetail)
-	return withCORS(withLogging(mux))
+	return withCORS(s.corsOrigin, withLogging(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

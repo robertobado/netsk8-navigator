@@ -8,9 +8,32 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  {{- if eq .Values.rbac.mode "readOnly" }}
+  # Kubernetes' own built-in "view" role: broad get/list/watch, deliberately
+  # EXCLUDING Secret values — the same restriction "view" has always had.
+  name: view
+  {{- else }}
   name: {{ include "netsk8-navigator.fullname" . }}
+  {{- end }}
 subjects:
   - kind: ServiceAccount
     name: {{ include "netsk8-navigator.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+---
+{{- if eq .Values.rbac.mode "readOnly" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "netsk8-navigator.fullname" . }}-crd-viewer
+  labels:
+    {{- include "netsk8-navigator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "netsk8-navigator.fullname" . }}-crd-viewer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "netsk8-navigator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
 {{- end }}

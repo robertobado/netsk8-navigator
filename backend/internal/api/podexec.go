@@ -12,11 +12,6 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-var upgrader = websocket.Upgrader{
-	// Dev: accept any origin. Restrict before any real deployment.
-	CheckOrigin: func(*http.Request) bool { return true },
-}
-
 // handlePodExec bridges a browser terminal (xterm.js over WebSocket) to a shell
 // running inside a pod container via client-go's SPDY executor.
 // Protocol client->server (JSON text): {"type":"stdin","data":".."} |
@@ -33,11 +28,12 @@ func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	defer func() { _ = conn.Close() }()
+	audit(r, "pod-exec", "namespace", r.PathValue("namespace"), "pod", r.PathValue("name"), "container", r.URL.Query().Get("container"))
 
 	// Prefer bash, fall back to sh, with a sane TERM. Note: `exec bash || exec sh`
 	// does NOT work — when bash is missing, `exec` makes the non-interactive shell
