@@ -71,5 +71,13 @@ release:
     docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Version }}
     ```
 
+    Kubeconfig using an AWS/GCP/Azure exec credential plugin? Pull the
+    `-cloud-auth` variant instead (same binary, with the cloud CLIs
+    installed — see the README's "Cloud provider authentication" section):
+
+    ```bash
+    docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Version }}-cloud-auth
+    ```
+
     Full instructions for building from source in the
     [README](https://github.com/robertobado/netsk8-navigator#running-locally).

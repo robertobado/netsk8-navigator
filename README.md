@@ -313,28 +313,31 @@ backend process is in.
 - **From source, or the downloaded binary:** works with no extra setup —
   it's your own shell, so your existing `aws`/`gcloud`/`az`/`kubelogin`
   install and logged-in credentials are already there.
-- **Docker / Docker Compose:** the published image is `distroless` on
-  purpose (minimal, no shell, no CLIs) and can't run `aws eks get-token`
-  itself. [`Dockerfile.cloud-auth`](Dockerfile.cloud-auth) layers the AWS
-  CLI on top of the same binary instead of rebuilding it — the same pattern
-  works for GCP/Azure, swapping the installed CLI:
+- **Docker / Docker Compose:** the default image is `distroless` (minimal,
+  no shell, no CLIs) and can't run these commands itself. Use the
+  `-cloud-auth` image instead — same binary, published alongside the
+  default one on every release, with the AWS CLI, Google Cloud CLI (+
+  `gke-gcloud-auth-plugin`), and Azure CLI (+ `kubelogin`) already
+  installed on a `debian-slim` base:
 
   ```bash
-  docker build -f Dockerfile.cloud-auth -t netsk8-navigator:aws .
   docker run --rm -p 127.0.0.1:8080:8080 \
     -v "$(readlink -f ~/.kube/config):/kube/config:ro" -e KUBECONFIG=/kube/config \
     -v "$HOME/.aws:/home/nonroot/.aws:ro" -e AWS_PROFILE=your-profile \
-    netsk8-navigator:aws
+    ghcr.io/robertobado/netsk8-navigator:latest-cloud-auth
   ```
 
-- **Kubernetes (Helm):** same idea, one level up — build/push a custom
-  image the same way, point `image.repository`/`image.tag` at it, and mount
-  the matching cloud credentials via `extraVolumes`/`extraVolumeMounts`:
+  Same idea for GCP (mount `~/.config/gcloud`) or Azure (mount `~/.azure`).
+  Prefer building it yourself? `docker build -f Dockerfile.cloud-auth -t
+  netsk8-navigator:cloud-auth .`.
+
+- **Kubernetes (Helm):** same idea, one level up — point `image.tag` at the
+  `-cloud-auth` variant and mount the matching cloud credentials via
+  `extraVolumes`/`extraVolumeMounts`:
 
   ```yaml
   image:
-    repository: ghcr.io/your-org/netsk8-navigator-aws
-    tag: latest
+    tag: latest-cloud-auth
   kubeconfig:
     enabled: true
     secretName: my-kubeconfig

@@ -1,40 +1,93 @@
 # syntax=docker/dockerfile:1
 #
-# Example variant of the main Dockerfile for kubeconfigs that use an `exec:`
-# credential plugin — the common case for managed clusters (EKS here; see
-# the README's "Cloud provider authentication" section for the same pattern
-# adapted to GKE/AKS). The main image is `distroless` on purpose (minimal,
-# no shell, no CLIs) and can't run `aws eks get-token` itself, so this layers
-# the AWS CLI on top of the same binary instead of rebuilding it from source.
+# Variant of the main Dockerfile for kubeconfigs that use an `exec:`
+# credential plugin — the common case for managed clusters (EKS, GKE, AKS;
+# see the README's "Cloud provider authentication" section). The main image
+# is `distroless` on purpose (minimal, no shell, no CLIs) and can't run
+# `aws eks get-token`/`gcloud`/`kubelogin` itself, so this variant is built
+# on `debian-slim` with the AWS CLI, Google Cloud CLI (+
+# `gke-gcloud-auth-plugin`), and Azure CLI (+ `kubelogin`) layered on top of
+# the same compiled binary.
 #
 # Build:
-#   docker build -f Dockerfile.cloud-auth -t netsk8-navigator:aws .
+#   docker build -f Dockerfile.cloud-auth -t netsk8-navigator:cloud-auth .
 #
-# Run (mount both the kubeconfig AND the AWS CLI's own credentials):
+# Run (mount both the kubeconfig AND the cloud's own credentials — AWS shown,
+# same idea for `~/.config/gcloud` or `~/.azure`):
 #   docker run --rm -p 127.0.0.1:8080:8080 \
 #     -v "$(readlink -f ~/.kube/config):/kube/config:ro" -e KUBECONFIG=/kube/config \
 #     -v "$HOME/.aws:/home/nonroot/.aws:ro" -e AWS_PROFILE=your-profile \
-#     netsk8-navigator:aws
+#     netsk8-navigator:cloud-auth
 
-ARG BASE_IMAGE=ghcr.io/robertobado/netsk8-navigator:latest
-FROM ${BASE_IMAGE} AS app
+# --- frontend build: produces backend/internal/web/dist, embedded below ---
+FROM node:22-alpine AS frontend
+RUN corepack enable
+WORKDIR /src
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/
+RUN cd frontend && pnpm install --frozen-lockfile
+COPY frontend frontend/
+COPY backend/internal/web backend/internal/web
+RUN cd frontend && pnpm build
 
+# --- backend build: a single static binary with the SPA embedded ---
+FROM golang:1.26-alpine AS backend
+ARG VERSION=dev
+WORKDIR /src
+COPY backend/go.mod backend/go.sum backend/
+RUN cd backend && go mod download
+COPY backend backend/
+COPY --from=frontend /src/backend/internal/web/dist backend/internal/web/dist
+RUN cd backend && CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /out/netsk8-navigator .
+
+# --- final image: adds the AWS/GCP/Azure clients on top of debian-slim ---
 FROM debian:12-slim
+
+# `dpkg --print-architecture` (not the TARGETARCH build arg) reflects this
+# stage's actual architecture regardless of which builder is in use — plain
+# `docker build` (no buildx) leaves TARGETARCH unset even on an arm64 host.
 RUN groupadd -g 65532 nonroot \
     && useradd -u 65532 -g 65532 -m -d /home/nonroot -s /usr/sbin/nologin nonroot \
-    && apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip \
-    && ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
-    && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o /tmp/awscliv2.zip \
-    && unzip -q /tmp/awscliv2.zip -d /tmp \
-    && /tmp/aws/install \
-    && rm -rf /tmp/awscliv2.zip /tmp/aws \
-    && apt-get purge -y --auto-remove curl unzip \
+    && apt-get update && apt-get install -y --no-install-recommends \
+         ca-certificates curl unzip gnupg python3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=app /netsk8-navigator /netsk8-navigator
+# --- AWS CLI v2 (aws eks get-token) ---
+RUN AWS_ARCH=$([ "$(dpkg --print-architecture)" = "arm64" ] && echo aarch64 || echo x86_64) \
+    && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o /tmp/awscliv2.zip \
+    && unzip -q /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install \
+    && rm -rf /tmp/awscliv2.zip /tmp/aws
+
+# --- Azure CLI + kubelogin (AKS exec plugin) ---
+RUN ARCH="$(dpkg --print-architecture)" \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -sLS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg \
+    && printf 'Types: deb\nURIs: https://packages.microsoft.com/repos/azure-cli/\nSuites: bookworm\nComponents: main\nArchitectures: %s\nSigned-by: /etc/apt/keyrings/microsoft.gpg\n' "$ARCH" > /etc/apt/sources.list.d/azure-cli.sources \
+    && apt-get update && apt-get install -y --no-install-recommends azure-cli \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL "https://github.com/Azure/kubelogin/releases/latest/download/kubelogin-linux-${ARCH}.zip" -o /tmp/kubelogin.zip \
+    && unzip -q /tmp/kubelogin.zip -d /tmp \
+    && install -m 0755 "/tmp/bin/linux_${ARCH}/kubelogin" /usr/local/bin/kubelogin \
+    && rm -rf /tmp/kubelogin.zip /tmp/bin
+
+# --- Google Cloud CLI + gke-gcloud-auth-plugin (GKE exec plugin) ---
+RUN GCLOUD_ARCH=$([ "$(dpkg --print-architecture)" = "arm64" ] && echo arm || echo x86_64) \
+    && curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${GCLOUD_ARCH}.tar.gz" -o /tmp/gcloud.tar.gz \
+    && tar -xzf /tmp/gcloud.tar.gz -C /opt \
+    && /opt/google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false \
+    && /opt/google-cloud-sdk/bin/gcloud components install gke-gcloud-auth-plugin --quiet \
+    && ln -s /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud \
+    && ln -s /opt/google-cloud-sdk/bin/gke-gcloud-auth-plugin /usr/local/bin/gke-gcloud-auth-plugin \
+    && rm -rf /tmp/gcloud.tar.gz
+
+COPY --from=backend /out/netsk8-navigator /netsk8-navigator
 
 USER 65532:65532
 ENV HOME=/home/nonroot
 EXPOSE 8080
+# 0.0.0.0 so Docker's port publishing can reach it (loopback-only, main.go's
+# default, isn't reachable from outside the container's network namespace).
+# Keep the port bound to the host's loopback when you run this image — see
+# the README's security model, which applies identically in a container.
 ENV ADDR=0.0.0.0:8080
 ENTRYPOINT ["/netsk8-navigator"]

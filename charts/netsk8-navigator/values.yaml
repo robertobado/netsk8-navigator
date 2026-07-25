@@ -106,8 +106,8 @@ env: []
 # Extra volumes/volumeMounts, appended as-is to the pod/container spec — the
 # hook for mounting cloud provider credentials (AWS/GCP/Azure) that an
 # exec-based kubeconfig needs at runtime. See the README's "Cloud provider
-# authentication" section; typical usage with a custom image that has the
-# matching CLI installed (see Dockerfile.cloud-auth):
+# authentication" section; pair with `image.tag: latest-cloud-auth` (or
+# similar), which has the AWS/GCP/Azure CLIs already installed:
 #   extraVolumes:
 #     - name: aws-creds
 #       secret:
@@ -129,8 +129,8 @@ resources: {}
 podAnnotations: {}
 podLabels: {}
 
-# Matches the app's Docker image (a distroless base with a baked-in "nonroot"
-# UID/GID 65532 and $HOME=/home/nonroot) — least-privilege by default.
+# Matches the app's Docker image, which runs as a dedicated "nonroot"
+# UID/GID 65532 with $HOME=/home/nonroot — least-privilege by default.
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532

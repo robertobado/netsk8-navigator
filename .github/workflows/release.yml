@@ -63,11 +63,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker:
-    name: Build + push Docker image (GHCR)
+    name: Build + push Docker image (GHCR) - ${{ matrix.name }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        include:
+          # The default image: minimal `distroless`, no cloud CLIs.
+          - name: standard
+            dockerfile: Dockerfile
+            suffix: ""
+          # Same binary, layered on debian-slim with the AWS/GCP/Azure CLIs
+          # + kubelogin for exec-based kubeconfigs (see the README's "Cloud
+          # provider authentication" section).
+          - name: cloud-auth
+            dockerfile: Dockerfile.cloud-auth
+            suffix: "-cloud-auth"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -90,14 +103,15 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
+            type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.suffix }}
+            type=raw,value=latest${{ matrix.suffix }}
 
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: VERSION=${{ steps.meta.outputs.version }}
