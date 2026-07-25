@@ -96,3 +96,26 @@ func TestNewStore_ResolvesPathAndToleratesCorruptFile(t *testing.T) {
 		t.Errorf("App() after loading a corrupt file = %s, want {}", got)
 	}
 }
+
+// A container running as an arbitrary non-root UID commonly has no $HOME (and
+// no $XDG_CONFIG_HOME) — NewStore must still start up, falling back to a temp
+// dir, rather than failing the whole server over a preferences nicety.
+func TestNewStore_FallsBackWithoutHOME(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	if _, err := os.UserConfigDir(); err == nil {
+		t.Skip("this environment still resolves a config dir without HOME/XDG_CONFIG_HOME")
+	}
+
+	s, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v, want a graceful fallback", err)
+	}
+	if want := filepath.Join(os.TempDir(), "netsk8", "config.json"); s.Path() != want {
+		t.Errorf("Path() = %q, want %q", s.Path(), want)
+	}
+	if got := s.App(); string(got) != "{}" {
+		t.Errorf("App() = %s, want {}", got)
+	}
+}

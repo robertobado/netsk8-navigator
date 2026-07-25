@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "netsk8-navigator.fullname" . }}
+  labels:
+    {{- include "netsk8-navigator.labels" . | nindent 4 }}
+spec:
+  # Preferences (internal/config.Store) live on each pod's own emptyDir, not
+  # in a shared store — with replicaCount > 1, which pod's preferences you
+  # see depends on which one the Service happened to route you to. Fine for
+  # the default single replica; keep that in mind before scaling this up.
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "netsk8-navigator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "netsk8-navigator.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "netsk8-navigator.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            # 0.0.0.0 so the Service can reach the pod — a pod's network
+            # namespace is already the isolation boundary (unlike a bare
+            # machine, where loopback-only is the default for a reason: see
+            # the main README's Security model). Auth, if you need it, goes
+            # in front (Ingress, OAuth2 proxy, NetworkPolicy, ...).
+            - name: ADDR
+              value: "0.0.0.0:{{ .Values.service.port }}"
+            {{- if .Values.kubeconfig.enabled }}
+            - name: KUBECONFIG
+              value: "{{ .Values.kubeconfig.mountPath }}/{{ .Values.kubeconfig.secretKey }}"
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # Writable $HOME/.config for preferences (internal/config.Store) —
+            # needed because securityContext.readOnlyRootFilesystem leaves the
+            # image's own /home/nonroot read-only. Preferences are a
+            # convenience, not core state, so losing them on pod restart
+            # (emptyDir) is an acceptable trade-off for a stateless Deployment.
+            - name: home
+              mountPath: /home/nonroot/.config
+            {{- if .Values.kubeconfig.enabled }}
+            - name: kubeconfig
+              mountPath: {{ .Values.kubeconfig.mountPath }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: home
+          emptyDir: {}
+        {{- if .Values.kubeconfig.enabled }}
+        - name: kubeconfig
+          secret:
+            secretName: {{ required "kubeconfig.secretName is required when kubeconfig.enabled is true" .Values.kubeconfig.secretName }}
+            items:
+              - key: {{ .Values.kubeconfig.secretKey }}
+                path: {{ .Values.kubeconfig.secretKey }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

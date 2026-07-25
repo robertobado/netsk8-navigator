@@ -1,0 +1,121 @@
+# Default values for netsk8-navigator.
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/robertobado/netsk8-navigator
+  # Defaults to "latest" (the most recent release image). Pin an exact
+  # version (e.g. "0.3.0") for anything beyond a quick try-out.
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# The backend has no built-in authentication (see the main README's
+# "Security model" section — it applies identically here). Exposing the
+# Service beyond the cluster without fronting it with your own auth (an
+# authenticated Ingress, an OAuth2 proxy, a VPN-only LoadBalancer, ...) gives
+# anyone who can reach it the same access your cluster credentials have.
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  #   nginx.ingress.kubernetes.io/auth-type: basic
+  #   nginx.ingress.kubernetes.io/auth-secret: netsk8-navigator-basic-auth
+  hosts:
+    - host: netsk8-navigator.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: netsk8-navigator-tls
+  #    hosts:
+  #      - netsk8-navigator.local
+
+serviceAccount:
+  # Whether to create a ServiceAccount for the pod. Set to false and provide
+  # `name` to use one you manage yourself (e.g. already bound to a more
+  # restricted Role than the chart's own ClusterRole below).
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  # Creates a ClusterRole + ClusterRoleBinding granting this Deployment full
+  # read/write access to every resource in every namespace — the same
+  # kubectl-equivalent trust level the app assumes everywhere else (see the
+  # README). This is what lets it browse any resource, apply manifests,
+  # exec into pods, and read Secret values, cluster-wide. Set to false to
+  # manage RBAC yourself and bind `serviceAccount.name` to something more
+  # restricted (e.g. read-only, or scoped to specific namespaces).
+  create: true
+
+# By default the app is given NO kubeconfig, so it falls back to this pod's
+# own in-cluster service account and talks only to the cluster it's running
+# in — the common case for "put the navigator in the cluster it manages".
+#
+# Set `enabled: true` to instead mount an existing Secret containing a
+# kubeconfig file (e.g. so this one Deployment can browse OTHER clusters too,
+# same as running the binary locally with $KUBECONFIG set). Create the
+# Secret yourself first, e.g.:
+#   kubectl create secret generic my-kubeconfig --from-file=config=$HOME/.kube/config
+kubeconfig:
+  enabled: false
+  secretName: ""
+  secretKey: config
+  # Mount path inside the container; combined with secretKey to build
+  # $KUBECONFIG. Rarely needs changing.
+  mountPath: /etc/netsk8-navigator/kubeconfig
+
+# Extra environment variables, e.g.:
+#   env:
+#     - name: SOME_FLAG
+#       value: "1"
+env: []
+
+resources: {}
+#  requests:
+#    cpu: 100m
+#    memory: 128Mi
+#  limits:
+#    memory: 512Mi
+
+podAnnotations: {}
+podLabels: {}
+
+# Matches the app's Docker image (a distroless base with a baked-in "nonroot"
+# UID/GID 65532 and $HOME=/home/nonroot) — least-privilege by default.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# Liveness/readiness both hit GET /api/health — a cheap, cluster-independent
+# check (it doesn't call out to Kubernetes, just confirms the process is up
+# and reports which kubeconfig/in-cluster mode it resolved).
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 15
+  readiness:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

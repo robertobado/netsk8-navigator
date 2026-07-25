@@ -6,7 +6,6 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -28,7 +27,12 @@ type Store struct {
 func NewStore() (*Store, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return nil, fmt.Errorf("resolving config dir: %w", err)
+		// No $HOME/$XDG_CONFIG_HOME — e.g. a container running as an arbitrary
+		// non-root UID with no HOME set (a common Kubernetes securityContext).
+		// Fall back to a temp dir rather than refusing to start: preferences
+		// are a convenience, not core functionality, so losing them across a
+		// pod restart is an acceptable trade-off for staying up.
+		dir = os.TempDir()
 	}
 	s := &Store{
 		path: filepath.Join(dir, "netsk8", "config.json"),

@@ -107,6 +107,23 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   netsk8-navigator
 ```
 
+### Docker Compose
+
+Equivalent to the `docker run` above, declaratively — see
+[`docker-compose.yml`](docker-compose.yml) at the repo root:
+
+```bash
+docker compose up
+```
+
+It mounts `~/.kube/config` read-only and keeps the same loopback-only port
+binding by default. Point it at a different kubeconfig file (e.g. the
+resolved target of a symlinked one) without editing the file:
+
+```bash
+KUBECONFIG_HOST_PATH=$(readlink -f ~/.kube/config) docker compose up
+```
+
 ### From source
 
 Prerequisites: Go 1.26+, Node 20+, [pnpm](https://pnpm.io).
@@ -175,6 +192,47 @@ same trust level as running `kubectl` directly.
   the same access your kubeconfig credentials have.
 - Don't run this as a shared service or behind an internet-facing proxy
   without putting authentication/authorization in front of it.
+
+## Kubernetes (Helm)
+
+A chart is included at [`charts/netsk8-navigator`](charts/netsk8-navigator):
+
+```bash
+helm install netsk8-navigator ./charts/netsk8-navigator
+kubectl port-forward svc/netsk8-navigator 8080:8080
+```
+
+**Kubeconfig:** by default the app runs with no kubeconfig at all, so the
+backend falls back to the pod's own in-cluster service account — it browses
+whatever cluster it's deployed into, no configuration needed. To instead
+point it at one or more *other* clusters (same as running the binary
+locally with `$KUBECONFIG` set), create a Secret from an existing
+kubeconfig file and point the chart at it:
+
+```bash
+kubectl create secret generic my-kubeconfig --from-file=config=$HOME/.kube/config
+helm install netsk8-navigator ./charts/netsk8-navigator \
+  --set kubeconfig.enabled=true \
+  --set kubeconfig.secretName=my-kubeconfig
+```
+
+**RBAC:** the chart's default `ClusterRole` grants the same broad,
+kubectl-equivalent access described in *Security model* below —
+cluster-wide read/write on every resource, since that's what lets the app
+browse anything, apply manifests, exec into pods, and read Secret values.
+Set `rbac.create=false` and bind your own, more restricted Role to
+`serviceAccount.name` if you want a scoped-down deployment (e.g. read-only,
+or limited to specific namespaces).
+
+**Security:** this backend still has no built-in authentication once
+deployed to a cluster. `service.type` defaults to `ClusterIP` (not reachable
+outside the cluster on its own) — if you enable the chart's `ingress` or
+switch to a `LoadBalancer`, put your own authentication in front of it
+(an authenticated Ingress, an OAuth2 proxy, a NetworkPolicy restricting
+who can reach it, ...).
+
+See [`values.yaml`](charts/netsk8-navigator/values.yaml) for every option
+(resources, ingress, node selectors, security contexts, ...).
 
 ## Contributing
 

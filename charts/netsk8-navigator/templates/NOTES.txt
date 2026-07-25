@@ -1,0 +1,31 @@
+Netsk8 Navigator is installed as "{{ include "netsk8-navigator.fullname" . }}" in namespace {{ .Release.Namespace }}.
+
+{{- if not .Values.kubeconfig.enabled }}
+
+No kubeconfig was mounted, so it's using this pod's own in-cluster service
+account — it can browse the cluster it's running in, and nothing else.
+{{- else }}
+
+It's using the kubeconfig from Secret "{{ .Values.kubeconfig.secretName }}"
+(key "{{ .Values.kubeconfig.secretKey }}") — it can browse whatever clusters
+that kubeconfig has contexts for.
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Open it at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+No Ingress is enabled. Reach it with:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "netsk8-navigator.fullname" . }} 8080:{{ .Values.service.port }}
+
+then open http://127.0.0.1:8080
+{{- end }}
+
+Remember: this backend has no built-in authentication (see the main repo's
+README "Security model" section). Don't expose it beyond the cluster
+without putting your own auth in front of it.

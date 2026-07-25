@@ -14,10 +14,12 @@ netk8s-navigator/
 │   └── internal/
 │       ├── kube/            cluster access (clients, discovery, conversions)
 │       └── api/             HTTP handlers (REST + SSE + WebSocket)
-└── frontend/                React + Vite + TS SPA
-    └── src/
-        ├── lib/             api client, hooks, utils
-        └── components/      views, drawers, tables, charts
+├── frontend/                React + Vite + TS SPA
+│   └── src/
+│       ├── lib/             api client, hooks, utils
+│       └── components/      views, drawers, tables, charts
+├── charts/netsk8-navigator/ Helm chart (Deployment, Service, RBAC, Ingress)
+└── docker-compose.yml       local-Docker example
 ```
 
 The backend reads the local kubeconfig and exposes a REST API the SPA consumes
@@ -42,6 +44,16 @@ versions and between core resources and CRDs. Resolving the GVR at request time
 objects for any slug, no per-kind `switch`. `internal/api/crd.go` uses the same
 dynamic client for route CRDs (HTTPRoute, IngressRoute, VirtualService, …),
 discovered dynamically via `/routekinds`.
+
+**Kubeconfig loading:** `kube.NewManager()` uses the standard clientcmd
+loading rules (`$KUBECONFIG`, falling back to `~/.kube/config`) — unchanged
+for local/Docker use. If neither is found (no kubeconfig file at all — the
+normal case for a pod with none mounted), it falls back to
+`rest.InClusterConfig()` and wraps the pod's own service-account credentials
+as a single synthetic `"in-cluster"` context, so every other layer (the API
+handlers, the frontend's `ContextSwitcher`, …) needs no special-casing: it's
+just a context like any other, it just happens to always resolve to the
+cluster the pod is running in.
 
 ## Refactor roadmap (phased)
 

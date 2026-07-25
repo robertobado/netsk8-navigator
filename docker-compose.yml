@@ -1,0 +1,24 @@
+services:
+  netsk8-navigator:
+    image: ghcr.io/robertobado/netsk8-navigator:latest
+    # Prefer building from your own checkout instead of the published image?
+    # Comment out `image:` above and uncomment this:
+    # build: .
+    ports:
+      # Loopback-only, matching the Security model section in the README —
+      # this backend has no authentication. Only change to "8080:8080" (or
+      # similar) if you understand the implications of exposing it to your
+      # network.
+      - "127.0.0.1:8080:8080"
+    environment:
+      ADDR: 0.0.0.0:8080
+      KUBECONFIG: /kube/config
+    volumes:
+      # Override with e.g. `KUBECONFIG_HOST_PATH=$HOME/.kube/other-config
+      # docker compose up`. If ~/.kube/config is a symlink pointing OUTSIDE
+      # ~/.kube (common with tools that switch clusters by swapping the
+      # link), this mount can't resolve the target from inside the
+      # container — point KUBECONFIG_HOST_PATH at the real file instead,
+      # e.g. `KUBECONFIG_HOST_PATH=$(readlink -f ~/.kube/config)`.
+      - ${KUBECONFIG_HOST_PATH:-~/.kube/config}:/kube/config:ro
+    restart: unless-stopped

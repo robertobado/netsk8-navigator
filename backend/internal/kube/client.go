@@ -6,7 +6,9 @@ package kube
 
 import (
 	"fmt"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -18,6 +20,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
+
+// inClusterContext is the synthetic context name used when the app falls back
+// to its own pod's service account credentials (see NewManager).
+const inClusterContext = "in-cluster"
 
 // Manager owns the loaded kubeconfig and caches per-context clients so we don't
 // rebuild REST configs (and re-run exec auth plugins) on every request. Besides
@@ -44,19 +50,69 @@ type ContextInfo struct {
 	Current   bool   `json:"current"`
 }
 
-// NewManager loads the kubeconfig using the standard loading rules
-// (respects the KUBECONFIG env var, falling back to ~/.kube/config).
+// NewManager loads the kubeconfig using the standard loading rules (respects
+// the KUBECONFIG env var, falling back to ~/.kube/config). If no kubeconfig
+// was explicitly requested and none is found — the common case for a pod
+// running inside a cluster, where there's no kubeconfig file at all — it
+// falls back to the pod's own in-cluster service account credentials and
+// talks to the cluster it's running in, exposed as a single synthetic
+// "in-cluster" context.
 func NewManager() (*Manager, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	raw, err := rules.Load()
-	if err != nil {
-		return nil, fmt.Errorf("loading kubeconfig: %w", err)
+	explicit := rules.ExplicitPath != ""
+	switch {
+	case err != nil && explicit:
+		return nil, fmt.Errorf("loading kubeconfig from %s: %w", rules.ExplicitPath, err)
+	case err == nil && len(raw.Contexts) > 0:
+		return &Manager{
+			rawConfig:   *raw,
+			configPath:  rules.GetDefaultFilename(),
+			clients:     make(map[string]*kubernetes.Clientset),
+			restConfigs: make(map[string]*rest.Config),
+			dynamics:    make(map[string]dynamic.Interface),
+			mappers:     make(map[string]meta.RESTMapper),
+		}, nil
 	}
+
+	inClusterCfg, icErr := rest.InClusterConfig()
+	if icErr != nil {
+		return nil, fmt.Errorf("no kubeconfig found (set KUBECONFIG to use one) and not running inside a cluster: %w", icErr)
+	}
+	return newInClusterManager(inClusterCfg)
+}
+
+// newInClusterManager wraps the pod's own service-account rest.Config as a
+// single-context Manager, so the rest of the app (which is built around
+// kubeconfig-style named contexts) needs no special-casing.
+func newInClusterManager(cfg *rest.Config) (*Manager, error) {
+	cfg.QPS = 50
+	cfg.Burst = 100
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("building in-cluster clientset: %w", err)
+	}
+
+	ns := "default"
+	if b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
+		if s := strings.TrimSpace(string(b)); s != "" {
+			ns = s
+		}
+	}
+
 	return &Manager{
-		rawConfig:   *raw,
-		configPath:  rules.GetDefaultFilename(),
-		clients:     make(map[string]*kubernetes.Clientset),
-		restConfigs: make(map[string]*rest.Config),
+		rawConfig: clientcmdapi.Config{
+			CurrentContext: inClusterContext,
+			Contexts: map[string]*clientcmdapi.Context{
+				inClusterContext: {Cluster: inClusterContext, AuthInfo: inClusterContext, Namespace: ns},
+			},
+			Clusters: map[string]*clientcmdapi.Cluster{
+				inClusterContext: {Server: cfg.Host},
+			},
+		},
+		configPath:  "in-cluster (service account)",
+		clients:     map[string]*kubernetes.Clientset{inClusterContext: clientset},
+		restConfigs: map[string]*rest.Config{inClusterContext: cfg},
 		dynamics:    make(map[string]dynamic.Interface),
 		mappers:     make(map[string]meta.RESTMapper),
 	}, nil

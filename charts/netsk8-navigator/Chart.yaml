@@ -1,0 +1,18 @@
+apiVersion: v2
+name: netsk8-navigator
+description: A Kubernetes cluster navigator in the browser — think Lens or k9s, but web.
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+icon: https://raw.githubusercontent.com/robertobado/netsk8-navigator/main/frontend/public/web-app-manifest-512x512.png
+home: https://github.com/robertobado/netsk8-navigator
+sources:
+  - https://github.com/robertobado/netsk8-navigator
+keywords:
+  - kubernetes
+  - dashboard
+  - cluster-management
+  - devtools
+maintainers:
+  - name: robertobado
+    url: https://github.com/robertobado

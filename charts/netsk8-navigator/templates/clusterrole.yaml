@@ -1,0 +1,17 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "netsk8-navigator.fullname" . }}
+  labels:
+    {{- include "netsk8-navigator.labels" . | nindent 4 }}
+rules:
+  # Full access to every resource, cluster-wide — see the comment on
+  # `rbac.create` in values.yaml for why this mirrors the app's own
+  # documented (local, kubectl-equivalent) trust model.
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  - nonResourceURLs: ["*"]
+    verbs: ["*"]
+{{- end }}
