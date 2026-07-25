@@ -734,9 +734,9 @@ func hpaDetail(o *autoscalingv2.HorizontalPodAutoscaler) *resourceDetail {
 	ref := o.Spec.ScaleTargetRef
 	slug := strings.ToLower(ref.Kind)
 	if _, ok := manifestSlugToResource[slug]; ok {
-		d.Refs = append(d.Refs, detailRef{Group: "Alvo", Kind: slug, Namespace: o.Namespace, Name: ref.Name})
+		d.Refs = append(d.Refs, detailRef{Group: "Target", Kind: slug, Namespace: o.Namespace, Name: ref.Name})
 	} else {
-		d.Sections = append(d.Sections, section{Title: "Alvo", Items: []kv{{Label: ref.Kind, Value: ref.Name}}})
+		d.Sections = append(d.Sections, section{Title: "Target", Items: []kv{{Label: ref.Kind, Value: ref.Name}}})
 	}
 	for _, c := range o.Status.Conditions {
 		tone := "muted"
@@ -1019,7 +1019,7 @@ func formatRules(rules []rbacv1.PolicyRule) []kv {
 
 func roleDetail(o *rbacv1.Role) *resourceDetail {
 	d := base("Role", o.ObjectMeta)
-	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
+	d.Status = []chip{countChip("Rules", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
 	if len(o.Rules) > 0 {
 		d.Sections = append(d.Sections, section{Title: "Rules (verbs → resources)", Items: formatRules(o.Rules)})
 	}
@@ -1028,7 +1028,7 @@ func roleDetail(o *rbacv1.Role) *resourceDetail {
 
 func clusterRoleDetail(o *rbacv1.ClusterRole) *resourceDetail {
 	d := base("ClusterRole", o.ObjectMeta)
-	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
+	d.Status = []chip{countChip("Rules", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
 	if len(o.Rules) > 0 {
 		d.Sections = append(d.Sections, section{Title: "Rules (verbs → resources)", Items: formatRules(o.Rules)})
 	}
