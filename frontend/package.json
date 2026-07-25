@@ -31,14 +31,14 @@
     "recharts": "^3.10.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
-    "three": "0.134.0",
+    "three": "0.185.1",
     "vanta": "^0.5.24"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "0.134.0",
+    "@types/three": "0.185.1",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
     "prettier": "^3.9.6",
