@@ -599,6 +599,7 @@ export interface ResourceDetail {
   blocks: DetailBlock[] | null
   hosts: string[] | null
   ports: PortView[] | null
+  replicas?: number
 }
 
 /** Kinds that have a structured detail view (others fall back to YAML only). */
@@ -657,22 +658,50 @@ export async function crdManifest(ctx: string, rk: { group: string; version: str
   return r.yaml
 }
 
+/** Throws with the backend's {"error": "..."} message (falling back to the status line) when a response isn't ok. */
+async function throwIfError(res: Response): Promise<void> {
+  if (res.ok) return
+  let msg = `${res.status} ${res.statusText}`
+  try {
+    const b = await res.json()
+    if (b?.error) msg = b.error
+  } catch {
+    /* ignore non-JSON error bodies */
+  }
+  throw new Error(msg)
+}
+
 export async function applyManifest(ctx: string, kind: ManifestKind, namespace: string, name: string, yaml: string) {
   const res = await fetch(`/api/contexts/${enc(ctx)}/manifest/${kind}/${enc(namespace || '-')}/${enc(name)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ yaml }),
   })
-  if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`
-    try {
-      const b = await res.json()
-      if (b?.error) msg = b.error
-    } catch {
-      /* ignore */
-    }
-    throw new Error(msg)
-  }
+  await throwIfError(res)
+}
+
+/** Kinds whose replica count can be changed without editing YAML. */
+export const SCALABLE_KINDS = new Set<ManifestKind>(['deployment', 'statefulset', 'replicaset'])
+/** Kinds that support a `kubectl rollout restart`-style pod template bump. */
+export const RESTARTABLE_KINDS = new Set<ManifestKind>(['deployment', 'statefulset', 'daemonset'])
+
+export async function deleteResource(ctx: string, kind: ManifestKind, namespace: string, name: string) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/manifest/${kind}/${enc(namespace || '-')}/${enc(name)}`, { method: 'DELETE' })
+  await throwIfError(res)
+}
+
+export async function scaleResource(ctx: string, kind: ManifestKind, namespace: string, name: string, replicas: number) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/scale/${kind}/${enc(namespace || '-')}/${enc(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ replicas }),
+  })
+  await throwIfError(res)
+}
+
+export async function restartRollout(ctx: string, kind: ManifestKind, namespace: string, name: string) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/rollout-restart/${kind}/${enc(namespace || '-')}/${enc(name)}`, { method: 'POST' })
+  await throwIfError(res)
 }
 
 /** SSE URL for streaming a pod container's logs. */

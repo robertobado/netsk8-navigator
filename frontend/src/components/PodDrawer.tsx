@@ -8,6 +8,7 @@ import { TerminalPanel } from './TerminalPanel'
 import { ManifestPanelLazy as ManifestPanel } from './ManifestPanelLazy'
 import { DetailView } from './DetailView'
 import { EventsPanel } from './EventsPanel'
+import { ResourceActions } from './ResourceActions'
 import type { DrawerTarget } from './ResourceDrawer'
 
 type Tab = 'detail' | 'events' | 'logs' | 'terminal' | 'yaml'
@@ -72,8 +73,10 @@ export function PodDrawer({
               </button>
             </header>
 
+            <ResourceActions ctx={ctx} kind="pod" namespace={pod.namespace} name={pod.name} editable={true} onDeleted={onClose} />
+
             <div className="flex items-center gap-3 border-b px-5 py-2.5">
-              <div className="flex gap-1">
+              <div className="flex min-w-0 gap-1 overflow-x-auto">
                 <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label="Detalhes" />
                 <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label="Eventos" />
                 <TabButton active={tab === 'logs'} onClick={() => setTab('logs')} icon={ScrollText} label="Logs" />
@@ -81,7 +84,7 @@ export function PodDrawer({
                 <TabButton active={tab === 'yaml'} onClick={() => setTab('yaml')} icon={FileCode2} label="YAML" />
               </div>
               {(tab === 'logs' || tab === 'terminal') && pod.containers.length > 0 && (
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex shrink-0 items-center gap-2">
                   <Box className="size-3.5 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Container</span>
                   <div className="relative">
@@ -129,7 +132,7 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
     <button
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
         active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
       )}
     >

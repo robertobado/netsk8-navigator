@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -24,10 +25,18 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Listen on all interfaces (not just localhost) so devices on the same
+    // LAN (e.g. a phone, for mobile responsiveness testing) can reach it.
+    host: true,
     // Proxy API calls to the Go backend so the browser talks to a single origin.
     // ws:true is required for the exec terminal WebSocket.
     proxy: {
       '/api': { target: 'http://localhost:8080', ws: true, changeOrigin: true },
     },
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/vitest.setup.ts'],
+    coverage: { provider: 'v8', reporter: ['text', 'html'] },
   },
 })

@@ -83,6 +83,7 @@ type resourceDetail struct {
 	Blocks     []detailBlock     `json:"blocks"`
 	Hosts      []string          `json:"hosts"` // route hostnames (linkable when not a wildcard)
 	Ports      []portView        `json:"ports"`
+	Replicas   *int32            `json:"replicas,omitempty"` // desired count, for kinds the UI can scale
 }
 
 // detailFrom adapts a typed detail builder into one that accepts a dynamic
@@ -270,6 +271,7 @@ func deploymentDetail(o *appsv1.Deployment) *resourceDetail {
 		desired = *o.Spec.Replicas
 	}
 	d := base("Deployment", o.ObjectMeta)
+	d.Replicas = &desired
 	d.Status = []chip{
 		replicaChip("Ready", o.Status.ReadyReplicas, desired),
 		countChip("Up-to-date", o.Status.UpdatedReplicas, "muted"),
@@ -312,6 +314,7 @@ func replicaSetDetail(o *appsv1.ReplicaSet) *resourceDetail {
 		desired = *o.Spec.Replicas
 	}
 	d := base("ReplicaSet", o.ObjectMeta)
+	d.Replicas = &desired
 	d.Status = []chip{
 		replicaChip("Ready", o.Status.ReadyReplicas, desired),
 		countChip("Current", o.Status.Replicas, "muted"),
@@ -328,6 +331,7 @@ func statefulSetDetail(o *appsv1.StatefulSet) *resourceDetail {
 		desired = *o.Spec.Replicas
 	}
 	d := base("StatefulSet", o.ObjectMeta)
+	d.Replicas = &desired
 	d.Status = []chip{
 		replicaChip("Ready", o.Status.ReadyReplicas, desired),
 		countChip("Current", o.Status.CurrentReplicas, "muted"),

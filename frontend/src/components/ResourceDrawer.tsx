@@ -6,6 +6,7 @@ import { ManifestPanelLazy as ManifestPanel } from './ManifestPanelLazy'
 import { DetailView } from './DetailView'
 import { EventsPanel } from './EventsPanel'
 import { PodDrawer } from './PodDrawer'
+import { ResourceActions } from './ResourceActions'
 import { useT } from '@/lib/i18n'
 
 export interface DrawerTarget {
@@ -120,7 +121,16 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
               </button>
             </header>
 
-            <div className="flex gap-1 border-b px-5 py-2.5">
+            <ResourceActions
+              ctx={ctx}
+              kind={cur.kind}
+              namespace={cur.namespace}
+              name={cur.name}
+              editable={cur.editable ?? true}
+              onDeleted={() => (stack.length > 0 ? setStack((s) => s.slice(0, -1)) : onClose())}
+            />
+
+            <div className="flex gap-1 overflow-x-auto border-b px-5 py-2.5">
               {hasDetail && <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label={t('Details')} />}
               <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label={t('nav.events')} />
               <TabButton active={tab === 'yaml'} onClick={() => setTab('yaml')} icon={FileCode2} label="YAML" />
@@ -167,7 +177,7 @@ function TabButton({ active, onClick, icon: Icon, label }: Readonly<{ active: bo
     <button
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
         active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
       )}
     >

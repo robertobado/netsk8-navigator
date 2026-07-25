@@ -13,6 +13,7 @@ const pt: Dict = {
   // --- app chrome (pre-existing semantic keys) ---
   'app.subtitle': 'Gerenciamento de Cluster',
   'app.allNamespaces': 'todos os namespaces',
+  'app.openMenu': 'Abrir menu',
   'ns.all': 'Todos os namespaces',
   'ns.search': 'Buscar namespace...',
   'ns.label': 'Namespace',
@@ -182,6 +183,17 @@ const pt: Dict = {
   'Applied to cluster': 'Aplicado ao cluster',
   'Apply to the live cluster?': 'Aplicar no cluster ao vivo?',
 
+  // --- ResourceActions ---
+  Delete: 'Excluir',
+  'Delete this resource permanently?': 'Excluir este recurso permanentemente?',
+  'Type the name to confirm:': 'Digite o nome para confirmar:',
+  Scale: 'Escalar',
+  'Apply this scale to the live cluster?': 'Aplicar essa escala no cluster ao vivo?',
+  Scaled: 'Escalado',
+  'Restart rollout': 'Reiniciar rollout',
+  'Restart this rollout now?': 'Reiniciar este rollout agora?',
+  'Restart triggered': 'Reinício disparado',
+
   // --- TopologyView ---
   'Select a namespace at the top to view the topology.': 'Selecione um namespace no topo para visualizar a topologia.',
 
@@ -292,6 +304,7 @@ const pt: Dict = {
 const en: Dict = {
   'app.subtitle': 'Cluster Management',
   'app.allNamespaces': 'all namespaces',
+  'app.openMenu': 'Open menu',
   'ns.all': 'All namespaces',
   'ns.search': 'Search namespace...',
   'ns.label': 'Namespace',
