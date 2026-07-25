@@ -474,11 +474,11 @@ func ToHPAView(h *autoscalingv2.HorizontalPodAutoscaler) HPAView {
 	}
 }
 
-// FormatSelector renders a label selector as "k=v, k=v" (or "todos" when empty,
+// FormatSelector renders a label selector as "k=v, k=v" (or "all" when empty,
 // which for a selector means "matches everything").
 func FormatSelector(sel metav1.LabelSelector) string {
 	if len(sel.MatchLabels) == 0 && len(sel.MatchExpressions) == 0 {
-		return "todos"
+		return "all"
 	}
 	parts := make([]string, 0, len(sel.MatchLabels))
 	for k, v := range sel.MatchLabels {

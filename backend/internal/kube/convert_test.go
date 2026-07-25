@@ -268,7 +268,7 @@ func TestShortAccessModes(t *testing.T) {
 
 func TestFormatSelector(t *testing.T) {
 	t.Run("empty means everything", func(t *testing.T) {
-		if got := FormatSelector(metav1.LabelSelector{}); got != "todos" {
+		if got := FormatSelector(metav1.LabelSelector{}); got != "all" {
 			t.Errorf("got %q", got)
 		}
 	})

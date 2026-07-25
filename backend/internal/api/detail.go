@@ -166,7 +166,7 @@ var detailEnrichers = map[string]func(ctx context.Context, s *Server, contextNam
 	"pvc": enrichPVCConsumers,
 }
 
-// enrichPVCConsumers adds, for a Bound PVC, a "Montado" chip and a link to each
+// enrichPVCConsumers adds, for a Bound PVC, a "Mounted" chip and a link to each
 // pod that mounts it. A Bound PVC with no mounting pod is normal (e.g. a
 // StatefulSet scaled down keeps its retained claims), so we say so explicitly
 // rather than silently omitting the section.
@@ -194,17 +194,17 @@ func enrichPVCConsumers(ctx context.Context, s *Server, contextName, ns, name st
 		p := &pods.Items[i]
 		for _, v := range p.Spec.Volumes {
 			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == name {
-				d.Refs = append(d.Refs, detailRef{Group: "Montado por", Kind: "pod", Namespace: ns, Name: p.Name})
+				d.Refs = append(d.Refs, detailRef{Group: "Mounted by", Kind: "pod", Namespace: ns, Name: p.Name})
 				mounted++
 				break
 			}
 		}
 	}
-	tone, val := "muted", "Não"
+	tone, val := "muted", "No"
 	if mounted > 0 {
-		tone, val = "ok", "Sim"
+		tone, val = "ok", "Yes"
 	}
-	d.Status = append(d.Status, chip{Label: "Montado", Value: val, Tone: tone})
+	d.Status = append(d.Status, chip{Label: "Mounted", Value: val, Tone: tone})
 }
 
 // --- builders ------------------------------------------------------------
@@ -271,7 +271,7 @@ func deploymentDetail(o *appsv1.Deployment) *resourceDetail {
 	}
 	d.Selector = selectorOf(o.Spec.Selector)
 	d.Images = imagesOf(o.Spec.Template.Spec)
-	strat := section{Title: "Estratégia", Items: []kv{{Label: "Tipo", Value: string(o.Spec.Strategy.Type)}}}
+	strat := section{Title: "Strategy", Items: []kv{{Label: "Type", Value: string(o.Spec.Strategy.Type)}}}
 	if ru := o.Spec.Strategy.RollingUpdate; ru != nil {
 		if ru.MaxSurge != nil {
 			strat.Items = append(strat.Items, kv{Label: "Max surge", Value: ru.MaxSurge.String()})
@@ -329,7 +329,7 @@ func statefulSetDetail(o *appsv1.StatefulSet) *resourceDetail {
 	}
 	d.Selector = selectorOf(o.Spec.Selector)
 	d.Images = imagesOf(o.Spec.Template.Spec)
-	d.Sections = []section{{Title: "Configuração", Items: []kv{
+	d.Sections = []section{{Title: "Configuration", Items: []kv{
 		{Label: "Service", Value: o.Spec.ServiceName},
 		{Label: "Update strategy", Value: string(o.Spec.UpdateStrategy.Type)},
 		{Label: "Pod management", Value: string(o.Spec.PodManagementPolicy)},
@@ -347,7 +347,7 @@ func daemonSetDetail(o *appsv1.DaemonSet) *resourceDetail {
 	}
 	d.Selector = selectorOf(o.Spec.Selector)
 	d.Images = imagesOf(o.Spec.Template.Spec)
-	d.Sections = []section{{Title: "Configuração", Items: []kv{
+	d.Sections = []section{{Title: "Configuration", Items: []kv{
 		{Label: "Update strategy", Value: string(o.Spec.UpdateStrategy.Type)},
 	}}}
 	return d
@@ -361,7 +361,7 @@ func jobDetail(o *batchv1.Job) *resourceDetail {
 	}
 	d.Status = []chip{
 		replicaChip("Completions", o.Status.Succeeded, completions),
-		countChip("Active", o.Status.Active, "warn"),
+		countChip("Active pods", o.Status.Active, "warn"),
 		countChip("Failed", o.Status.Failed, boolTone(o.Status.Failed == 0)),
 	}
 	d.Selector = selectorOf(o.Spec.Selector)
@@ -373,22 +373,22 @@ func cronJobDetail(o *batchv1.CronJob) *resourceDetail {
 	d := base("CronJob", o.ObjectMeta)
 	suspended := o.Spec.Suspend != nil && *o.Spec.Suspend
 	suspendTone := "ok"
-	suspendVal := "Ativo"
+	suspendVal := "Active"
 	if suspended {
-		suspendTone, suspendVal = "warn", "Suspenso"
+		suspendTone, suspendVal = "warn", "Suspended"
 	}
 	d.Status = []chip{
-		{Label: "Estado", Value: suspendVal, Tone: suspendTone},
-		countChip("Jobs ativos", int32(len(o.Status.Active)), "muted"), //nolint:gosec // active job count, always tiny
+		{Label: "State", Value: suspendVal, Tone: suspendTone},
+		countChip("Active jobs", int32(len(o.Status.Active)), "muted"), //nolint:gosec // active job count, always tiny
 	}
 	last := "—"
 	if o.Status.LastScheduleTime != nil {
 		last = age(*o.Status.LastScheduleTime)
 	}
-	d.Sections = []section{{Title: "Agendamento", Items: []kv{
+	d.Sections = []section{{Title: "Scheduling", Items: []kv{
 		{Label: "Schedule", Value: o.Spec.Schedule},
 		{Label: "Concurrency", Value: string(o.Spec.ConcurrencyPolicy)},
-		{Label: "Última execução", Value: last},
+		{Label: "Last run", Value: last},
 	}}}
 	d.Images = imagesOf(o.Spec.JobTemplate.Spec.Template.Spec)
 	return d
@@ -407,7 +407,7 @@ func serviceDetail(o *corev1.Service) *resourceDetail {
 		external = o.Spec.ExternalIPs[0]
 	}
 	d.Status = []chip{
-		{Label: "Tipo", Value: string(o.Spec.Type), Tone: "muted"},
+		{Label: "Type", Value: string(o.Spec.Type), Tone: "muted"},
 		{Label: "Cluster IP", Value: o.Spec.ClusterIP, Tone: "muted"},
 	}
 	d.Selector = o.Spec.Selector // matches the backing pods
@@ -419,7 +419,7 @@ func serviceDetail(o *corev1.Service) *resourceDetail {
 		}
 		d.Ports = append(d.Ports, pv)
 	}
-	cfg := section{Title: "Configuração", Items: []kv{{Label: "Session affinity", Value: string(o.Spec.SessionAffinity)}}}
+	cfg := section{Title: "Configuration", Items: []kv{{Label: "Session affinity", Value: string(o.Spec.SessionAffinity)}}}
 	if external != "" {
 		cfg.Items = append(cfg.Items, kv{Label: "External", Value: external})
 	}
@@ -448,7 +448,7 @@ func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 		}
 	}
 	d.Status = []chip{
-		{Label: "Classe", Value: orDash(class), Tone: "muted"},
+		{Label: "Class", Value: orDash(class), Tone: "muted"},
 		{Label: "Address", Value: orDash(addr), Tone: "muted"},
 	}
 
@@ -502,7 +502,7 @@ func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 
 func configMapDetail(o *corev1.ConfigMap) *resourceDetail {
 	d := base("ConfigMap", o.ObjectMeta)
-	d.Status = []chip{countChip("Chaves", int32(len(o.Data)+len(o.BinaryData)), "muted")} //nolint:gosec // key count, always tiny
+	d.Status = []chip{countChip("Keys", int32(len(o.Data)+len(o.BinaryData)), "muted")} //nolint:gosec // key count, always tiny
 
 	keys := make([]string, 0, len(o.Data))
 	for k := range o.Data {
@@ -512,7 +512,7 @@ func configMapDetail(o *corev1.ConfigMap) *resourceDetail {
 	for _, k := range keys {
 		body := o.Data[k]
 		if len(body) > 8000 {
-			body = body[:8000] + "\n… (truncado)"
+			body = body[:8000] + "\n… (truncated)"
 		}
 		d.Blocks = append(d.Blocks, detailBlock{Title: k, Body: body})
 	}
@@ -524,9 +524,9 @@ func configMapDetail(o *corev1.ConfigMap) *resourceDetail {
 		sort.Strings(bkeys)
 		items := []kv{}
 		for _, k := range bkeys {
-			items = append(items, kv{Label: k, Value: fmt.Sprintf("%d bytes (binário)", len(o.BinaryData[k]))})
+			items = append(items, kv{Label: k, Value: fmt.Sprintf("%d bytes (binary)", len(o.BinaryData[k]))})
 		}
-		d.Sections = append(d.Sections, section{Title: "Dados binários", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Binary data", Items: items})
 	}
 	return d
 }
@@ -538,13 +538,13 @@ func namespaceDetail(o *corev1.Namespace) *resourceDetail {
 	if phase == string(corev1.NamespaceTerminating) {
 		tone = "warn"
 	}
-	d.Status = []chip{{Label: "Fase", Value: orDash(phase), Tone: tone}}
+	d.Status = []chip{{Label: "Phase", Value: orDash(phase), Tone: tone}}
 	if len(o.Spec.Finalizers) > 0 {
 		fins := make([]string, 0, len(o.Spec.Finalizers))
 		for _, f := range o.Spec.Finalizers {
 			fins = append(fins, string(f))
 		}
-		d.Sections = append(d.Sections, section{Title: "Finalizers", Items: []kv{{Label: "Ativos", Value: strings.Join(fins, ", ")}}})
+		d.Sections = append(d.Sections, section{Title: "Finalizers", Items: []kv{{Label: "Active finalizers", Value: strings.Join(fins, ", ")}}})
 	}
 	return d
 }
@@ -552,8 +552,8 @@ func namespaceDetail(o *corev1.Namespace) *resourceDetail {
 func secretDetail(o *corev1.Secret) *resourceDetail {
 	d := base("Secret", o.ObjectMeta)
 	d.Status = []chip{
-		{Label: "Tipo", Value: orDash(string(o.Type)), Tone: "muted"},
-		countChip("Chaves", int32(len(o.Data)), "muted"), //nolint:gosec // key count, always tiny
+		{Label: "Type", Value: orDash(string(o.Type)), Tone: "muted"},
+		countChip("Keys", int32(len(o.Data)), "muted"), //nolint:gosec // key count, always tiny
 	}
 	keys := make([]string, 0, len(o.Data))
 	for k := range o.Data {
@@ -568,10 +568,10 @@ func secretDetail(o *corev1.Secret) *resourceDetail {
 		if isPrintable(raw) {
 			body = string(raw)
 			if len(body) > 8000 {
-				body = body[:8000] + "\n… (truncado)"
+				body = body[:8000] + "\n… (truncated)"
 			}
 		} else {
-			body = fmt.Sprintf("<binário — %d bytes>", len(raw))
+			body = fmt.Sprintf("<binary — %d bytes>", len(raw))
 		}
 		d.Blocks = append(d.Blocks, detailBlock{Title: fmt.Sprintf("%s (%d bytes)", k, len(raw)), Body: body, Masked: true})
 	}
@@ -611,14 +611,14 @@ func pvcDetail(o *corev1.PersistentVolumeClaim) *resourceDetail {
 	v := kube.ToPVCView(o)
 	d.Status = []chip{
 		{Label: "Status", Value: orDash(v.Status), Tone: volumePhaseTone(v.Status)},
-		{Label: "Capacidade", Value: orDash(v.Capacity), Tone: "muted"},
-		{Label: "Modos", Value: orDash(v.AccessModes), Tone: "muted"},
+		{Label: "Capacity", Value: orDash(v.Capacity), Tone: "muted"},
+		{Label: "Modes", Value: orDash(v.AccessModes), Tone: "muted"},
 	}
 	mode := ""
 	if o.Spec.VolumeMode != nil {
 		mode = string(*o.Spec.VolumeMode)
 	}
-	d.Sections = []section{{Title: "Configuração", Items: []kv{
+	d.Sections = []section{{Title: "Configuration", Items: []kv{
 		{Label: "StorageClass", Value: orDash(v.StorageClass)},
 		{Label: "Volume mode", Value: orDash(mode)},
 		{Label: "Volume", Value: orDash(v.Volume)},
@@ -634,13 +634,13 @@ func pvDetail(o *corev1.PersistentVolume) *resourceDetail {
 	v := kube.ToPVView(o)
 	d.Status = []chip{
 		{Label: "Status", Value: orDash(v.Status), Tone: volumePhaseTone(v.Status)},
-		{Label: "Capacidade", Value: orDash(v.Capacity), Tone: "muted"},
-		{Label: "Modos", Value: orDash(v.AccessModes), Tone: "muted"},
+		{Label: "Capacity", Value: orDash(v.Capacity), Tone: "muted"},
+		{Label: "Modes", Value: orDash(v.AccessModes), Tone: "muted"},
 	}
-	d.Sections = []section{{Title: "Configuração", Items: []kv{
+	d.Sections = []section{{Title: "Configuration", Items: []kv{
 		{Label: "StorageClass", Value: orDash(v.StorageClass)},
 		{Label: "Reclaim policy", Value: orDash(v.Reclaim)},
-		{Label: "Fonte", Value: pvSource(o.Spec.PersistentVolumeSource)},
+		{Label: "Source", Value: pvSource(o.Spec.PersistentVolumeSource)},
 	}}}
 	if o.Spec.ClaimRef != nil {
 		d.Refs = append(d.Refs, detailRef{Group: "Claim", Kind: "pvc", Namespace: o.Spec.ClaimRef.Namespace, Name: o.Spec.ClaimRef.Name})
@@ -668,22 +668,22 @@ func pvSource(s corev1.PersistentVolumeSource) string {
 func storageClassDetail(o *storagev1.StorageClass) *resourceDetail {
 	d := base("StorageClass", o.ObjectMeta)
 	v := kube.ToStorageClassView(o)
-	defTone, defVal := "muted", "Não"
+	defTone, defVal := "muted", "No"
 	if v.Default {
-		defTone, defVal = "ok", "Sim"
+		defTone, defVal = "ok", "Yes"
 	}
 	d.Status = []chip{
 		{Label: "Provisioner", Value: orDash(v.Provisioner), Tone: "muted"},
-		{Label: "Padrão", Value: defVal, Tone: defTone},
+		{Label: "Default", Value: defVal, Tone: defTone},
 	}
-	expansion := "Não"
+	expansion := "No"
 	if o.AllowVolumeExpansion != nil && *o.AllowVolumeExpansion {
-		expansion = "Sim"
+		expansion = "Yes"
 	}
-	d.Sections = []section{{Title: "Configuração", Items: []kv{
+	d.Sections = []section{{Title: "Configuration", Items: []kv{
 		{Label: "Reclaim policy", Value: orDash(v.Reclaim)},
 		{Label: "Binding mode", Value: orDash(v.Binding)},
-		{Label: "Expansão de volume", Value: expansion},
+		{Label: "Volume expansion", Value: expansion},
 	}}}
 	if len(o.Parameters) > 0 {
 		keys := make([]string, 0, len(o.Parameters))
@@ -695,7 +695,7 @@ func storageClassDetail(o *storagev1.StorageClass) *resourceDetail {
 		for _, k := range keys {
 			items = append(items, kv{Label: k, Value: o.Parameters[k]})
 		}
-		d.Sections = append(d.Sections, section{Title: "Parâmetros", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Parameters", Items: items})
 	}
 	return d
 }
@@ -707,9 +707,9 @@ func hpaDetail(o *autoscalingv2.HorizontalPodAutoscaler) *resourceDetail {
 		min = *o.Spec.MinReplicas
 	}
 	d.Status = []chip{
-		replicaChip("Réplicas", o.Status.CurrentReplicas, o.Status.DesiredReplicas),
-		countChip("Mín", min, "muted"),
-		countChip("Máx", o.Spec.MaxReplicas, "muted"),
+		replicaChip("Replicas", o.Status.CurrentReplicas, o.Status.DesiredReplicas),
+		countChip("Min", min, "muted"),
+		countChip("Max", o.Spec.MaxReplicas, "muted"),
 	}
 	// Metrics: pair each configured target with its current reading. Status
 	// metrics aren't guaranteed to match spec order or count, so match by the
@@ -729,7 +729,7 @@ func hpaDetail(o *autoscalingv2.HorizontalPodAutoscaler) *resourceDetail {
 		items = append(items, kv{Label: label, Value: fmt.Sprintf("%s / %s", cur, target)})
 	}
 	if len(items) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Métricas (atual / alvo)", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Metrics (current / target)", Items: items})
 	}
 	ref := o.Spec.ScaleTargetRef
 	slug := strings.ToLower(ref.Kind)
@@ -819,8 +819,8 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 	d := base("EndpointSlice", o.ObjectMeta)
 	v := kube.ToEndpointSliceView(o)
 	d.Status = []chip{
-		{Label: "Tipo", Value: orDash(v.AddressType), Tone: "muted"},
-		replicaChip("Prontos", int32(v.Ready), int32(v.Total)), //nolint:gosec // endpoint counts, always tiny
+		{Label: "Type", Value: orDash(v.AddressType), Tone: "muted"},
+		replicaChip("Ready", int32(v.Ready), int32(v.Total)), //nolint:gosec // endpoint counts, always tiny
 	}
 	if svc := o.Labels["kubernetes.io/service-name"]; svc != "" {
 		d.Refs = append(d.Refs, detailRef{Group: "Service", Kind: "service", Namespace: o.Namespace, Name: svc})
@@ -851,7 +851,7 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 		addr := strings.Join(e.Addresses, ", ")
 		note := addr
 		if e.Conditions.Ready != nil && !*e.Conditions.Ready {
-			note += " · não pronto"
+			note += " · not ready"
 		}
 		if e.TargetRef != nil && e.TargetRef.Kind == "Pod" {
 			ns := e.TargetRef.Namespace
@@ -860,9 +860,9 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 			}
 			d.Refs = append(d.Refs, detailRef{Group: group, Kind: "pod", Namespace: ns, Name: e.TargetRef.Name, Note: note})
 		} else {
-			state := "pronto"
+			state := "ready"
 			if e.Conditions.Ready != nil && !*e.Conditions.Ready {
-				state = "não pronto"
+				state = "not ready"
 			}
 			orphans = append(orphans, kv{Label: addr, Value: state})
 		}
@@ -876,7 +876,7 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 // npPeers / npPorts summarize a NetworkPolicy rule's peers and ports for display.
 func npPeers(peers []networkingv1.NetworkPolicyPeer) string {
 	if len(peers) == 0 {
-		return "qualquer origem/destino"
+		return "any source/destination"
 	}
 	parts := make([]string, 0, len(peers))
 	for _, p := range peers {
@@ -896,7 +896,7 @@ func npPeers(peers []networkingv1.NetworkPolicyPeer) string {
 
 func npPorts(ports []networkingv1.NetworkPolicyPort) string {
 	if len(ports) == 0 {
-		return "todas as portas"
+		return "all ports"
 	}
 	parts := make([]string, 0, len(ports))
 	for _, p := range ports {
@@ -917,29 +917,29 @@ func networkPolicyDetail(o *networkingv1.NetworkPolicy) *resourceDetail {
 	has := func(t networkingv1.PolicyType) string {
 		for _, pt := range o.Spec.PolicyTypes {
 			if pt == t {
-				return "sim"
+				return "yes"
 			}
 		}
-		return "não"
+		return "no"
 	}
 	d.Status = []chip{
-		{Label: "Ingress", Value: has(networkingv1.PolicyTypeIngress), Tone: boolTone(has(networkingv1.PolicyTypeIngress) == "não")},
-		{Label: "Egress", Value: has(networkingv1.PolicyTypeEgress), Tone: boolTone(has(networkingv1.PolicyTypeEgress) == "não")},
+		{Label: "Ingress", Value: has(networkingv1.PolicyTypeIngress), Tone: boolTone(has(networkingv1.PolicyTypeIngress) == "no")},
+		{Label: "Egress", Value: has(networkingv1.PolicyTypeEgress), Tone: boolTone(has(networkingv1.PolicyTypeEgress) == "no")},
 	}
 	d.Selector = o.Spec.PodSelector.MatchLabels // pods this policy applies to
 	if len(o.Spec.Ingress) > 0 {
 		items := make([]kv, 0, len(o.Spec.Ingress))
 		for i, r := range o.Spec.Ingress {
-			items = append(items, kv{Label: fmt.Sprintf("Regra %d", i+1), Value: "de " + npPeers(r.From) + " → " + npPorts(r.Ports)})
+			items = append(items, kv{Label: fmt.Sprintf("Rule %d", i+1), Value: "from " + npPeers(r.From) + " → " + npPorts(r.Ports)})
 		}
-		d.Sections = append(d.Sections, section{Title: "Ingress (entrada)", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Ingress (inbound)", Items: items})
 	}
 	if len(o.Spec.Egress) > 0 {
 		items := make([]kv, 0, len(o.Spec.Egress))
 		for i, r := range o.Spec.Egress {
-			items = append(items, kv{Label: fmt.Sprintf("Regra %d", i+1), Value: "para " + npPeers(r.To) + " → " + npPorts(r.Ports)})
+			items = append(items, kv{Label: fmt.Sprintf("Rule %d", i+1), Value: "to " + npPeers(r.To) + " → " + npPorts(r.Ports)})
 		}
-		d.Sections = append(d.Sections, section{Title: "Egress (saída)", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Egress (outbound)", Items: items})
 	}
 	return d
 }
@@ -947,13 +947,13 @@ func networkPolicyDetail(o *networkingv1.NetworkPolicy) *resourceDetail {
 func ingressClassDetail(o *networkingv1.IngressClass) *resourceDetail {
 	d := base("IngressClass", o.ObjectMeta)
 	def := o.Annotations["ingressclass.kubernetes.io/is-default-class"] == "true"
-	defTone, defVal := "muted", "Não"
+	defTone, defVal := "muted", "No"
 	if def {
-		defTone, defVal = "ok", "Sim"
+		defTone, defVal = "ok", "Yes"
 	}
 	d.Status = []chip{
 		{Label: "Controller", Value: orDash(o.Spec.Controller), Tone: "muted"},
-		{Label: "Padrão", Value: defVal, Tone: defTone},
+		{Label: "Default", Value: defVal, Tone: defTone},
 	}
 	if p := o.Spec.Parameters; p != nil {
 		items := []kv{{Label: "Kind", Value: p.Kind}, {Label: "Name", Value: p.Name}}
@@ -963,7 +963,7 @@ func ingressClassDetail(o *networkingv1.IngressClass) *resourceDetail {
 		if p.Scope != nil {
 			items = append(items, kv{Label: "Scope", Value: *p.Scope})
 		}
-		d.Sections = append(d.Sections, section{Title: "Parâmetros", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Parameters", Items: items})
 	}
 	return d
 }
@@ -972,11 +972,11 @@ func ingressClassDetail(o *networkingv1.IngressClass) *resourceDetail {
 
 func serviceAccountDetail(o *corev1.ServiceAccount) *resourceDetail {
 	d := base("ServiceAccount", o.ObjectMeta)
-	automount := "herda do pod"
+	automount := "inherits from pod"
 	if o.AutomountServiceAccountToken != nil {
-		automount = "não"
+		automount = "no"
 		if *o.AutomountServiceAccountToken {
-			automount = "sim"
+			automount = "yes"
 		}
 	}
 	d.Status = []chip{
@@ -1021,7 +1021,7 @@ func roleDetail(o *rbacv1.Role) *resourceDetail {
 	d := base("Role", o.ObjectMeta)
 	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
 	if len(o.Rules) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Regras (verbos → recursos)", Items: formatRules(o.Rules)})
+		d.Sections = append(d.Sections, section{Title: "Rules (verbs → resources)", Items: formatRules(o.Rules)})
 	}
 	return d
 }
@@ -1030,7 +1030,7 @@ func clusterRoleDetail(o *rbacv1.ClusterRole) *resourceDetail {
 	d := base("ClusterRole", o.ObjectMeta)
 	d.Status = []chip{countChip("Regras", int32(len(o.Rules)), "muted")} //nolint:gosec // rule count, always tiny
 	if len(o.Rules) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Regras (verbos → recursos)", Items: formatRules(o.Rules)})
+		d.Sections = append(d.Sections, section{Title: "Rules (verbs → resources)", Items: formatRules(o.Rules)})
 	}
 	return d
 }
@@ -1041,7 +1041,7 @@ func bindingDetail(kind, ns string, m metav1.ObjectMeta, roleRef rbacv1.RoleRef,
 	d := base(kind, m)
 	d.Status = []chip{
 		{Label: "Role", Value: roleRef.Kind + "/" + roleRef.Name, Tone: "muted"},
-		countChip("Sujeitos", int32(len(subjects)), "muted"), //nolint:gosec // subject count, always tiny
+		countChip("Subjects", int32(len(subjects)), "muted"), //nolint:gosec // subject count, always tiny
 	}
 	// Link to the referenced role (Role is namespaced; ClusterRole is not).
 	roleSlug := ""
@@ -1072,7 +1072,7 @@ func bindingDetail(kind, ns string, m metav1.ObjectMeta, roleRef rbacv1.RoleRef,
 		}
 	}
 	if len(subs) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Sujeitos", Items: subs})
+		d.Sections = append(d.Sections, section{Title: "Subjects", Items: subs})
 	}
 	return d
 }
@@ -1100,7 +1100,7 @@ func resourceQuotaDetail(o *corev1.ResourceQuota) *resourceDetail {
 		items = append(items, kv{Label: n, Value: used.String() + " / " + hard.String()})
 	}
 	if len(items) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Uso / limite", Items: items})
+		d.Sections = append(d.Sections, section{Title: "Usage / limit", Items: items})
 	}
 	if len(o.Spec.Scopes) > 0 {
 		scopes := make([]string, 0, len(o.Spec.Scopes))
@@ -1142,15 +1142,15 @@ func pdbDetail(o *policyv1.PodDisruptionBudget) *resourceDetail {
 		crit = "maxUnavailable " + o.Spec.MaxUnavailable.String()
 	}
 	d.Status = []chip{
-		{Label: "Critério", Value: crit, Tone: "muted"},
-		replicaChip("Saudáveis", o.Status.CurrentHealthy, o.Status.DesiredHealthy),
-		countChip("Disrupções permitidas", o.Status.DisruptionsAllowed, boolTone(o.Status.DisruptionsAllowed > 0)),
+		{Label: "Criteria", Value: crit, Tone: "muted"},
+		replicaChip("Healthy", o.Status.CurrentHealthy, o.Status.DesiredHealthy),
+		countChip("Disruptions allowed", o.Status.DisruptionsAllowed, boolTone(o.Status.DisruptionsAllowed > 0)),
 	}
 	d.Selector = selectorOf(o.Spec.Selector)
 	d.Sections = append(d.Sections, section{Title: "Status", Items: []kv{
-		{Label: "Pods esperados", Value: fmt.Sprintf("%d", o.Status.ExpectedPods)},
-		{Label: "Saudáveis atuais", Value: fmt.Sprintf("%d", o.Status.CurrentHealthy)},
-		{Label: "Saudáveis desejados", Value: fmt.Sprintf("%d", o.Status.DesiredHealthy)},
+		{Label: "Expected pods", Value: fmt.Sprintf("%d", o.Status.ExpectedPods)},
+		{Label: "Current healthy", Value: fmt.Sprintf("%d", o.Status.CurrentHealthy)},
+		{Label: "Desired healthy", Value: fmt.Sprintf("%d", o.Status.DesiredHealthy)},
 	}})
 	return d
 }
@@ -1161,17 +1161,17 @@ func priorityClassDetail(o *schedulingv1.PriorityClass) *resourceDetail {
 	if o.PreemptionPolicy != nil {
 		preempt = string(*o.PreemptionPolicy)
 	}
-	defTone, defVal := "muted", "Não"
+	defTone, defVal := "muted", "No"
 	if o.GlobalDefault {
-		defTone, defVal = "ok", "Sim"
+		defTone, defVal = "ok", "Yes"
 	}
 	d.Status = []chip{
-		{Label: "Valor", Value: fmt.Sprintf("%d", o.Value), Tone: "muted"},
-		{Label: "Padrão global", Value: defVal, Tone: defTone},
-		{Label: "Preempção", Value: preempt, Tone: "muted"},
+		{Label: "Value", Value: fmt.Sprintf("%d", o.Value), Tone: "muted"},
+		{Label: "Global default", Value: defVal, Tone: defTone},
+		{Label: "Preemption", Value: preempt, Tone: "muted"},
 	}
 	if o.Description != "" {
-		d.Sections = append(d.Sections, section{Title: "Descrição", Items: []kv{{Label: "", Value: o.Description}}})
+		d.Sections = append(d.Sections, section{Title: "Description", Items: []kv{{Label: "", Value: o.Description}}})
 	}
 	return d
 }
@@ -1288,39 +1288,39 @@ func nodeDetail(n *corev1.Node) *resourceDetail {
 	if nodeReady(n) {
 		readyTone, readyVal = "ok", "Ready"
 	}
-	schedulable := "Sim"
+	schedulable := "Yes"
 	schedTone := "ok"
 	if n.Spec.Unschedulable {
-		schedulable, schedTone = "Não", "warn"
+		schedulable, schedTone = "No", "warn"
 	}
 	d.Status = []chip{
 		{Label: "Status", Value: readyVal, Tone: readyTone},
 		{Label: "Roles", Value: strings.Join(nodeRoles(n), ", "), Tone: "muted"},
-		{Label: "Agendável", Value: schedulable, Tone: schedTone},
+		{Label: "Schedulable", Value: schedulable, Tone: schedTone},
 	}
 
 	ni := n.Status.NodeInfo
-	d.Sections = append(d.Sections, section{Title: "Sistema", Items: []kv{
+	d.Sections = append(d.Sections, section{Title: "System", Items: []kv{
 		{Label: "Kubelet", Value: ni.KubeletVersion},
 		{Label: "Runtime", Value: ni.ContainerRuntimeVersion},
 		{Label: "OS", Value: ni.OSImage},
 		{Label: "Kernel", Value: ni.KernelVersion},
-		{Label: "Arquitetura", Value: ni.Architecture},
+		{Label: "Architecture", Value: ni.Architecture},
 	}})
-	d.Sections = append(d.Sections, section{Title: "Infraestrutura", Items: []kv{
+	d.Sections = append(d.Sections, section{Title: "Infrastructure", Items: []kv{
 		{Label: "Instance type", Value: nodeLabel(n, "node.kubernetes.io/instance-type")},
 		{Label: "Capacity type", Value: nodeLabel(n, "eks.amazonaws.com/capacityType")},
-		{Label: "Zona", Value: nodeLabel(n, "topology.kubernetes.io/zone")},
-		{Label: "Região", Value: nodeLabel(n, "topology.kubernetes.io/region")},
+		{Label: "Zone", Value: nodeLabel(n, "topology.kubernetes.io/zone")},
+		{Label: "Region", Value: nodeLabel(n, "topology.kubernetes.io/region")},
 	}})
-	d.Sections = append(d.Sections, section{Title: "Capacidade", Items: []kv{
+	d.Sections = append(d.Sections, section{Title: "Capacity", Items: []kv{
 		{Label: "CPU", Value: n.Status.Capacity.Cpu().String()},
-		{Label: "Memória", Value: n.Status.Capacity.Memory().String()},
+		{Label: "Memory", Value: n.Status.Capacity.Memory().String()},
 		{Label: "Pods", Value: n.Status.Capacity.Pods().String()},
 	}})
-	d.Sections = append(d.Sections, section{Title: "Alocável", Items: []kv{
+	d.Sections = append(d.Sections, section{Title: "Allocatable", Items: []kv{
 		{Label: "CPU", Value: n.Status.Allocatable.Cpu().String()},
-		{Label: "Memória", Value: n.Status.Allocatable.Memory().String()},
+		{Label: "Memory", Value: n.Status.Allocatable.Memory().String()},
 		{Label: "Pods", Value: n.Status.Allocatable.Pods().String()},
 	}})
 
@@ -1333,8 +1333,8 @@ func nodeDetail(n *corev1.Node) *resourceDetail {
 			hostname = a.Address
 		}
 	}
-	d.Sections = append(d.Sections, section{Title: "Rede", Items: []kv{
-		{Label: "IP interno", Value: internalIP},
+	d.Sections = append(d.Sections, section{Title: "Network", Items: []kv{
+		{Label: "Internal IP", Value: internalIP},
 		{Label: "Hostname", Value: hostname},
 		{Label: "PodCIDR", Value: n.Spec.PodCIDR},
 	}})

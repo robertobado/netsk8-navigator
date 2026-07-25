@@ -107,7 +107,7 @@ func TestToNetworkPolicyView(t *testing.T) {
 		},
 	}
 	v := ToNetworkPolicyView(n)
-	if v.PolicyTypes != "Ingress, Egress" || v.PodSelector != "todos" {
+	if v.PolicyTypes != "Ingress, Egress" || v.PodSelector != "all" {
 		t.Errorf("got %+v", v)
 	}
 }

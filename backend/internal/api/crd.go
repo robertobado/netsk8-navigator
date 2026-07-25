@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// routeCandidate is a known ingress/gateway CRD we surface under "Rede" when the
+// routeCandidate is a known ingress/gateway CRD we surface under "Network" when the
 // cluster serves it. Keyed by "<group>/<plural>"; the version comes from discovery.
 type routeCandidate struct {
 	label string // nav label
@@ -231,7 +231,7 @@ func routeCRDDetail(d *resourceDetail, obj map[string]any) {
 		for _, b := range sliceOf(rule, "backendRefs") {
 			items = append(items, kv{Label: "Backend", Value: backendSummary(b)})
 		}
-		d.Sections = append(d.Sections, section{Title: fmt.Sprintf("Regra %d", i+1), Items: items})
+		d.Sections = append(d.Sections, section{Title: fmt.Sprintf("Rule %d", i+1), Items: items})
 	}
 }
 
@@ -267,7 +267,7 @@ func gatewayCRDDetail(d *resourceDetail, obj map[string]any) {
 			}
 		}
 		if len(av) > 0 {
-			d.Sections = append(d.Sections, section{Title: "Endereços", Items: []kv{{Label: "Address", Value: strings.Join(av, ", ")}}})
+			d.Sections = append(d.Sections, section{Title: "Addresses", Items: []kv{{Label: "Address", Value: strings.Join(av, ", ")}}})
 		}
 	}
 }
