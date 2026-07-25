@@ -116,6 +116,10 @@ jobs:
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
+    # Uploading SARIF (analyze step) needs GitHub Advanced Security, which is
+    # only free on public repos — continue-on-error keeps this from showing
+    # as a hard CI failure while the repo is private. Remove once public.
+    continue-on-error: true
     permissions:
       contents: read
       security-events: write
