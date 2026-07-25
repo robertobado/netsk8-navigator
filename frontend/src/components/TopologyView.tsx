@@ -1,14 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Background,
-  Handle,
-  Position,
-  ReactFlow,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from '@xyflow/react'
+import { Background, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Boxes, Layers, Network } from 'lucide-react'
 import { api, type TopoNode } from '@/lib/api'
@@ -38,7 +30,9 @@ function ResourceNode({ data }: NodeProps) {
       )}
     >
       <Handle type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-border" />
-      <Icon className={cn('size-4 shrink-0', d.kind === 'deployment' ? 'text-primary' : d.kind === 'service' ? 'text-[color:var(--ok)]' : 'text-muted-foreground')} />
+      <Icon
+        className={cn('size-4 shrink-0', d.kind === 'deployment' ? 'text-primary' : d.kind === 'service' ? 'text-[color:var(--ok)]' : 'text-muted-foreground')}
+      />
       <div className="min-w-0">
         <div className="max-w-52 truncate text-xs font-medium">{d.name}</div>
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -89,22 +83,12 @@ export function TopologyView({ ctx, ns }: { ctx: string; ns: string }) {
         Selecione um namespace no topo para visualizar a topologia.
       </div>
     )
-  if (q.isLoading)
-    return <div className="flex h-[60vh] items-center justify-center text-sm text-muted-foreground">Carregando topologia...</div>
-  if (q.isError)
-    return <div className="flex h-[60vh] items-center justify-center text-sm text-[color:var(--err)]">{(q.error as Error).message}</div>
+  if (q.isLoading) return <div className="flex h-[60vh] items-center justify-center text-sm text-muted-foreground">Carregando topologia...</div>
+  if (q.isError) return <div className="flex h-[60vh] items-center justify-center text-sm text-[color:var(--err)]">{(q.error as Error).message}</div>
 
   return (
     <div className="h-[calc(100vh-11rem)] overflow-hidden rounded-2xl border bg-card/40">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        proOptions={{ hideAttribution: true }}
-        minZoom={0.2}
-        colorMode="dark"
-      >
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView proOptions={{ hideAttribution: true }} minZoom={0.2} colorMode="dark">
         <Background gap={20} color="var(--border)" />
       </ReactFlow>
     </div>

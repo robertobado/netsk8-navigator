@@ -88,12 +88,7 @@ export function ManifestPanel({
         <Loader2 className="mr-2 size-4 animate-spin" /> Carregando manifest...
       </div>
     )
-  if (state === 'error')
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">
-        {error}
-      </div>
-    )
+  if (state === 'error') return <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{error}</div>
 
   return (
     <div className="flex h-full flex-col">

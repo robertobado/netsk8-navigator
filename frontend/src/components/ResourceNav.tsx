@@ -27,17 +27,16 @@ export function ResourceNav({ active, onSelect, routes = [] }: Readonly<{ active
     { title: t('group.storage'), items: inGroup('Storage') },
     { title: t('group.rbac'), items: inGroup('RBAC') },
     { title: t('group.governanca'), items: inGroup('Governança') },
-    { title: t('group.cluster'), items: [...inGroup('Cluster'), { view: 'events', label: t('nav.events'), icon: Bell }, { view: 'topology', label: t('nav.topology'), icon: Share2 }] },
+    {
+      title: t('group.cluster'),
+      items: [...inGroup('Cluster'), { view: 'events', label: t('nav.events'), icon: Bell }, { view: 'topology', label: t('nav.topology'), icon: Share2 }],
+    },
   ]
   return (
     <nav className="flex flex-col gap-4">
       {groups.map((group, gi) => (
         <div key={group.title ?? gi} className="flex flex-col gap-0.5">
-          {group.title && (
-            <span className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              {group.title}
-            </span>
-          )}
+          {group.title && <span className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">{group.title}</span>}
           {group.items.map((item) => {
             const Icon = item.icon
             const isActive = active === item.view

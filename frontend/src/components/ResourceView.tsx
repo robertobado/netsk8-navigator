@@ -172,7 +172,9 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
             ? 'A conexão com a API do Kubernetes falhou — credencial expirada ou sem permissão. Renove o login do cluster (ex.: credenciais AWS) e tente de novo.'
             : 'A API do Kubernetes não respondeu a esta listagem.'}
         </p>
-        <p className="max-w-lg truncate px-4 font-mono text-[10px] text-muted-foreground/60" title={raw}>{raw}</p>
+        <p className="max-w-lg truncate px-4 font-mono text-[10px] text-muted-foreground/60" title={raw}>
+          {raw}
+        </p>
         <button
           onClick={() => q.refetch()}
           disabled={q.isFetching}
@@ -254,7 +256,9 @@ function RevisionHistory({ revs, onOpen }: Readonly<{ revs: Row[]; onOpen: (r: R
             >
               <span className="w-8 shrink-0 font-mono text-muted-foreground tabular-nums">r{rev.revision || '?'}</span>
               <span className="min-w-0 flex-1 truncate font-medium">{rev.name}</span>
-              {rev.current && <span className="shrink-0 rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">atual</span>}
+              {rev.current && (
+                <span className="shrink-0 rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">atual</span>
+              )}
               <span className="shrink-0 font-mono text-muted-foreground tabular-nums">{rev.ready}</span>
               <span className="w-10 shrink-0 text-right font-mono text-muted-foreground tabular-nums">{age(rev.age)}</span>
             </button>

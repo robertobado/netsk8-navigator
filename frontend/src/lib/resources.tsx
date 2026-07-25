@@ -1,7 +1,67 @@
 import type { ReactNode } from 'react'
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
-import { Boxes, Cable, Container, CopyPlus, Cpu, Database, Disc3, FileCog, Flag, Gauge, HardDrive, HeartPulse, KeyRound, Layers, Layers3, Link, Link2, Lock, LockKeyhole, Network, Play, Route, Ruler, Scale, Server, ShieldCheck, Signpost, Timer, UserCog, type LucideIcon } from 'lucide-react'
-import type { ConfigMap, CronJob, DaemonSet, Deployment, EndpointSlice, HPA, Ingress, IngressClass, Job, LimitRange, ManifestKind, Namespace, NetworkPolicy, NodeRow, PDB, PriorityClass, PV, PVC, ReplicaSet, ResourceQuota, Role, RoleBinding, RuntimeClass, Secret, ServiceAccountRow, Service, StatefulSet, StorageClass } from '@/lib/api'
+import {
+  Boxes,
+  Cable,
+  Container,
+  CopyPlus,
+  Cpu,
+  Database,
+  Disc3,
+  FileCog,
+  Flag,
+  Gauge,
+  HardDrive,
+  HeartPulse,
+  KeyRound,
+  Layers,
+  Layers3,
+  Link,
+  Link2,
+  Lock,
+  LockKeyhole,
+  Network,
+  Play,
+  Route,
+  Ruler,
+  Scale,
+  Server,
+  ShieldCheck,
+  Signpost,
+  Timer,
+  UserCog,
+  type LucideIcon,
+} from 'lucide-react'
+import type {
+  ConfigMap,
+  CronJob,
+  DaemonSet,
+  Deployment,
+  EndpointSlice,
+  HPA,
+  Ingress,
+  IngressClass,
+  Job,
+  LimitRange,
+  ManifestKind,
+  Namespace,
+  NetworkPolicy,
+  NodeRow,
+  PDB,
+  PriorityClass,
+  PV,
+  PVC,
+  ReplicaSet,
+  ResourceQuota,
+  Role,
+  RoleBinding,
+  RuntimeClass,
+  Secret,
+  ServiceAccountRow,
+  Service,
+  StatefulSet,
+  StorageClass,
+} from '@/lib/api'
 import { age, cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DeploymentStatus, JobStatus, MountedCell, PVCStatusCell, PVChildRow } from '@/components/resourceCells'
@@ -57,8 +117,7 @@ export interface ResourceDef {
 const mono = (v: string) => <span className="font-mono text-xs text-muted-foreground">{v || '—'}</span>
 const muted = (v: string) => <span className="text-muted-foreground">{v || '—'}</span>
 const ageCell = (v: string) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{age(v)}</span>
-const ageSort = <T extends { age: string }>(a: { original: T }, b: { original: T }) =>
-  new Date(a.original.age).getTime() - new Date(b.original.age).getTime()
+const ageSort = <T extends { age: string }>(a: { original: T }, b: { original: T }) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime()
 
 const nameCell = (c: { getValue: () => string }) => <span className="font-medium">{c.getValue()}</span>
 
@@ -176,7 +235,10 @@ const cronJobCols = [
     header: 'Estado',
     cell: (c) => <span className={cn('text-sm', c.getValue() === 'Suspenso' ? 'text-[color:var(--warn)]' : 'text-[color:var(--ok)]')}>{c.getValue()}</span>,
   }),
-  cjc.accessor('lastSchedule', { header: 'Última exec.', cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{c.getValue() ? age(c.getValue()) : '—'}</span> }),
+  cjc.accessor('lastSchedule', {
+    header: 'Última exec.',
+    cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{c.getValue() ? age(c.getValue()) : '—'}</span>,
+  }),
   cjc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
@@ -212,7 +274,7 @@ const pvcCols = [
   pvcc.accessor('name', { header: 'Nome', cell: nameCell }),
   pvcc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   pvcc.accessor('status', { header: 'Status', cell: (c) => <PVCStatusCell pvc={c.row.original} /> }),
-  pvcc.accessor((r) => (r.mountedBy?.length ?? 0), {
+  pvcc.accessor((r) => r.mountedBy?.length ?? 0, {
     id: 'mounted',
     header: 'Montado',
     sortDescFirst: true,
@@ -243,7 +305,9 @@ const storageClassCols = [
     cell: (c) => (
       <span className="inline-flex items-center gap-1.5">
         <span className="font-medium">{c.getValue()}</span>
-        {c.row.original.default && <span className="rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">default</span>}
+        {c.row.original.default && (
+          <span className="rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">default</span>
+        )}
       </span>
     ),
   }),
@@ -291,7 +355,9 @@ const ingressClassCols = [
     cell: (c) => (
       <span className="inline-flex items-center gap-1.5">
         <span className="font-medium">{c.getValue()}</span>
-        {c.row.original.default && <span className="rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">default</span>}
+        {c.row.original.default && (
+          <span className="rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">default</span>
+        )}
       </span>
     ),
   }),
@@ -365,10 +431,21 @@ const pdbCols = [
     cell: (c) => {
       const { current, desired } = c.row.original
       const ok = current >= desired
-      return <span className={cn('font-mono text-sm tabular-nums', ok ? 'text-[color:var(--ok)]' : 'text-[color:var(--warn)]')}>{current}/{desired}</span>
+      return (
+        <span className={cn('font-mono text-sm tabular-nums', ok ? 'text-[color:var(--ok)]' : 'text-[color:var(--warn)]')}>
+          {current}/{desired}
+        </span>
+      )
     },
   }),
-  pdbc.accessor('allowed', { header: 'Disrupções', cell: (c) => <span className={cn('font-mono text-sm tabular-nums', (c.getValue() as number) > 0 ? 'text-[color:var(--ok)]' : 'text-muted-foreground')}>{c.getValue() as number}</span> }),
+  pdbc.accessor('allowed', {
+    header: 'Disrupções',
+    cell: (c) => (
+      <span className={cn('font-mono text-sm tabular-nums', (c.getValue() as number) > 0 ? 'text-[color:var(--ok)]' : 'text-muted-foreground')}>
+        {c.getValue() as number}
+      </span>
+    ),
+  }),
   pdbc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
@@ -379,7 +456,9 @@ const priorityClassCols = [
     cell: (c) => (
       <span className="inline-flex items-center gap-1.5">
         <span className="font-medium">{c.getValue()}</span>
-        {c.row.original.globalDefault && <span className="rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">default</span>}
+        {c.row.original.globalDefault && (
+          <span className="rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">default</span>
+        )}
       </span>
     ),
   }),
@@ -396,9 +475,40 @@ const runtimeClassCols = [
 ] as ColumnDef<never, unknown>[]
 
 export const RESOURCES: ResourceDef[] = [
-  { key: 'deployments', label: 'Deployments', icon: Layers, group: 'Workloads', resource: 'deployments', manifest: 'deployment', facets: ['namespace', 'status'], columns: deploymentCols, usage: true, customExpand: 'workload-pods' },
-  { key: 'statefulsets', label: 'StatefulSets', icon: Database, group: 'Workloads', resource: 'statefulsets', manifest: 'statefulset', facets: ['namespace'], columns: statefulSetCols, customExpand: 'workload-pods' },
-  { key: 'daemonsets', label: 'DaemonSets', icon: Server, group: 'Workloads', resource: 'daemonsets', manifest: 'daemonset', facets: ['namespace'], columns: daemonSetCols, customExpand: 'workload-pods' },
+  {
+    key: 'deployments',
+    label: 'Deployments',
+    icon: Layers,
+    group: 'Workloads',
+    resource: 'deployments',
+    manifest: 'deployment',
+    facets: ['namespace', 'status'],
+    columns: deploymentCols,
+    usage: true,
+    customExpand: 'workload-pods',
+  },
+  {
+    key: 'statefulsets',
+    label: 'StatefulSets',
+    icon: Database,
+    group: 'Workloads',
+    resource: 'statefulsets',
+    manifest: 'statefulset',
+    facets: ['namespace'],
+    columns: statefulSetCols,
+    customExpand: 'workload-pods',
+  },
+  {
+    key: 'daemonsets',
+    label: 'DaemonSets',
+    icon: Server,
+    group: 'Workloads',
+    resource: 'daemonsets',
+    manifest: 'daemonset',
+    facets: ['namespace'],
+    columns: daemonSetCols,
+    customExpand: 'workload-pods',
+  },
   {
     key: 'replicasets',
     label: 'ReplicaSets',
@@ -415,17 +525,112 @@ export const RESOURCES: ResourceDef[] = [
     },
   },
   { key: 'jobs', label: 'Jobs', icon: Play, group: 'Workloads', resource: 'jobs', manifest: 'job', facets: ['namespace', 'status'], columns: jobCols },
-  { key: 'cronjobs', label: 'CronJobs', icon: Timer, group: 'Workloads', resource: 'cronjobs', manifest: 'cronjob', facets: ['namespace'], columns: cronJobCols },
-  { key: 'services', label: 'Services', icon: Network, group: 'Rede', resource: 'services', manifest: 'service', facets: ['namespace', 'type'], columns: serviceCols, customExpand: 'workload-pods' },
-  { key: 'ingresses', label: 'Ingresses', icon: Route, group: 'Rede', resource: 'ingresses', manifest: 'ingress', facets: ['namespace', 'class'], columns: ingressCols },
-  { key: 'ingressclasses', label: 'IngressClasses', icon: Signpost, group: 'Rede', resource: 'ingressclasses', manifest: 'ingressclass', facets: ['controller'], columns: ingressClassCols, clusterScoped: true },
-  { key: 'endpointslices', label: 'EndpointSlices', icon: Cable, group: 'Rede', resource: 'endpointslices', manifest: 'endpointslice', facets: ['namespace', 'addressType'], columns: endpointSliceCols },
-  { key: 'networkpolicies', label: 'NetworkPolicies', icon: ShieldCheck, group: 'Rede', resource: 'networkpolicies', manifest: 'networkpolicy', facets: ['namespace'], columns: networkPolicyCols },
-  { key: 'configmaps', label: 'ConfigMaps', icon: FileCog, group: 'Config', resource: 'configmaps', manifest: 'configmap', facets: ['namespace'], columns: configMapCols, customExpand: 'consumers' },
-  { key: 'secrets', label: 'Secrets', icon: KeyRound, group: 'Config', resource: 'secrets', manifest: 'secret', facets: ['namespace', 'type'], columns: secretCols, customExpand: 'consumers' },
+  {
+    key: 'cronjobs',
+    label: 'CronJobs',
+    icon: Timer,
+    group: 'Workloads',
+    resource: 'cronjobs',
+    manifest: 'cronjob',
+    facets: ['namespace'],
+    columns: cronJobCols,
+  },
+  {
+    key: 'services',
+    label: 'Services',
+    icon: Network,
+    group: 'Rede',
+    resource: 'services',
+    manifest: 'service',
+    facets: ['namespace', 'type'],
+    columns: serviceCols,
+    customExpand: 'workload-pods',
+  },
+  {
+    key: 'ingresses',
+    label: 'Ingresses',
+    icon: Route,
+    group: 'Rede',
+    resource: 'ingresses',
+    manifest: 'ingress',
+    facets: ['namespace', 'class'],
+    columns: ingressCols,
+  },
+  {
+    key: 'ingressclasses',
+    label: 'IngressClasses',
+    icon: Signpost,
+    group: 'Rede',
+    resource: 'ingressclasses',
+    manifest: 'ingressclass',
+    facets: ['controller'],
+    columns: ingressClassCols,
+    clusterScoped: true,
+  },
+  {
+    key: 'endpointslices',
+    label: 'EndpointSlices',
+    icon: Cable,
+    group: 'Rede',
+    resource: 'endpointslices',
+    manifest: 'endpointslice',
+    facets: ['namespace', 'addressType'],
+    columns: endpointSliceCols,
+  },
+  {
+    key: 'networkpolicies',
+    label: 'NetworkPolicies',
+    icon: ShieldCheck,
+    group: 'Rede',
+    resource: 'networkpolicies',
+    manifest: 'networkpolicy',
+    facets: ['namespace'],
+    columns: networkPolicyCols,
+  },
+  {
+    key: 'configmaps',
+    label: 'ConfigMaps',
+    icon: FileCog,
+    group: 'Config',
+    resource: 'configmaps',
+    manifest: 'configmap',
+    facets: ['namespace'],
+    columns: configMapCols,
+    customExpand: 'consumers',
+  },
+  {
+    key: 'secrets',
+    label: 'Secrets',
+    icon: KeyRound,
+    group: 'Config',
+    resource: 'secrets',
+    manifest: 'secret',
+    facets: ['namespace', 'type'],
+    columns: secretCols,
+    customExpand: 'consumers',
+  },
   { key: 'hpas', label: 'HPAs', icon: Gauge, group: 'Config', resource: 'horizontalpodautoscalers', manifest: 'hpa', facets: ['namespace'], columns: hpaCols },
-  { key: 'pvcs', label: 'PersistentVolumeClaims', icon: HardDrive, group: 'Storage', resource: 'persistentvolumeclaims', manifest: 'pvc', facets: ['namespace', 'status', 'storageClass'], columns: pvcCols },
-  { key: 'pvs', label: 'PersistentVolumes', icon: Disc3, group: 'Storage', resource: 'persistentvolumes', manifest: 'pv', facets: ['status', 'storageClass'], columns: pvCols, clusterScoped: true },
+  {
+    key: 'pvcs',
+    label: 'PersistentVolumeClaims',
+    icon: HardDrive,
+    group: 'Storage',
+    resource: 'persistentvolumeclaims',
+    manifest: 'pvc',
+    facets: ['namespace', 'status', 'storageClass'],
+    columns: pvcCols,
+  },
+  {
+    key: 'pvs',
+    label: 'PersistentVolumes',
+    icon: Disc3,
+    group: 'Storage',
+    resource: 'persistentvolumes',
+    manifest: 'pv',
+    facets: ['status', 'storageClass'],
+    columns: pvCols,
+    clusterScoped: true,
+  },
   {
     key: 'storageclasses',
     label: 'StorageClasses',
@@ -446,18 +651,126 @@ export const RESOURCES: ResourceDef[] = [
       renderChild: (pv) => <PVChildRow pv={pv as unknown as PV} />,
     },
   },
-  { key: 'namespaces', label: 'Namespaces', icon: Boxes, group: 'Cluster', resource: 'namespaces', manifest: 'namespace', facets: ['status'], columns: namespaceCols, clusterScoped: true, customExpand: 'namespace' },
-  { key: 'nodes', label: 'Nodes', icon: Cpu, group: 'Cluster', resource: 'nodes', manifest: 'node', facets: ['status'], columns: nodeCols, clusterScoped: true, customExpand: 'node' },
-  { key: 'priorityclasses', label: 'PriorityClasses', icon: Flag, group: 'Cluster', resource: 'priorityclasses', manifest: 'priorityclass', facets: [], columns: priorityClassCols, clusterScoped: true },
-  { key: 'runtimeclasses', label: 'RuntimeClasses', icon: Container, group: 'Cluster', resource: 'runtimeclasses', manifest: 'runtimeclass', facets: [], columns: runtimeClassCols, clusterScoped: true },
-  { key: 'serviceaccounts', label: 'ServiceAccounts', icon: UserCog, group: 'RBAC', resource: 'serviceaccounts', manifest: 'serviceaccount', facets: ['namespace'], columns: serviceAccountCols, customExpand: 'serviceaccount' },
+  {
+    key: 'namespaces',
+    label: 'Namespaces',
+    icon: Boxes,
+    group: 'Cluster',
+    resource: 'namespaces',
+    manifest: 'namespace',
+    facets: ['status'],
+    columns: namespaceCols,
+    clusterScoped: true,
+    customExpand: 'namespace',
+  },
+  {
+    key: 'nodes',
+    label: 'Nodes',
+    icon: Cpu,
+    group: 'Cluster',
+    resource: 'nodes',
+    manifest: 'node',
+    facets: ['status'],
+    columns: nodeCols,
+    clusterScoped: true,
+    customExpand: 'node',
+  },
+  {
+    key: 'priorityclasses',
+    label: 'PriorityClasses',
+    icon: Flag,
+    group: 'Cluster',
+    resource: 'priorityclasses',
+    manifest: 'priorityclass',
+    facets: [],
+    columns: priorityClassCols,
+    clusterScoped: true,
+  },
+  {
+    key: 'runtimeclasses',
+    label: 'RuntimeClasses',
+    icon: Container,
+    group: 'Cluster',
+    resource: 'runtimeclasses',
+    manifest: 'runtimeclass',
+    facets: [],
+    columns: runtimeClassCols,
+    clusterScoped: true,
+  },
+  {
+    key: 'serviceaccounts',
+    label: 'ServiceAccounts',
+    icon: UserCog,
+    group: 'RBAC',
+    resource: 'serviceaccounts',
+    manifest: 'serviceaccount',
+    facets: ['namespace'],
+    columns: serviceAccountCols,
+    customExpand: 'serviceaccount',
+  },
   { key: 'roles', label: 'Roles', icon: Lock, group: 'RBAC', resource: 'roles', manifest: 'role', facets: ['namespace'], columns: roleCols },
-  { key: 'rolebindings', label: 'RoleBindings', icon: Link2, group: 'RBAC', resource: 'rolebindings', manifest: 'rolebinding', facets: ['namespace'], columns: roleBindingCols },
-  { key: 'clusterroles', label: 'ClusterRoles', icon: LockKeyhole, group: 'RBAC', resource: 'clusterroles', manifest: 'clusterrole', facets: [], columns: clusterRoleCols, clusterScoped: true },
-  { key: 'clusterrolebindings', label: 'ClusterRoleBindings', icon: Link, group: 'RBAC', resource: 'clusterrolebindings', manifest: 'clusterrolebinding', facets: [], columns: clusterRoleBindingCols, clusterScoped: true },
-  { key: 'resourcequotas', label: 'ResourceQuotas', icon: Scale, group: 'Governança', resource: 'resourcequotas', manifest: 'resourcequota', facets: ['namespace'], columns: resourceQuotaCols },
-  { key: 'limitranges', label: 'LimitRanges', icon: Ruler, group: 'Governança', resource: 'limitranges', manifest: 'limitrange', facets: ['namespace'], columns: limitRangeCols },
-  { key: 'poddisruptionbudgets', label: 'PodDisruptionBudgets', icon: HeartPulse, group: 'Governança', resource: 'poddisruptionbudgets', manifest: 'poddisruptionbudget', facets: ['namespace'], columns: pdbCols },
+  {
+    key: 'rolebindings',
+    label: 'RoleBindings',
+    icon: Link2,
+    group: 'RBAC',
+    resource: 'rolebindings',
+    manifest: 'rolebinding',
+    facets: ['namespace'],
+    columns: roleBindingCols,
+  },
+  {
+    key: 'clusterroles',
+    label: 'ClusterRoles',
+    icon: LockKeyhole,
+    group: 'RBAC',
+    resource: 'clusterroles',
+    manifest: 'clusterrole',
+    facets: [],
+    columns: clusterRoleCols,
+    clusterScoped: true,
+  },
+  {
+    key: 'clusterrolebindings',
+    label: 'ClusterRoleBindings',
+    icon: Link,
+    group: 'RBAC',
+    resource: 'clusterrolebindings',
+    manifest: 'clusterrolebinding',
+    facets: [],
+    columns: clusterRoleBindingCols,
+    clusterScoped: true,
+  },
+  {
+    key: 'resourcequotas',
+    label: 'ResourceQuotas',
+    icon: Scale,
+    group: 'Governança',
+    resource: 'resourcequotas',
+    manifest: 'resourcequota',
+    facets: ['namespace'],
+    columns: resourceQuotaCols,
+  },
+  {
+    key: 'limitranges',
+    label: 'LimitRanges',
+    icon: Ruler,
+    group: 'Governança',
+    resource: 'limitranges',
+    manifest: 'limitrange',
+    facets: ['namespace'],
+    columns: limitRangeCols,
+  },
+  {
+    key: 'poddisruptionbudgets',
+    label: 'PodDisruptionBudgets',
+    icon: HeartPulse,
+    group: 'Governança',
+    resource: 'poddisruptionbudgets',
+    manifest: 'poddisruptionbudget',
+    facets: ['namespace'],
+    columns: pdbCols,
+  },
 ]
 
 export function resourceByKey(key: string): ResourceDef | undefined {

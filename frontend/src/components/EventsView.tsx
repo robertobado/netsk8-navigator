@@ -66,7 +66,9 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
             ? 'A conexão com a API do Kubernetes falhou — credencial expirada ou sem permissão para listar eventos. Renove o login do cluster (ex.: credenciais AWS) e tente de novo.'
             : 'A API do Kubernetes não respondeu à listagem de eventos.'}
         </p>
-        <p className="max-w-lg truncate font-mono text-[10px] text-muted-foreground/60" title={raw}>{raw}</p>
+        <p className="max-w-lg truncate font-mono text-[10px] text-muted-foreground/60" title={raw}>
+          {raw}
+        </p>
         <button
           onClick={() => q.refetch()}
           disabled={q.isFetching}
@@ -119,9 +121,15 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
                 className={cn('rounded-xl border p-3', warn ? 'border-[color:var(--warn)]/30 bg-[color:var(--warn)]/[0.06]' : 'bg-card/40')}
               >
                 <div className="flex items-center gap-2">
-                  {warn ? <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--warn)]" /> : <Info className="size-3.5 shrink-0 text-muted-foreground" />}
+                  {warn ? (
+                    <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--warn)]" />
+                  ) : (
+                    <Info className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
                   <span className={cn('text-sm font-medium', warn && 'text-[color:var(--warn)]')}>{e.reason}</span>
-                  {e.count > 1 && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">×{e.count}</span>}
+                  {e.count > 1 && (
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">×{e.count}</span>
+                  )}
                   {e.objectKind && (
                     <span className="ml-1 inline-flex min-w-0 items-center gap-1.5 text-xs">
                       <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{e.objectKind}</span>
@@ -130,10 +138,14 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
                           onClick={() => onOpen({ kind: slug!, namespace: e.objectNamespace ?? '', name: e.objectName! })}
                           className="min-w-0 truncate font-medium text-[color:var(--brand)] hover:underline"
                         >
-                          {e.objectNamespace ? `${e.objectNamespace}/` : ''}{e.objectName}
+                          {e.objectNamespace ? `${e.objectNamespace}/` : ''}
+                          {e.objectName}
                         </button>
                       ) : (
-                        <span className="min-w-0 truncate text-muted-foreground">{e.objectNamespace ? `${e.objectNamespace}/` : ''}{e.objectName}</span>
+                        <span className="min-w-0 truncate text-muted-foreground">
+                          {e.objectNamespace ? `${e.objectNamespace}/` : ''}
+                          {e.objectName}
+                        </span>
                       )}
                     </span>
                   )}

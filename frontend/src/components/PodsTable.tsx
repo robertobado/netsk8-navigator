@@ -51,7 +51,6 @@ const GROUP_STYLE: Record<string, string> = {
   terminating: 'bg-muted text-muted-foreground ring-border',
 }
 
-
 // Live-ticking relative age from an ISO timestamp (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
   const [, tick] = useState(0)
@@ -69,7 +68,13 @@ const TERM_PROBLEM_REASONS = /(kill|prestop|delete|terminat|graceful|unmount|det
 //  (a) the pod has a Warning event about the termination itself, or
 //  (b) it has finalizers and has been Terminating > 5min.
 // The bubble shows whichever detail drove the warning. Otherwise: a grey ellipsis.
-function TerminatingStatus({ ctx, namespace, name, deletedAt, finalizers }: Readonly<{ ctx: string; namespace: string; name: string; deletedAt?: string; finalizers: string[] }>) {
+function TerminatingStatus({
+  ctx,
+  namespace,
+  name,
+  deletedAt,
+  finalizers,
+}: Readonly<{ ctx: string; namespace: string; name: string; deletedAt?: string; finalizers: string[] }>) {
   const [, tick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => tick((t) => t + 1), 1000)
@@ -146,7 +151,16 @@ function TerminatingStatus({ ctx, namespace, name, deletedAt, finalizers }: Read
 
 // Status cell: badge text = kubectl-style effective status (the reason when a
 // container isn't healthy, even in phase Running), colored + iconed by group.
-function PodStatus({ status, reason, deletedAt, finalizers, ctx, namespace, name, createdAt }: Readonly<{ status: string; reason: string; deletedAt?: string; finalizers?: string[]; ctx: string; namespace: string; name: string; createdAt?: string }>) {
+function PodStatus({
+  status,
+  reason,
+  deletedAt,
+  finalizers,
+  ctx,
+  namespace,
+  name,
+  createdAt,
+}: Readonly<{ status: string; reason: string; deletedAt?: string; finalizers?: string[]; ctx: string; namespace: string; name: string; createdAt?: string }>) {
   const group = classify(status, reason)
   const text = reason || status
 
@@ -172,8 +186,18 @@ function PodStatus({ status, reason, deletedAt, finalizers, ctx, namespace, name
     </span>
   )
   let content: React.ReactNode
-  if (group === 'error') content = pill(<><AlertTriangle className="size-3" /> {text}</>)
-  else if (group === 'ok') content = pill(<><CircleCheck className="size-3" /> {text}</>)
+  if (group === 'error')
+    content = pill(
+      <>
+        <AlertTriangle className="size-3" /> {text}
+      </>,
+    )
+  else if (group === 'ok')
+    content = pill(
+      <>
+        <CircleCheck className="size-3" /> {text}
+      </>,
+    )
   else if (group === 'transient')
     content = pill(
       <>
@@ -201,7 +225,13 @@ function PodStatus({ status, reason, deletedAt, finalizers, ctx, namespace, name
 // Pending status: the badge + a live time-in-pending counter inline. The error
 // detail (and a pin) are revealed only while hovering the Status badge area, so
 // non-hovered rows all keep the same height.
-function PendingStatus({ ctx, namespace, name, createdAt, children }: Readonly<{ ctx: string; namespace: string; name: string; createdAt?: string; children: React.ReactNode }>) {
+function PendingStatus({
+  ctx,
+  namespace,
+  name,
+  createdAt,
+  children,
+}: Readonly<{ ctx: string; namespace: string; name: string; createdAt?: string; children: React.ReactNode }>) {
   const ref = useRef<HTMLSpanElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const [hovering, setHovering] = useState(false)
@@ -254,7 +284,10 @@ function PendingStatus({ ctx, namespace, name, createdAt, children }: Readonly<{
                   setPinned((v) => !v)
                 }}
                 title={pinned ? 'Desafixar' : 'Fixar'}
-                className={cn('inline-flex items-center gap-1 rounded px-1 text-[10px] font-medium transition-colors', pinned ? 'text-[color:var(--brand)]' : 'text-muted-foreground hover:text-foreground')}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-1 text-[10px] font-medium transition-colors',
+                  pinned ? 'text-[color:var(--brand)]' : 'text-muted-foreground hover:text-foreground',
+                )}
               >
                 <Pin className={cn('size-3 transition-transform', pinned ? 'rotate-0 fill-current' : 'rotate-45')} />
                 {pinned ? 'fixado' : 'fixar'}
@@ -353,100 +386,98 @@ export function PodsTable({
   useEffect(() => writeBasis('mem', memBasis), [memBasis])
 
   // Attach each pod's usage to its row. New array on every metrics refetch → re-sort.
-  const rows = useMemo<PodRow[]>(
-    () => (usage ? pods.map((p) => ({ ...p, usage: usage[`${p.namespace}/${p.name}`] })) : pods),
-    [pods, usage],
-  )
+  const rows = useMemo<PodRow[]>(() => (usage ? pods.map((p) => ({ ...p, usage: usage[`${p.namespace}/${p.name}`] })) : pods), [pods, usage])
 
-  const columns = useMemo(
-    () => {
-      const cols = [
-        col.accessor('name', { header: 'Nome', cell: (c) => <span className="font-medium">{c.getValue()}</span> }),
-        col.accessor('namespace', { header: 'Namespace', cell: (c) => <span className="text-muted-foreground">{c.getValue()}</span> }),
-        col.accessor('status', { header: 'Status', cell: (c) => <PodStatus status={c.getValue()} reason={c.row.original.reason} deletedAt={c.row.original.deletedAt} finalizers={c.row.original.finalizers} createdAt={c.row.original.age} ctx={ctx} namespace={c.row.original.namespace} name={c.row.original.name} /> }),
-        col.accessor((r) => `${r.ready}/${r.total}`, {
-          id: 'ready',
-          header: 'Ready',
+  const columns = useMemo(() => {
+    const cols = [
+      col.accessor('name', { header: 'Nome', cell: (c) => <span className="font-medium">{c.getValue()}</span> }),
+      col.accessor('namespace', { header: 'Namespace', cell: (c) => <span className="text-muted-foreground">{c.getValue()}</span> }),
+      col.accessor('status', {
+        header: 'Status',
+        cell: (c) => (
+          <PodStatus
+            status={c.getValue()}
+            reason={c.row.original.reason}
+            deletedAt={c.row.original.deletedAt}
+            finalizers={c.row.original.finalizers}
+            createdAt={c.row.original.age}
+            ctx={ctx}
+            namespace={c.row.original.namespace}
+            name={c.row.original.name}
+          />
+        ),
+      }),
+      col.accessor((r) => `${r.ready}/${r.total}`, {
+        id: 'ready',
+        header: 'Ready',
+        cell: (c) => {
+          const r = c.row.original
+          // Fully-ready, or a pod that finished successfully (Completed/Succeeded),
+          // reads as green — a finished Job pod shows 0/1 but isn't unhealthy.
+          const healthy = (r.ready === r.total && r.total > 0) || classify(r.status, r.reason) === 'ok'
+          return <span className={cn('font-mono text-sm tabular-nums', healthy ? 'text-[color:var(--ok)]' : 'text-[color:var(--warn)]')}>{c.getValue()}</span>
+        },
+      }),
+      col.accessor('restarts', {
+        header: 'Restarts',
+        cell: (c) => {
+          const n = c.getValue()
+          return <span className={cn('font-mono text-sm tabular-nums', n > 0 ? 'text-[color:var(--warn)]' : 'text-muted-foreground')}>{n}</span>
+        },
+      }),
+      col.accessor((r) => (r.ownerKind ? `${r.ownerKind}/${r.ownerName}` : ''), {
+        id: 'controlledBy',
+        header: 'Controlled By',
+        cell: (c) => {
+          const p = c.row.original
+          const slug = p.ownerKind ? kindToSlug(p.ownerKind) : null
+          if (!slug) return <span className="text-muted-foreground">—</span>
+          return (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">{p.ownerKind}</span>
+              <ResourceLink label={p.ownerName} onOpen={() => onOpenResource({ kind: slug, namespace: p.namespace, name: p.ownerName, editable: false })} />
+            </span>
+          )
+        },
+      }),
+      col.accessor('node', {
+        header: 'Node',
+        cell: (c) => {
+          const node = c.getValue()
+          if (!node) return <span className="text-xs text-muted-foreground">—</span>
+          return (
+            <span className="text-xs">
+              <ResourceLink label={node} onOpen={() => onOpenResource({ kind: 'node', namespace: '', name: node, editable: false })} />
+            </span>
+          )
+        },
+      }),
+      col.accessor('age', {
+        header: 'Age',
+        cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{age(c.getValue())}</span>,
+        sortingFn: (a, b) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime(),
+      }),
+    ]
+    // Insert the usage mini-gauges as two sortable columns right after Status,
+    // when available. Sorting is by utilization % (the number shown, used/ceiling),
+    // highest first; pods with no ceiling / no reading get -1 so they sink to the bottom.
+    if (hasUsage) {
+      const usageCol = (id: string, header: string, kind: 'cores' | 'bytes', basis: UsageBasis, setBasis: (b: UsageBasis) => void) =>
+        col.accessor((r) => usageSortValue(r.usage?.[kind === 'cores' ? 'cpu' : 'memory'], basis), {
+          id,
+          header,
+          sortDescFirst: true,
+          meta: { headerAddon: <UsageBasisToggle basis={basis} onChange={setBasis} /> },
           cell: (c) => {
-            const r = c.row.original
-            // Fully-ready, or a pod that finished successfully (Completed/Succeeded),
-            // reads as green — a finished Job pod shows 0/1 but isn't unhealthy.
-            const healthy = (r.ready === r.total && r.total > 0) || classify(r.status, r.reason) === 'ok'
-            return (
-              <span className={cn('font-mono text-sm tabular-nums', healthy ? 'text-[color:var(--ok)]' : 'text-[color:var(--warn)]')}>
-                {c.getValue()}
-              </span>
-            )
+            const u = c.row.original.usage
+            if (!u) return <span className="text-xs text-muted-foreground">—</span>
+            return <MiniGauge g={kind === 'cores' ? u.cpu : u.memory} kind={kind} />
           },
-        }),
-        col.accessor('restarts', {
-          header: 'Restarts',
-          cell: (c) => {
-            const n = c.getValue()
-            return <span className={cn('font-mono text-sm tabular-nums', n > 0 ? 'text-[color:var(--warn)]' : 'text-muted-foreground')}>{n}</span>
-          },
-        }),
-        col.accessor((r) => (r.ownerKind ? `${r.ownerKind}/${r.ownerName}` : ''), {
-          id: 'controlledBy',
-          header: 'Controlled By',
-          cell: (c) => {
-            const p = c.row.original
-            const slug = p.ownerKind ? kindToSlug(p.ownerKind) : null
-            if (!slug) return <span className="text-muted-foreground">—</span>
-            return (
-              <span className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">{p.ownerKind}</span>
-                <ResourceLink
-                  label={p.ownerName}
-                  onOpen={() => onOpenResource({ kind: slug, namespace: p.namespace, name: p.ownerName, editable: false })}
-                />
-              </span>
-            )
-          },
-        }),
-        col.accessor('node', {
-          header: 'Node',
-          cell: (c) => {
-            const node = c.getValue()
-            if (!node) return <span className="text-xs text-muted-foreground">—</span>
-            return (
-              <span className="text-xs">
-                <ResourceLink label={node} onOpen={() => onOpenResource({ kind: 'node', namespace: '', name: node, editable: false })} />
-              </span>
-            )
-          },
-        }),
-        col.accessor('age', {
-          header: 'Age',
-          cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{age(c.getValue())}</span>,
-          sortingFn: (a, b) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime(),
-        }),
-      ]
-      // Insert the usage mini-gauges as two sortable columns right after Status,
-      // when available. Sorting is by utilization % (the number shown, used/ceiling),
-      // highest first; pods with no ceiling / no reading get -1 so they sink to the bottom.
-      if (hasUsage) {
-        const usageCol = (id: string, header: string, kind: 'cores' | 'bytes', basis: UsageBasis, setBasis: (b: UsageBasis) => void) =>
-          col.accessor(
-            (r) => usageSortValue(r.usage?.[kind === 'cores' ? 'cpu' : 'memory'], basis),
-            {
-              id,
-              header,
-              sortDescFirst: true,
-              meta: { headerAddon: <UsageBasisToggle basis={basis} onChange={setBasis} /> },
-              cell: (c) => {
-                const u = c.row.original.usage
-                if (!u) return <span className="text-xs text-muted-foreground">—</span>
-                return <MiniGauge g={kind === 'cores' ? u.cpu : u.memory} kind={kind} />
-              },
-            },
-          ) as (typeof cols)[number]
-        cols.splice(3, 0, usageCol('cpu', 'CPU', 'cores', cpuBasis, setCpuBasis), usageCol('mem', 'Mem', 'bytes', memBasis, setMemBasis))
-      }
-      return cols as ColumnDef<PodRow, unknown>[]
-    },
-    [ctx, onOpenResource, hasUsage, cpuBasis, memBasis],
-  )
+        }) as (typeof cols)[number]
+      cols.splice(3, 0, usageCol('cpu', 'CPU', 'cores', cpuBasis, setCpuBasis), usageCol('mem', 'Mem', 'bytes', memBasis, setMemBasis))
+    }
+    return cols as ColumnDef<PodRow, unknown>[]
+  }, [ctx, onOpenResource, hasUsage, cpuBasis, memBasis])
 
   return (
     <DataTable

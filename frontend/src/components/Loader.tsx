@@ -8,12 +8,24 @@
 
 // Deterministic starfield (x, y, r, color, twinkle duration, delay).
 const STARS: [number, number, number, string, number, number][] = [
-  [22, 20, 0.9, '#fff', 3.1, 0], [34, 12, 0.7, '#bfe9ff', 2.4, 0.6], [48, 24, 0.8, '#fff', 3.6, 1.2],
-  [70, 14, 0.7, '#ffe9a8', 2.8, 0.3], [86, 22, 0.9, '#fff', 3.2, 0.9], [96, 34, 0.7, '#bfe9ff', 2.5, 1.5],
-  [16, 38, 0.8, '#fff', 3.4, 0.4], [30, 46, 0.6, '#c9fff0', 2.7, 1.1], [58, 16, 0.6, '#fff', 3.0, 1.8],
-  [78, 40, 0.8, '#fff', 2.9, 0.2], [92, 50, 0.7, '#ffe9a8', 3.5, 1.3], [12, 54, 0.7, '#bfe9ff', 3.1, 0.7],
-  [40, 34, 0.6, '#fff', 2.6, 1.6], [64, 30, 0.7, '#fff', 3.3, 0.5], [104, 44, 0.6, '#c9fff0', 2.8, 1.0],
-  [26, 62, 0.6, '#fff', 3.0, 1.4], [50, 56, 0.5, '#fff', 2.5, 0.8], [82, 60, 0.6, '#bfe9ff', 3.4, 0.1],
+  [22, 20, 0.9, '#fff', 3.1, 0],
+  [34, 12, 0.7, '#bfe9ff', 2.4, 0.6],
+  [48, 24, 0.8, '#fff', 3.6, 1.2],
+  [70, 14, 0.7, '#ffe9a8', 2.8, 0.3],
+  [86, 22, 0.9, '#fff', 3.2, 0.9],
+  [96, 34, 0.7, '#bfe9ff', 2.5, 1.5],
+  [16, 38, 0.8, '#fff', 3.4, 0.4],
+  [30, 46, 0.6, '#c9fff0', 2.7, 1.1],
+  [58, 16, 0.6, '#fff', 3.0, 1.8],
+  [78, 40, 0.8, '#fff', 2.9, 0.2],
+  [92, 50, 0.7, '#ffe9a8', 3.5, 1.3],
+  [12, 54, 0.7, '#bfe9ff', 3.1, 0.7],
+  [40, 34, 0.6, '#fff', 2.6, 1.6],
+  [64, 30, 0.7, '#fff', 3.3, 0.5],
+  [104, 44, 0.6, '#c9fff0', 2.8, 1.0],
+  [26, 62, 0.6, '#fff', 3.0, 1.4],
+  [50, 56, 0.5, '#fff', 2.5, 0.8],
+  [82, 60, 0.6, '#bfe9ff', 3.4, 0.1],
 ]
 
 // Comets follow curved paths (arcs echoing the planet's curvature), right -> left.
@@ -111,15 +123,7 @@ export function NavigatorLoader({
 
           {/* Starfield */}
           {STARS.map(([x, y, r, fill, tw, d], i) => (
-            <circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={r}
-              fill={fill}
-              className="nk-star"
-              style={{ ['--tw' as string]: `${tw}s`, ['--d' as string]: `${d}s` }}
-            />
+            <circle key={i} cx={x} cy={y} r={r} fill={fill} className="nk-star" style={{ ['--tw' as string]: `${tw}s`, ['--d' as string]: `${d}s` }} />
           ))}
 
           {/* Four comets sweeping BEHIND the N (curved arcs across the sky) */}

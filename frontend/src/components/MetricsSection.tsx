@@ -20,7 +20,13 @@ export function MetricsSection(props: Readonly<{ ctx: string; scope: Scope; name
 
 // Chooses the richest available monitoring: Prometheus time-series if present,
 // else metrics-server instantaneous gauges, else nothing.
-function MetricsSectionInner({ ctx, scope, namespace, name, refreshMs }: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; refreshMs: number }>) {
+function MetricsSectionInner({
+  ctx,
+  scope,
+  namespace,
+  name,
+  refreshMs,
+}: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; refreshMs: number }>) {
   const monQ = useQuery({ queryKey: ['monitoring', ctx], queryFn: () => api.monitoring(ctx), staleTime: 5 * 60_000, refetchInterval: false })
 
   if (monQ.data?.available) return <TimeSeries ctx={ctx} scope={scope} namespace={namespace} name={name} source={monQ.data.kind} refreshMs={refreshMs} />
@@ -34,9 +40,7 @@ function SectionShell({ source, right, children }: Readonly<{ source?: string; r
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">
           <Activity className="size-4 text-[color:var(--brand)]" /> Métricas
-          {source && (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wider text-muted-foreground">{source}</span>
-          )}
+          {source && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wider text-muted-foreground">{source}</span>}
         </h3>
         {right}
       </div>
@@ -107,7 +111,9 @@ function NodeGaugeCell({ n, icon: Icon, kind }: Readonly<{ n: NodeUsageItem; ico
     <div className="flex min-w-0 flex-col items-center gap-1">
       <div className="flex max-w-full items-center gap-1">
         <Server className="size-3 shrink-0 text-muted-foreground" />
-        <span className="truncate font-mono text-[10px] text-foreground" title={n.name}>{shortNode(n.name)}</span>
+        <span className="truncate font-mono text-[10px] text-foreground" title={n.name}>
+          {shortNode(n.name)}
+        </span>
       </div>
       <GaugeCard bare compact title="" icon={Icon} g={kind === 'cores' ? n.cpu : n.memory} kind={kind} />
     </div>
@@ -149,7 +155,9 @@ function NodeMetricCarousel({ icon: Icon, kind, nodes }: Readonly<{ icon: typeof
     <div ref={viewportRef} className="flex min-w-0 flex-1 items-center self-stretch overflow-hidden border-l border-border/50 pl-4">
       {overflow ? (
         <div className="nk-marquee flex w-max shrink-0 items-center" style={{ animationDuration: `${durationS}s` }}>
-          <div ref={groupRef} className="flex shrink-0 items-center gap-3 pr-3">{cells}</div>
+          <div ref={groupRef} className="flex shrink-0 items-center gap-3 pr-3">
+            {cells}
+          </div>
           {/* second identical half → seamless wrap */}
           <div className="flex shrink-0 items-center gap-3 pr-3" aria-hidden>
             {sorted.map((n) => (
@@ -158,7 +166,9 @@ function NodeMetricCarousel({ icon: Icon, kind, nodes }: Readonly<{ icon: typeof
           </div>
         </div>
       ) : (
-        <div ref={groupRef} className="flex flex-1 items-center justify-around gap-3">{cells}</div>
+        <div ref={groupRef} className="flex flex-1 items-center justify-around gap-3">
+          {cells}
+        </div>
       )}
     </div>
   )
@@ -190,7 +200,15 @@ function zoneColor(f: number): string {
   return 'var(--ok)'
 }
 
-function GaugeCard({ title, icon: Icon, g, kind, loading, bare, compact }: Readonly<{ title: string; icon: typeof Cpu; g?: Gauge; kind: 'cores' | 'bytes'; loading?: boolean; bare?: boolean; compact?: boolean }>) {
+function GaugeCard({
+  title,
+  icon: Icon,
+  g,
+  kind,
+  loading,
+  bare,
+  compact,
+}: Readonly<{ title: string; icon: typeof Cpu; g?: Gauge; kind: 'cores' | 'bytes'; loading?: boolean; bare?: boolean; compact?: boolean }>) {
   const dim = compact ? { w: 116, h: 96 } : { w: 148, h: 122 }
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
   const used = g?.used ?? 0
@@ -226,18 +244,28 @@ function GaugeCard({ title, icon: Icon, g, kind, loading, bare, compact }: Reado
           )}
           {/* value arc: muted track + colored fill to `used` */}
           <path d={gSeg(G_RV, 0, 1)} stroke="var(--border)" strokeWidth="12" fill="none" strokeLinecap="round" />
-          {hasCeiling && vfrac > 0 && (
-            <path d={gSeg(G_RV, 0, vfrac)} stroke={color} strokeWidth="12" fill="none" strokeLinecap="round" />
-          )}
+          {hasCeiling && vfrac > 0 && <path d={gSeg(G_RV, 0, vfrac)} stroke={color} strokeWidth="12" fill="none" strokeLinecap="round" />}
           {reqMark && (
-            <line x1={reqMark[0][0]} y1={reqMark[0][1]} x2={reqMark[1][0]} y2={reqMark[1][1]} stroke="var(--foreground)" strokeWidth="2.5" strokeLinecap="round" />
+            <line
+              x1={reqMark[0][0]}
+              y1={reqMark[0][1]}
+              x2={reqMark[1][0]}
+              y2={reqMark[1][1]}
+              stroke="var(--foreground)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
           )}
         </svg>
         <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: '46%', transform: 'translateY(-50%)' }}>
           <span className={cn('font-bold leading-none tabular-nums', compact ? 'text-sm' : 'text-xl')} style={{ color }}>
             {loading ? '…' : fmt(used)}
           </span>
-          {hasCeiling && <span className={cn('mt-0.5 font-medium text-muted-foreground tabular-nums', compact ? 'text-[9px]' : 'text-[10px]')}>{Math.round(vfrac * 100)}%</span>}
+          {hasCeiling && (
+            <span className={cn('mt-0.5 font-medium text-muted-foreground tabular-nums', compact ? 'text-[9px]' : 'text-[10px]')}>
+              {Math.round(vfrac * 100)}%
+            </span>
+          )}
         </div>
       </div>
       {!compact &&
@@ -253,7 +281,13 @@ function GaugeCard({ title, icon: Icon, g, kind, loading, bare, compact }: Reado
           </div>
         ) : (
           <div className="text-[11px] text-muted-foreground">
-            {hasCeiling ? <>de <span className="font-mono text-foreground">{fmt(total)}</span> alocáveis</> : 'sem limite definido'}
+            {hasCeiling ? (
+              <>
+                de <span className="font-mono text-foreground">{fmt(total)}</span> alocáveis
+              </>
+            ) : (
+              'sem limite definido'
+            )}
           </div>
         ))}
     </div>
@@ -261,7 +295,14 @@ function GaugeCard({ title, icon: Icon, g, kind, loading, bare, compact }: Reado
 }
 
 // ---- Prometheus time-series -----------------------------------------------
-function TimeSeries({ ctx, scope, namespace, name, source, refreshMs }: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; source?: string; refreshMs: number }>) {
+function TimeSeries({
+  ctx,
+  scope,
+  namespace,
+  name,
+  source,
+  refreshMs,
+}: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; source?: string; refreshMs: number }>) {
   const [range, setRange] = useState<string>('1h')
   const q = useQuery({
     queryKey: ['metrics', ctx, scope, namespace, name, range],
@@ -294,7 +335,10 @@ function TimeSeries({ ctx, scope, namespace, name, source, refreshMs }: Readonly
             <button
               key={r}
               onClick={() => setRange(r)}
-              className={cn('rounded-md px-2 py-0.5 text-xs font-medium transition-colors', range === r ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground')}
+              className={cn(
+                'rounded-md px-2 py-0.5 text-xs font-medium transition-colors',
+                range === r ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground',
+              )}
             >
               {r}
             </button>
@@ -303,8 +347,32 @@ function TimeSeries({ ctx, scope, namespace, name, source, refreshMs }: Readonly
       }
     >
       <div className="grid gap-3 lg:grid-cols-2">
-        <TimeChartPanel title="CPU" icon={Cpu} kind="cores" color="var(--brand)" series={q.data?.cpu} ceiling={cpuCeil} loading={q.isLoading} ctx={ctx} range={range} refreshMs={refreshMs} nodes={nodes} />
-        <TimeChartPanel title="Memória" icon={MemoryStick} kind="bytes" color="var(--primary)" series={q.data?.memory} ceiling={memCeil} loading={q.isLoading} ctx={ctx} range={range} refreshMs={refreshMs} nodes={nodes} />
+        <TimeChartPanel
+          title="CPU"
+          icon={Cpu}
+          kind="cores"
+          color="var(--brand)"
+          series={q.data?.cpu}
+          ceiling={cpuCeil}
+          loading={q.isLoading}
+          ctx={ctx}
+          range={range}
+          refreshMs={refreshMs}
+          nodes={nodes}
+        />
+        <TimeChartPanel
+          title="Memória"
+          icon={MemoryStick}
+          kind="bytes"
+          color="var(--primary)"
+          series={q.data?.memory}
+          ceiling={memCeil}
+          loading={q.isLoading}
+          ctx={ctx}
+          range={range}
+          refreshMs={refreshMs}
+          nodes={nodes}
+        />
       </div>
     </SectionShell>
   )
@@ -324,7 +392,19 @@ function TimeChartPanel({
   range,
   refreshMs,
   nodes,
-}: Readonly<{ title: string; icon: typeof Cpu; kind: 'cores' | 'bytes'; color: string; series?: MetricSeries; ceiling?: number; loading?: boolean; ctx: string; range: string; refreshMs: number; nodes: NodeUsageItem[] }>) {
+}: Readonly<{
+  title: string
+  icon: typeof Cpu
+  kind: 'cores' | 'bytes'
+  color: string
+  series?: MetricSeries
+  ceiling?: number
+  loading?: boolean
+  ctx: string
+  range: string
+  refreshMs: number
+  nodes: NodeUsageItem[]
+}>) {
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
   const last = series?.points.at(-1)?.v
   const hasPct = ceiling > 0
@@ -396,7 +476,9 @@ function NodeChartCarousel({
       <div key={idx} className="nk-slide flex min-w-0 flex-1 flex-col">
         <div className="mb-1 flex items-center gap-1.5">
           <Server className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-[10px] text-foreground" title={n?.name}>{n ? shortNode(n.name) : '—'}</span>
+          <span className="truncate font-mono text-[10px] text-foreground" title={n?.name}>
+            {n ? shortNode(n.name) : '—'}
+          </span>
         </div>
         <Chart title={title} series={series} ceiling={ceiling} color={color} kind={kind} loading={nodeQ.isLoading} height={112} />
       </div>
@@ -405,7 +487,9 @@ function NodeChartCarousel({
           <button type="button" onClick={() => go(-1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label="Anterior">
             <ChevronLeft className="size-3.5" />
           </button>
-          <span className="min-w-[2.5rem] text-center text-[10px] tabular-nums text-muted-foreground">{idx + 1}/{len}</span>
+          <span className="min-w-[2.5rem] text-center text-[10px] tabular-nums text-muted-foreground">
+            {idx + 1}/{len}
+          </span>
           <button type="button" onClick={() => go(1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label="Próximo">
             <ChevronRight className="size-3.5" />
           </button>
@@ -462,8 +546,23 @@ const Chart = memo(function Chart({
             </linearGradient>
           </defs>
           <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.4} />
-          <XAxis dataKey="t" tickFormatter={fmtTime} minTickGap={48} tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis yAxisId="abs" width={44} domain={domain} tickFormatter={(v) => fmt(v)} tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }} axisLine={false} tickLine={false} />
+          <XAxis
+            dataKey="t"
+            tickFormatter={fmtTime}
+            minTickGap={48}
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            yAxisId="abs"
+            width={44}
+            domain={domain}
+            tickFormatter={(v) => fmt(v)}
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
           {hasPct && (
             <YAxis
               yAxisId="pct"
@@ -494,7 +593,11 @@ const Chart = memo(function Chart({
                   {hasPct && pv != null && (
                     <div className="mt-1 flex items-center justify-between gap-5">
                       <span className="flex items-center gap-1.5 text-muted-foreground">
-                        <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: 'color-mix(in srgb, var(--foreground) 55%, transparent)' }} /> Utilização
+                        <span
+                          className="inline-block h-0.5 w-3 rounded-full"
+                          style={{ background: 'color-mix(in srgb, var(--foreground) 55%, transparent)' }}
+                        />{' '}
+                        Utilização
                       </span>
                       <span className="font-mono font-medium tabular-nums">{Math.round(Number(pv))}%</span>
                     </div>
@@ -503,7 +606,17 @@ const Chart = memo(function Chart({
               )
             }}
           />
-          <Area yAxisId="abs" type="monotone" dataKey="v" name={title} stroke={color} strokeWidth={2} fill={`url(#${gid})`} dot={false} isAnimationActive={false} />
+          <Area
+            yAxisId="abs"
+            type="monotone"
+            dataKey="v"
+            name={title}
+            stroke={color}
+            strokeWidth={2}
+            fill={`url(#${gid})`}
+            dot={false}
+            isAnimationActive={false}
+          />
           {hasPct && (
             <Line
               yAxisId="pct"

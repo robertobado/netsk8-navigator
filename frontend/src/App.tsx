@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Activity,
-  Boxes,
-  CircleAlert,
-  CircleDot,
-  Layers,
-  Server,
-} from 'lucide-react'
+import { Activity, Boxes, CircleAlert, CircleDot, Layers, Server } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useLivePods } from '@/lib/useLivePods'
 import { shortContext } from '@/lib/utils'
@@ -136,86 +129,78 @@ function AppMain() {
     <>
       <VantaBackground enabled={vanta.enabled} effect={vanta.effect} opacity={vanta.opacity} />
       <div className="relative z-10 flex h-screen">
-      {/* Sidebar */}
-      <aside className="flex w-72 shrink-0 flex-col gap-4 border-r bg-background/40 p-4 backdrop-blur-xl">
-        <div className="flex items-center gap-2.5 px-1 pt-1">
-          <span className="shrink-0 drop-shadow-lg">
-            <NavigatorLoader size={40} sky="green" />
-          </span>
-          <div>
-            <h1 className="text-sm font-semibold leading-tight tracking-tight">
-              Nets<span className="text-[color:var(--brand)]">k8</span> Navigator
-            </h1>
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('app.subtitle')}</p>
-          </div>
-        </div>
-
-        <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={setCtx} />
-        {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={setNs} />}
-
-        <div className="min-h-0 flex-1 overflow-y-auto pt-1">
-          <ResourceNav active={view} onSelect={setView} routes={routes} />
-        </div>
-
-        <MetricsControls />
-        <VantaControls {...vanta} />
-        <LanguageToggle />
-      </aside>
-
-      {/* Main */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="relative z-30 flex items-center justify-between gap-4 border-b bg-background/30 px-6 py-4 backdrop-blur-xl">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Server className="size-3.5" />
-              <span className="truncate">{ctx ? shortContext(ctx) : '—'}</span>
-              <span className="text-border">/</span>
-              <span>{ns || t('app.allNamespaces')}</span>
+        {/* Sidebar */}
+        <aside className="flex w-72 shrink-0 flex-col gap-4 border-r bg-background/40 p-4 backdrop-blur-xl">
+          <div className="flex items-center gap-2.5 px-1 pt-1">
+            <span className="shrink-0 drop-shadow-lg">
+              <NavigatorLoader size={40} sky="green" />
+            </span>
+            <div>
+              <h1 className="text-sm font-semibold leading-tight tracking-tight">
+                Nets<span className="text-[color:var(--brand)]">k8</span> Navigator
+              </h1>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('app.subtitle')}</p>
             </div>
-            <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{viewTitle}</h2>
           </div>
-        </header>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-          {contextsQ.isError && <ErrorBanner message={(contextsQ.error as Error).message} />}
+          <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={setCtx} />
+          {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={setNs} />}
 
-          {!ctx && !contextsQ.isError && (
-            <div className="flex h-[70vh] flex-col items-center justify-center gap-5 text-center">
-              <NavigatorLoader
-                size={160}
-                sky="green"
-                state={contextsQ.isLoading ? 'connecting' : 'ready'}
-                label={contextsQ.isLoading ? t('app.connecting') : t('app.ready')}
-              />
-              <div>
-                <h2 className="text-xl font-semibold tracking-tight">
-                  Nets<span className="text-[color:var(--brand)]">k8</span> Navigator
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {contextsQ.isLoading ? t('app.loadingClusters') : t('app.selectCluster')}
-                </p>
+          <div className="min-h-0 flex-1 overflow-y-auto pt-1">
+            <ResourceNav active={view} onSelect={setView} routes={routes} />
+          </div>
+
+          <MetricsControls />
+          <VantaControls {...vanta} />
+          <LanguageToggle />
+        </aside>
+
+        {/* Main */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="relative z-30 flex items-center justify-between gap-4 border-b bg-background/30 px-6 py-4 backdrop-blur-xl">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Server className="size-3.5" />
+                <span className="truncate">{ctx ? shortContext(ctx) : '—'}</span>
+                <span className="text-border">/</span>
+                <span>{ns || t('app.allNamespaces')}</span>
               </div>
+              <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{viewTitle}</h2>
             </div>
-          )}
+          </header>
 
-          {ctx && view === 'overview' && (
-            <OverviewPanel ctx={ctx} ns={ns} overview={overviewQ.data} loading={overviewQ.isLoading} error={overviewQ.error as Error | null} />
-          )}
-          {view === 'pods' && ctx && <LivePods ctx={ctx} ns={ns} />}
-          {view === 'events' && ctx && <EventsPage ctx={ctx} ns={ns} />}
-          {view === 'topology' && ctx && <TopologyView ctx={ctx} ns={ns} />}
-          {ctx && resDef && <ResourceView key={resDef.key} def={resDef} ctx={ctx} ns={ns} />}
-          {ctx && activeRoute && <CustomResourceView key={view} ctx={ctx} ns={ns} rk={activeRoute} />}
-        </div>
-      </main>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            {contextsQ.isError && <ErrorBanner message={(contextsQ.error as Error).message} />}
 
-      <CommandPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        contexts={contextsQ.data ?? []}
-        onNavigate={setView}
-        onSelectContext={setCtx}
-      />
+            {!ctx && !contextsQ.isError && (
+              <div className="flex h-[70vh] flex-col items-center justify-center gap-5 text-center">
+                <NavigatorLoader
+                  size={160}
+                  sky="green"
+                  state={contextsQ.isLoading ? 'connecting' : 'ready'}
+                  label={contextsQ.isLoading ? t('app.connecting') : t('app.ready')}
+                />
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight">
+                    Nets<span className="text-[color:var(--brand)]">k8</span> Navigator
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">{contextsQ.isLoading ? t('app.loadingClusters') : t('app.selectCluster')}</p>
+                </div>
+              </div>
+            )}
+
+            {ctx && view === 'overview' && (
+              <OverviewPanel ctx={ctx} ns={ns} overview={overviewQ.data} loading={overviewQ.isLoading} error={overviewQ.error as Error | null} />
+            )}
+            {view === 'pods' && ctx && <LivePods ctx={ctx} ns={ns} />}
+            {view === 'events' && ctx && <EventsPage ctx={ctx} ns={ns} />}
+            {view === 'topology' && ctx && <TopologyView ctx={ctx} ns={ns} />}
+            {ctx && resDef && <ResourceView key={resDef.key} def={resDef} ctx={ctx} ns={ns} />}
+            {ctx && activeRoute && <CustomResourceView key={view} ctx={ctx} ns={ns} rk={activeRoute} />}
+          </div>
+        </main>
+
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} contexts={contextsQ.data ?? []} onNavigate={setView} onSelectContext={setCtx} />
       </div>
     </>
   )

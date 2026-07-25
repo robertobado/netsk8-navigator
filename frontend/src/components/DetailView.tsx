@@ -62,7 +62,9 @@ export function DetailView({
       </div>
     )
   if (q.isError || !q.data)
-    return <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message ?? 'Erro'}</div>
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message ?? 'Erro'}</div>
+    )
 
   return <DetailBody d={q.data} ctx={ctx} kind={kind} namespace={namespace} name={name} onOpenPod={onOpenPod} onOpenResource={onOpenResource} />
 }
@@ -119,20 +121,27 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                 {d.ownerKind}/{d.ownerName}
               </button>
             ) : (
-              <span className="text-foreground">{d.ownerKind}/{d.ownerName}</span>
+              <span className="text-foreground">
+                {d.ownerKind}/{d.ownerName}
+              </span>
             )}
           </span>
         )}
       </div>
 
       {/* Live metrics (only when a metrics backend is available) */}
-      {(kind === 'pod' || kind === 'node') && (
-        <MetricsSection ctx={ctx} scope={kind} namespace={kind === 'pod' ? namespace : undefined} name={name} />
-      )}
+      {(kind === 'pod' || kind === 'node') && <MetricsSection ctx={ctx} scope={kind} namespace={kind === 'pod' ? namespace : undefined} name={name} />}
 
       {/* Backing pods (workload by ownership; service by selector) */}
       {onOpenPod && POD_LISTING_KINDS.has(kind as ManifestKind) && (
-        <WorkloadPods ctx={ctx} kind={kind as ManifestKind} namespace={namespace} name={name} onOpen={onOpenPod} label={kind === 'service' ? 'Endpoints' : 'Pods'} />
+        <WorkloadPods
+          ctx={ctx}
+          kind={kind as ManifestKind}
+          namespace={namespace}
+          name={name}
+          onOpen={onOpenPod}
+          label={kind === 'service' ? 'Endpoints' : 'Pods'}
+        />
       )}
 
       {/* Hosts (routes) — non-wildcard hosts open in a new tab */}
@@ -141,7 +150,12 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
           <div className="space-y-0.5">
             {hosts.map((h) => {
               const wildcard = h.includes('*')
-              if (wildcard) return <div key={h} className="px-2 py-1.5 font-mono text-sm text-muted-foreground">{h}</div>
+              if (wildcard)
+                return (
+                  <div key={h} className="px-2 py-1.5 font-mono text-sm text-muted-foreground">
+                    {h}
+                  </div>
+                )
               return (
                 <a
                   key={h}
@@ -150,7 +164,9 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                   rel="noreferrer"
                   className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/40"
                 >
-                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-[color:var(--brand)] underline decoration-dotted underline-offset-2">{h}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-[color:var(--brand)] underline decoration-dotted underline-offset-2">
+                    {h}
+                  </span>
                   <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-60 transition-opacity group-hover:opacity-100" />
                 </a>
               )
@@ -178,10 +194,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
         <Card title="Portas">
           <div className="flex flex-wrap gap-2">
             {ports.map((p) => (
-              <span
-                key={`${p.name}-${p.port}-${p.protocol}`}
-                className="inline-flex items-center gap-2 rounded-lg border bg-background/40 py-1 pl-2 pr-2.5"
-              >
+              <span key={`${p.name}-${p.port}-${p.protocol}`} className="inline-flex items-center gap-2 rounded-lg border bg-background/40 py-1 pl-2 pr-2.5">
                 <Plug className="size-3.5 shrink-0 text-[color:var(--brand)]" />
                 {p.name && <span className="text-xs font-medium text-muted-foreground">{p.name}</span>}
                 <span className="font-mono text-sm font-semibold tabular-nums">{p.port}</span>
@@ -225,13 +238,17 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                     className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
                     title="Abrir detalhes"
                   >
-                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{r.kind}</span>
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      {r.kind}
+                    </span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-sm font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2">{r.name}</span>
                       {r.namespace && <span className="truncate font-mono text-[11px] text-muted-foreground">{r.namespace}</span>}
                     </span>
                     {r.note && (
-                      <span className={cn('shrink-0 font-mono text-[11px]', r.note.includes('não pronto') ? 'text-[color:var(--warn)]' : 'text-muted-foreground')}>
+                      <span
+                        className={cn('shrink-0 font-mono text-[11px]', r.note.includes('não pronto') ? 'text-[color:var(--warn)]' : 'text-muted-foreground')}
+                      >
                         {r.note}
                       </span>
                     )}
@@ -289,7 +306,14 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
   )
 }
 
-function WorkloadPods({ ctx, kind, namespace, name, onOpen, label = 'Pods' }: Readonly<{ ctx: string; kind: ManifestKind; namespace: string; name: string; onOpen: (p: Pod) => void; label?: string }>) {
+function WorkloadPods({
+  ctx,
+  kind,
+  namespace,
+  name,
+  onOpen,
+  label = 'Pods',
+}: Readonly<{ ctx: string; kind: ManifestKind; namespace: string; name: string; onOpen: (p: Pod) => void; label?: string }>) {
   const q = useQuery({
     queryKey: ['workloadpods', ctx, kind, namespace, name],
     queryFn: () => api.workloadPods(ctx, kind, namespace, name),
@@ -313,7 +337,9 @@ function WorkloadPods({ ctx, kind, namespace, name, onOpen, label = 'Pods' }: Re
               className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
               title="Abrir detalhes do pod"
             >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2">{p.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2">
+                {p.name}
+              </span>
               <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                 {p.ready}/{p.total}
               </span>
@@ -349,7 +375,9 @@ function DataRow({ title, body, masked }: Readonly<{ title: string; body: string
           </button>
         </div>
         {revealed ? (
-          <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/50 p-2.5 font-mono text-xs leading-relaxed text-foreground/90">{body}</pre>
+          <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/50 p-2.5 font-mono text-xs leading-relaxed text-foreground/90">
+            {body}
+          </pre>
         ) : (
           <div className="mt-1 select-none font-mono text-xs tracking-widest text-muted-foreground/60">••••••••••••</div>
         )}
@@ -375,7 +403,9 @@ function DataRow({ title, body, masked }: Readonly<{ title: string; body: string
         {!open && <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted-foreground">{body.split('\n')[0]}</span>}
       </button>
       {open && (
-        <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/50 p-2.5 font-mono text-xs leading-relaxed text-foreground/90">{body}</pre>
+        <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-background/50 p-2.5 font-mono text-xs leading-relaxed text-foreground/90">
+          {body}
+        </pre>
       )}
     </div>
   )

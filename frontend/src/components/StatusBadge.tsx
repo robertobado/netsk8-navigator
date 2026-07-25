@@ -19,12 +19,7 @@ const styles: Record<string, string> = {
 export function StatusBadge({ status }: { status: string }) {
   const t = tone(status)
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset',
-        styles[t],
-      )}
-    >
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', styles[t])}>
       <span
         className={cn('size-1.5 rounded-full', {
           'bg-[color:var(--ok)]': t === 'ok',

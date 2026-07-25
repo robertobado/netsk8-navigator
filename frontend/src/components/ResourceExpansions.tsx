@@ -58,7 +58,9 @@ function PodPill({ pod, onOpen }: Readonly<{ pod: Pod; onOpen: OpenTarget }>) {
     >
       <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: podTone(pod.status) }} />
       <span className="min-w-0 flex-1 truncate font-medium text-[color:var(--brand)]">{pod.name}</span>
-      <span className="shrink-0 font-mono text-muted-foreground tabular-nums">{pod.ready}/{pod.total}</span>
+      <span className="shrink-0 font-mono text-muted-foreground tabular-nums">
+        {pod.ready}/{pod.total}
+      </span>
       <span className="w-28 shrink-0 truncate text-right text-muted-foreground">{pod.status}</span>
     </button>
   )
@@ -146,12 +148,7 @@ export function ConsumersExpansion({
 
 // --- ServiceAccount → bindings + pods running as it -------------------------
 
-export function ServiceAccountExpansion({
-  ctx,
-  namespace,
-  name,
-  onOpen,
-}: Readonly<{ ctx: string; namespace: string; name: string; onOpen: OpenTarget }>) {
+export function ServiceAccountExpansion({ ctx, namespace, name, onOpen }: Readonly<{ ctx: string; namespace: string; name: string; onOpen: OpenTarget }>) {
   const q = useQuery({ queryKey: ['saUsage', ctx, namespace, name], queryFn: () => api.serviceAccountUsage(ctx, namespace, name) })
   if (q.isLoading) return <Loading />
   const bindings = q.data?.bindings ?? []

@@ -35,17 +35,10 @@ export function EventsPanel({ ctx, namespace, name, kind }: Readonly<{ ctx: stri
           return (
             <li
               key={`${e.reason}-${e.last}-${i}`}
-              className={cn(
-                'rounded-xl border p-3',
-                warn ? 'border-[color:var(--warn)]/30 bg-[color:var(--warn)]/[0.06]' : 'bg-card/40',
-              )}
+              className={cn('rounded-xl border p-3', warn ? 'border-[color:var(--warn)]/30 bg-[color:var(--warn)]/[0.06]' : 'bg-card/40')}
             >
               <div className="flex items-center gap-2">
-                {warn ? (
-                  <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--warn)]" />
-                ) : (
-                  <Info className="size-3.5 shrink-0 text-muted-foreground" />
-                )}
+                {warn ? <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--warn)]" /> : <Info className="size-3.5 shrink-0 text-muted-foreground" />}
                 <span className={cn('text-sm font-medium', warn && 'text-[color:var(--warn)]')}>{e.reason}</span>
                 {e.count > 1 && (
                   <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">×{e.count}</span>

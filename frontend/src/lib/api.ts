@@ -440,26 +440,19 @@ export const api = {
   overview: (ctx: string) => get<Overview>(`/contexts/${enc(ctx)}/overview`),
   namespaces: (ctx: string) => get<NamespaceInfo[]>(`/contexts/${enc(ctx)}/namespaces`),
   pods: (ctx: string, ns?: string) => get<Pod[]>(`/contexts/${enc(ctx)}/pods${nsQuery(ns)}`),
-  podPending: (ctx: string, ns: string, name: string) =>
-    get<PendingInfo>(`/contexts/${enc(ctx)}/pods/${enc(ns)}/${enc(name)}/pending`),
+  podPending: (ctx: string, ns: string, name: string) => get<PendingInfo>(`/contexts/${enc(ctx)}/pods/${enc(ns)}/${enc(name)}/pending`),
   events: (ctx: string, ns: string, name: string, kind?: string) =>
     get<EventView[]>(`/contexts/${enc(ctx)}/events/${enc(ns)}/${enc(name)}${kind ? `?kind=${enc(kind)}` : ''}`),
   allEvents: (ctx: string, ns?: string) => get<EventView[]>(`/contexts/${enc(ctx)}/events${nsQuery(ns)}`),
-  workloadPods: (ctx: string, kind: ManifestKind, ns: string, name: string) =>
-    get<Pod[]>(`/contexts/${enc(ctx)}/pods-of/${kind}/${enc(ns)}/${enc(name)}`),
-  nodeWorkloads: (ctx: string, node: string) =>
-    get<NodeWorkloadGroup[]>(`/contexts/${enc(ctx)}/node-workloads/${enc(node)}`),
-  namespaceSummary: (ctx: string, ns: string) =>
-    get<NamespaceGroup[]>(`/contexts/${enc(ctx)}/namespace-summary/${enc(ns)}`),
-  serviceAccountUsage: (ctx: string, ns: string, name: string) =>
-    get<SAUsage>(`/contexts/${enc(ctx)}/serviceaccount-usage/${enc(ns)}/${enc(name)}`),
+  workloadPods: (ctx: string, kind: ManifestKind, ns: string, name: string) => get<Pod[]>(`/contexts/${enc(ctx)}/pods-of/${kind}/${enc(ns)}/${enc(name)}`),
+  nodeWorkloads: (ctx: string, node: string) => get<NodeWorkloadGroup[]>(`/contexts/${enc(ctx)}/node-workloads/${enc(node)}`),
+  namespaceSummary: (ctx: string, ns: string) => get<NamespaceGroup[]>(`/contexts/${enc(ctx)}/namespace-summary/${enc(ns)}`),
+  serviceAccountUsage: (ctx: string, ns: string, name: string) => get<SAUsage>(`/contexts/${enc(ctx)}/serviceaccount-usage/${enc(ns)}/${enc(name)}`),
   consumers: (ctx: string, kind: 'configmap' | 'secret', ns: string, name: string) =>
     get<Pod[]>(`/contexts/${enc(ctx)}/consumers/${kind}/${enc(ns)}/${enc(name)}`),
   // Catalog-driven list: any standard resource by its plural name (backend catalog).
-  list: <T = unknown>(ctx: string, resource: string, ns?: string) =>
-    get<T[]>(`/contexts/${enc(ctx)}/resources/${resource}${nsQuery(ns)}`),
-  topology: (ctx: string, ns: string) =>
-    get<TopoGraph>(`/contexts/${enc(ctx)}/topology?namespace=${enc(ns)}`),
+  list: <T = unknown>(ctx: string, resource: string, ns?: string) => get<T[]>(`/contexts/${enc(ctx)}/resources/${resource}${nsQuery(ns)}`),
+  topology: (ctx: string, ns: string) => get<TopoGraph>(`/contexts/${enc(ctx)}/topology?namespace=${enc(ns)}`),
   monitoring: (ctx: string) => get<Monitoring>(`/contexts/${enc(ctx)}/monitoring`),
   issues: (ctx: string) => get<Issues>(`/contexts/${enc(ctx)}/issues`),
   routeKinds: (ctx: string) => get<RouteKind[]>(`/contexts/${enc(ctx)}/routekinds`),

@@ -95,11 +95,7 @@ function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
               </button>
             )}
             {options.map((v) => (
-              <button
-                key={v}
-                onClick={() => toggle(v)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent"
-              >
+              <button key={v} onClick={() => toggle(v)} className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent">
                 <span
                   className={cn(
                     'flex size-3.5 shrink-0 items-center justify-center rounded border',
@@ -120,7 +116,20 @@ function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
 
 // Generic resource table: sortable columns, global filter, sticky header.
 // Shared by every resource view (pods, deployments, services, ...).
-export function DataTable<T>({ title, data, columns, headerExtra, loading, emptyLabel, onRowClick, renderSubRow, storageKey, facets, expandable, virtualize }: DataTableProps<T>) {
+export function DataTable<T>({
+  title,
+  data,
+  columns,
+  headerExtra,
+  loading,
+  emptyLabel,
+  onRowClick,
+  renderSubRow,
+  storageKey,
+  facets,
+  expandable,
+  virtualize,
+}: DataTableProps<T>) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => {
@@ -186,9 +195,7 @@ export function DataTable<T>({ title, data, columns, headerExtra, loading, empty
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">{title}</h2>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
-            {table.getFilteredRowModel().rows.length}
-          </span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground tabular-nums">{table.getFilteredRowModel().rows.length}</span>
           {headerExtra}
         </div>
         <div className="flex items-center gap-2 rounded-lg border bg-background/50 px-2.5">
@@ -211,10 +218,7 @@ export function DataTable<T>({ title, data, columns, headerExtra, loading, empty
                 {hg.headers.map((h) => (
                   <th key={h.id} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
                     <div className="inline-flex items-center gap-1">
-                      <button
-                        className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
-                        onClick={h.column.getToggleSortingHandler()}
-                      >
+                      <button className="inline-flex items-center gap-1 transition-colors hover:text-foreground" onClick={h.column.getToggleSortingHandler()}>
                         {flexRender(h.column.columnDef.header, h.getContext())}
                         {h.column.getCanSort() && <ArrowUpDown className="size-3 opacity-40" />}
                       </button>
@@ -241,11 +245,7 @@ export function DataTable<T>({ title, data, columns, headerExtra, loading, empty
                 <Fragment key={row.id}>
                   <tr
                     onClick={clickable}
-                    className={cn(
-                      'transition-colors hover:bg-accent/40',
-                      sub ? '' : 'border-b border-border/50',
-                      clickable && 'cursor-pointer',
-                    )}
+                    className={cn('transition-colors hover:bg-accent/40', sub ? '' : 'border-b border-border/50', clickable && 'cursor-pointer')}
                   >
                     {hasExpand && (
                       <td className="pl-3 align-top text-muted-foreground">

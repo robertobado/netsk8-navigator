@@ -45,10 +45,7 @@ export function PodDrawer({
     <>
       {/* Backdrop */}
       <div
-        className={cn(
-          'fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity',
-          open ? 'opacity-100' : 'pointer-events-none opacity-0',
-        )}
+        className={cn('fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity', open ? 'opacity-100' : 'pointer-events-none opacity-0')}
         onClick={onClose}
       />
       {/* Panel */}
@@ -113,18 +110,12 @@ export function PodDrawer({
               {tab === 'detail' && (
                 <DetailView key={`det-${pod.name}`} ctx={ctx} kind="pod" namespace={pod.namespace} name={pod.name} onOpenResource={onOpenResource} />
               )}
-              {tab === 'events' && (
-                <EventsPanel key={`evt-${pod.name}`} ctx={ctx} namespace={pod.namespace} name={pod.name} kind="Pod" />
-              )}
-              {tab === 'logs' && (
-                <LogsPanel key={`log-${pod.name}-${container}`} ctx={ctx} namespace={pod.namespace} pod={pod.name} container={container} />
-              )}
+              {tab === 'events' && <EventsPanel key={`evt-${pod.name}`} ctx={ctx} namespace={pod.namespace} name={pod.name} kind="Pod" />}
+              {tab === 'logs' && <LogsPanel key={`log-${pod.name}-${container}`} ctx={ctx} namespace={pod.namespace} pod={pod.name} container={container} />}
               {tab === 'terminal' && (
                 <TerminalPanel key={`term-${pod.name}-${container}`} ctx={ctx} namespace={pod.namespace} pod={pod.name} container={container} />
               )}
-              {tab === 'yaml' && (
-                <ManifestPanel key={`yaml-${pod.name}`} ctx={ctx} kind="pod" namespace={pod.namespace} name={pod.name} editable={false} />
-              )}
+              {tab === 'yaml' && <ManifestPanel key={`yaml-${pod.name}`} ctx={ctx} kind="pod" namespace={pod.namespace} name={pod.name} editable={false} />}
             </div>
           </>
         )}

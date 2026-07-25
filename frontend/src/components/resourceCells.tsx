@@ -16,13 +16,15 @@ export function DeploymentStatus({ status }: Readonly<{ status: string }>) {
     <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', className)}>{children}</span>
   )
   if (status === 'Available')
-    return pill('bg-[color:var(--ok)]/12 text-[color:var(--ok)] ring-[color:var(--ok)]/25', (
+    return pill(
+      'bg-[color:var(--ok)]/12 text-[color:var(--ok)] ring-[color:var(--ok)]/25',
       <>
         <CircleCheck className="size-3" /> Available
-      </>
-    ))
+      </>,
+    )
   if (status === 'Progressing')
-    return pill('bg-[#38bdf8]/12 text-[#38bdf8] ring-[#38bdf8]/30', (
+    return pill(
+      'bg-[#38bdf8]/12 text-[#38bdf8] ring-[#38bdf8]/30',
       <>
         Progressing
         <span className="inline-flex items-end gap-0.5">
@@ -30,14 +32,15 @@ export function DeploymentStatus({ status }: Readonly<{ status: string }>) {
             <span key={i} className="size-1 animate-bounce rounded-full bg-[#38bdf8]" style={{ animationDelay: `${i * 0.15}s` }} />
           ))}
         </span>
-      </>
-    ))
+      </>,
+    )
   if (status.startsWith('Scaled'))
-    return pill('bg-muted text-muted-foreground ring-border', (
+    return pill(
+      'bg-muted text-muted-foreground ring-border',
       <>
         <CircleOff className="size-3" /> {status}
-      </>
-    ))
+      </>,
+    )
   return <StatusBadge status={status} />
 }
 
@@ -122,7 +125,9 @@ export function PVChildRow({ pv }: Readonly<{ pv: PV }>) {
       <span className="min-w-0 flex-1 truncate font-medium text-[color:var(--brand)]">{pv.name}</span>
       <StatusBadge status={pv.status} />
       <span className="w-16 shrink-0 text-right font-mono text-muted-foreground tabular-nums">{pv.capacity || '—'}</span>
-      <span className="w-48 shrink-0 truncate font-mono text-muted-foreground" title={pv.claim}>{pv.claim || '—'}</span>
+      <span className="w-48 shrink-0 truncate font-mono text-muted-foreground" title={pv.claim}>
+        {pv.claim || '—'}
+      </span>
       <span className="w-10 shrink-0 text-right font-mono text-muted-foreground tabular-nums">{age(pv.age)}</span>
     </>
   )
