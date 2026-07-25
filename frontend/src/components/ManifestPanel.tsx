@@ -5,6 +5,7 @@ import '@/lib/monaco'
 import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
 import { applyManifest, getManifest, type ManifestKind } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 type State = 'loading' | 'ready' | 'error'
 
@@ -23,6 +24,7 @@ export function ManifestPanel({
   name: string
   editable: boolean
 }) {
+  const t = useT()
   const [state, setState] = useState<State>('loading')
   const [error, setError] = useState('')
   const [value, setValue] = useState('')
@@ -85,7 +87,7 @@ export function ManifestPanel({
   if (state === 'loading')
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Carregando manifest...
+        <Loader2 className="mr-2 size-4 animate-spin" /> {t('Loading manifest...')}
       </div>
     )
   if (state === 'error') return <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{error}</div>
@@ -95,15 +97,15 @@ export function ManifestPanel({
       <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {!editable && <Lock className="size-3" />}
-          {editable ? 'YAML' : 'YAML · somente leitura'}
+          {editable ? 'YAML' : `YAML · ${t('read-only')}`}
         </span>
         <button
           onClick={copy}
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          title="Copiar YAML"
+          title={t('Copy YAML')}
         >
           {copied ? <Check className="size-3.5 text-[color:var(--ok)]" /> : <Copy className="size-3.5" />}
-          {copied ? 'Copiado' : 'Copiar'}
+          {copied ? t('Copied') : t('Copy')}
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -143,12 +145,12 @@ export function ManifestPanel({
         <div className="flex items-center gap-3 border-t px-4 py-3">
           {applied ? (
             <span className="inline-flex items-center gap-1.5 text-sm text-[color:var(--ok)]">
-              <Check className="size-4" /> Aplicado ao cluster
+              <Check className="size-4" /> {t('Applied to cluster')}
             </span>
           ) : confirming ? (
             <>
               <span className="inline-flex items-center gap-1.5 text-sm text-[color:var(--warn)]">
-                <AlertTriangle className="size-4" /> Aplicar no cluster ao vivo?
+                <AlertTriangle className="size-4" /> {t('Apply to the live cluster?')}
               </span>
               <button
                 onClick={apply}
@@ -156,10 +158,10 @@ export function ManifestPanel({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--err)]/90 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {applying ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Confirmar
+                {t('Confirm')}
               </button>
               <button onClick={() => setConfirming(false)} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-                Cancelar
+                {t('Cancel')}
               </button>
             </>
           ) : (
@@ -172,14 +174,14 @@ export function ManifestPanel({
                   dirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
                 )}
               >
-                <Save className="size-4" /> Aplicar
+                <Save className="size-4" /> {t('Apply')}
               </button>
               {dirty && (
                 <button
                   onClick={() => setValue(original.current)}
                   className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
                 >
-                  <RotateCcw className="size-4" /> Descartar
+                  <RotateCcw className="size-4" /> {t('Discard')}
                 </button>
               )}
               {error && <span className="truncate text-xs text-[color:var(--err)]">{error}</span>}

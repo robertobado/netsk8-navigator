@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDownUp, Clock, Radio, Search, Trash2, WrapText } from 'lucide-react'
 import { logsURL } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 type Level = 'error' | 'warn' | 'info' | 'debug' | 'unknown'
 interface LogLine {
@@ -33,6 +34,7 @@ const LEVEL_TEXT: Record<Level, string> = {
  * wrap/order/timestamp toggles. Follows the tail unless scrolled up.
  */
 export function LogsPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: string; namespace: string; pod: string; container?: string }>) {
+  const t = useT()
   const [lines, setLines] = useState<LogLine[]>([])
   const [search, setSearch] = useState('')
   const [wrap, setWrap] = useState(true)
@@ -89,7 +91,7 @@ export function LogsPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: st
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar nos logs..."
+            placeholder={t('Search logs...')}
             className="w-44 bg-transparent py-1.5 text-xs outline-none placeholder:text-muted-foreground"
           />
         </div>
@@ -113,9 +115,9 @@ export function LogsPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: st
 
         <div className="ml-auto flex items-center gap-1">
           <ToolToggle active={showTs} onClick={() => setShowTs((v) => !v)} icon={Clock} title="Timestamps" />
-          <ToolToggle active={wrap} onClick={() => setWrap((v) => !v)} icon={WrapText} title="Quebra de linha" />
-          <ToolToggle active={newest} onClick={() => setNewest((v) => !v)} icon={ArrowDownUp} title="Mais recentes primeiro" />
-          <ToolToggle active={false} onClick={() => setLines([])} icon={Trash2} title="Limpar" />
+          <ToolToggle active={wrap} onClick={() => setWrap((v) => !v)} icon={WrapText} title={t('Line wrap')} />
+          <ToolToggle active={newest} onClick={() => setNewest((v) => !v)} icon={ArrowDownUp} title={t('Newest first')} />
+          <ToolToggle active={false} onClick={() => setLines([])} icon={Trash2} title={t('Clear')} />
           <span className="ml-1 flex items-center gap-1 rounded-full bg-[color:var(--ok)]/12 px-2 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">
             <Radio className="size-2.5 animate-pulse" /> {view.length}
           </span>
@@ -131,7 +133,7 @@ export function LogsPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: st
         }}
         className="min-h-0 flex-1 overflow-auto py-1 font-mono text-xs leading-relaxed"
       >
-        {view.length === 0 && <p className="px-3 py-6 text-muted-foreground">{lines.length ? 'Nenhuma linha corresponde ao filtro.' : 'Aguardando logs...'}</p>}
+        {view.length === 0 && <p className="px-3 py-6 text-muted-foreground">{lines.length ? t('No line matches the filter.') : t('Waiting for logs...')}</p>}
         {view.map((l) => (
           <div key={l.id} className="group flex gap-2 px-3 hover:bg-white/[0.04]">
             <span className="shrink-0 self-stretch border-l-2" style={{ borderColor: LEVEL_COLOR[l.level] }} />

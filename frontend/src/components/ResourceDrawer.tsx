@@ -6,6 +6,7 @@ import { ManifestPanelLazy as ManifestPanel } from './ManifestPanelLazy'
 import { DetailView } from './DetailView'
 import { EventsPanel } from './EventsPanel'
 import { PodDrawer } from './PodDrawer'
+import { useT } from '@/lib/i18n'
 
 export interface DrawerTarget {
   kind: ManifestKind
@@ -52,6 +53,7 @@ const SLUG_TO_KIND: Record<ManifestKind, string> = {
 
 // Slide-over showing a resource: a structured detail view + the raw YAML.
 export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: DrawerTarget | null; ctx: string; onClose: () => void }>) {
+  const t = useT()
   const [tab, setTab] = useState<Tab>('detail')
   const [pod, setPod] = useState<Pod | null>(null) // drill-down into a workload's pod
   const [stack, setStack] = useState<DrawerTarget[]>([]) // in-drawer navigation (e.g. ingress → service)
@@ -101,7 +103,7 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
                 {stack.length > 0 && (
                   <button
                     onClick={() => setStack((s) => s.slice(0, -1))}
-                    title="Voltar"
+                    title={t('Back')}
                     className="mt-0.5 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <ChevronLeft className="size-4" />
@@ -119,8 +121,8 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
             </header>
 
             <div className="flex gap-1 border-b px-5 py-2.5">
-              {hasDetail && <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label="Detalhes" />}
-              <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label="Eventos" />
+              {hasDetail && <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label={t('Details')} />}
+              <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label={t('nav.events')} />
               <TabButton active={tab === 'yaml'} onClick={() => setTab('yaml')} icon={FileCode2} label="YAML" />
             </div>
 
@@ -133,7 +135,7 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
                   namespace={cur.namespace}
                   name={cur.name}
                   onOpenPod={setPod}
-                  onOpenResource={(t) => setStack((s) => [...s, { ...t, editable: false }])}
+                  onOpenResource={(target) => setStack((s) => [...s, { ...target, editable: false }])}
                 />
               )}
               {tab === 'events' && (

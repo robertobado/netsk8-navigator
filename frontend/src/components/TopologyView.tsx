@@ -5,6 +5,7 @@ import '@xyflow/react/dist/style.css'
 import { Boxes, Layers, Network } from 'lucide-react'
 import { api, type TopoNode } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 const KIND_ICON = { deployment: Layers, service: Network, pod: Boxes }
 const COLUMN_X = { deployment: 20, pod: 360, service: 720 }
@@ -48,6 +49,7 @@ function ResourceNode({ data }: NodeProps) {
 const nodeTypes = { resource: ResourceNode }
 
 export function TopologyView({ ctx, ns }: { ctx: string; ns: string }) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['topology', ctx, ns],
     queryFn: () => api.topology(ctx, ns),
@@ -80,10 +82,10 @@ export function TopologyView({ ctx, ns }: { ctx: string; ns: string }) {
   if (!ns)
     return (
       <div className="flex h-[60vh] items-center justify-center rounded-2xl border bg-card/40 text-center text-sm text-muted-foreground">
-        Selecione um namespace no topo para visualizar a topologia.
+        {t('Select a namespace at the top to view the topology.')}
       </div>
     )
-  if (q.isLoading) return <div className="flex h-[60vh] items-center justify-center text-sm text-muted-foreground">Carregando topologia...</div>
+  if (q.isLoading) return <div className="flex h-[60vh] items-center justify-center text-sm text-muted-foreground">{t('Loading topology...')}</div>
   if (q.isError) return <div className="flex h-[60vh] items-center justify-center text-sm text-[color:var(--err)]">{(q.error as Error).message}</div>
 
   return (

@@ -5,6 +5,7 @@
  * the N. The meteor heads are little hexagons — a subtle Kubernetes-pod nod.
  * Framed in the brand's metallic porthole.
  */
+import { useT } from '@/lib/i18n'
 
 // Deterministic starfield (x, y, r, color, twinkle duration, delay).
 const STARS: [number, number, number, string, number, number][] = [
@@ -60,13 +61,14 @@ export function NavigatorLoader({
   label?: string
   sky?: 'navy' | 'green'
 }) {
+  const t = useT()
   const cls = ['nk', state === 'ready' && 'nk--ready'].filter(Boolean).join(' ')
   const wheel = wheelVerts(60, 89, 14) // Kubernetes helm below the horizon (handle tips)
 
   return (
     <div className={cls} style={{ width: size }}>
       <style>{CSS}</style>
-      <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label="Netsk8 Navigator carregando">
+      <svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label={t('Netsk8 Navigator loading')}>
         <defs>
           <clipPath id="nk-disc">
             <circle cx="60" cy="60" r="48" />

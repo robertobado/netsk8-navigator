@@ -17,6 +17,7 @@ import {
 } from '@tanstack/react-table'
 import { ArrowUpDown, Check, ChevronRight, Inbox, ListFilter, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 // Optional extra control rendered in a column header, beside the sort toggle.
 declare module '@tanstack/react-table' {
@@ -57,6 +58,7 @@ const multiSelectFilter: FilterFn<unknown> = (row, columnId, value) => {
 
 // A per-column dropdown listing that column's distinct values as checkboxes.
 function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const selected = (column.getFilterValue() as string[] | undefined) ?? []
   // Cheap to recompute and only read while the dropdown is open, so no memo —
@@ -76,7 +78,7 @@ function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
           e.stopPropagation()
           setOpen((o) => !o)
         }}
-        title="Filtrar coluna"
+        title={t('Filter column')}
         className={cn('rounded p-0.5 transition-colors hover:text-foreground', selected.length ? 'text-[color:var(--brand)]' : 'opacity-40 hover:opacity-100')}
       >
         <ListFilter className="size-3" />
@@ -85,13 +87,13 @@ function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-full z-30 mt-1.5 max-h-64 w-52 overflow-auto rounded-lg border bg-popover p-1 text-foreground shadow-lg">
-            {options.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Sem valores</div>}
+            {options.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('No values')}</div>}
             {selected.length > 0 && (
               <button
                 onClick={() => column.setFilterValue(undefined)}
                 className="mb-1 w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
-                Limpar filtro
+                {t('Clear filter')}
               </button>
             )}
             {options.map((v) => (
@@ -130,6 +132,7 @@ export function DataTable<T>({
   expandable,
   virtualize,
 }: DataTableProps<T>) {
+  const t = useT()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => {
@@ -203,7 +206,7 @@ export function DataTable<T>({
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filtrar..."
+            placeholder={t('Filter...')}
             className="w-52 bg-transparent py-1.5 text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
@@ -219,7 +222,7 @@ export function DataTable<T>({
                   <th key={h.id} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
                     <div className="inline-flex items-center gap-1">
                       <button className="inline-flex items-center gap-1 transition-colors hover:text-foreground" onClick={h.column.getToggleSortingHandler()}>
-                        {flexRender(h.column.columnDef.header, h.getContext())}
+                        {typeof h.column.columnDef.header === 'string' ? t(h.column.columnDef.header) : flexRender(h.column.columnDef.header, h.getContext())}
                         {h.column.getCanSort() && <ArrowUpDown className="size-3 opacity-40" />}
                       </button>
                       {facets?.includes(h.column.id) && <FacetFilter column={h.column} />}
@@ -287,11 +290,11 @@ export function DataTable<T>({
                   <span className="inline-flex items-center gap-2">
                     {loading ? (
                       <>
-                        <Loader2 className="size-4 animate-spin" /> Carregando...
+                        <Loader2 className="size-4 animate-spin" /> {t('Loading...')}
                       </>
                     ) : (
                       <>
-                        <Inbox className="size-4" /> {emptyLabel ?? 'Nenhum item para exibir.'}
+                        <Inbox className="size-4" /> {emptyLabel ?? t('No items to display.')}
                       </>
                     )}
                   </span>

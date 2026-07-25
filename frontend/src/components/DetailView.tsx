@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Eye, EyeOff, ExternalLink, Loader2, Plug } from 'lucide-react'
 import { api, getDetail, kindToSlug, type DetailChip, type ManifestKind, type Pod, type ResourceDetail } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 import { MetricsSection } from './MetricsSection'
 import { StatusBadge } from './StatusBadge'
 
@@ -50,6 +51,7 @@ export function DetailView({
   onOpenPod?: (p: Pod) => void
   onOpenResource?: (t: { kind: ManifestKind; namespace: string; name: string }) => void
 }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['detail', ctx, kind, namespace, name],
     queryFn: () => getDetail(ctx, kind, namespace, name),
@@ -58,12 +60,12 @@ export function DetailView({
   if (q.isLoading)
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Carregando detalhes...
+        <Loader2 className="mr-2 size-4 animate-spin" /> {t('Loading details...')}
       </div>
     )
   if (q.isError || !q.data)
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message ?? 'Erro'}</div>
+      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message ?? t('Error')}</div>
     )
 
   return <DetailBody d={q.data} ctx={ctx} kind={kind} namespace={namespace} name={name} onOpenPod={onOpenPod} onOpenResource={onOpenResource} />
@@ -71,6 +73,7 @@ export function DetailView({
 
 // Presentational detail (shared by typed resources and CRDs).
 export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenResource }: Readonly<DetailBodyProps>) {
+  const t = useT()
   // Go returns nil slices as null — coalesce so `.length`/`.map` are safe.
   const status = d.status ?? []
   const sections = d.sections ?? []
@@ -92,8 +95,8 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {status.map((c) => (
             <div key={c.label} className="rounded-xl border bg-card/60 px-3 py-2.5">
-              <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{c.label}</div>
-              <div className={cn('mt-0.5 truncate text-lg font-semibold tabular-nums', TONE[c.tone])}>{c.value || '—'}</div>
+              <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t(c.label)}</div>
+              <div className={cn('mt-0.5 truncate text-lg font-semibold tabular-nums', TONE[c.tone])}>{t(c.value) || '—'}</div>
             </div>
           ))}
         </div>
@@ -107,16 +110,16 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
           </span>
         )}
         <span>
-          Idade: <span className="text-foreground">{age(d.age)}</span>
+          {t('Age')}: <span className="text-foreground">{age(d.age)}</span>
         </span>
         {d.ownerKind && (
           <span>
-            Controlado por:{' '}
+            {t('Controlled by')}:{' '}
             {ownerSlug && onOpenResource ? (
               <button
                 onClick={() => onOpenResource({ kind: ownerSlug, namespace: d.namespace, name: d.ownerName })}
                 className="font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
-                title="Abrir dono"
+                title={t('Open owner')}
               >
                 {d.ownerKind}/{d.ownerName}
               </button>
@@ -146,7 +149,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
 
       {/* Hosts (routes) — non-wildcard hosts open in a new tab */}
       {hosts.length > 0 && (
-        <Card title="Hosts">
+        <Card title={t('Hosts')}>
           <div className="space-y-0.5">
             {hosts.map((h) => {
               const wildcard = h.includes('*')
@@ -177,7 +180,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
 
       {/* Images */}
       {images.length > 0 && (
-        <Card title="Imagens">
+        <Card title={t('Images')}>
           <div className="space-y-1.5">
             {images.map((im) => (
               <div key={im.label} className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
@@ -191,7 +194,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
 
       {/* Ports — as pills */}
       {ports.length > 0 && (
-        <Card title="Portas">
+        <Card title={t('Ports')}>
           <div className="flex flex-wrap gap-2">
             {ports.map((p) => (
               <span key={`${p.name}-${p.port}-${p.protocol}`} className="inline-flex items-center gap-2 rounded-lg border bg-background/40 py-1 pl-2 pr-2.5">
@@ -211,11 +214,11 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
       {/* Sections */}
       <div className="grid gap-3 sm:grid-cols-2">
         {sections.map((s) => (
-          <Card key={s.title} title={s.title}>
+          <Card key={s.title} title={t(s.title)}>
             <dl className="space-y-1.5">
               {s.items.map((it) => (
                 <div key={it.label} className="flex items-baseline justify-between gap-4">
-                  <dt className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{it.label}</dt>
+                  <dt className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{t(it.label)}</dt>
                   <dd className="min-w-0 flex-1 break-words text-right text-sm">{it.value || '—'}</dd>
                 </div>
               ))}
@@ -227,7 +230,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
       {/* Cross-links (e.g. an Ingress's backend services) */}
       {onOpenResource &&
         refGroups.map((group) => (
-          <Card key={group} title={group}>
+          <Card key={group} title={t(group)}>
             <div className="space-y-0.5">
               {refs
                 .filter((r) => r.group === group)
@@ -236,7 +239,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                     key={`${r.kind}/${r.namespace}/${r.name}`}
                     onClick={() => onOpenResource({ kind: r.kind, namespace: r.namespace, name: r.name })}
                     className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
-                    title="Abrir detalhes"
+                    title={t('Open details')}
                   >
                     <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                       {r.kind}
@@ -247,9 +250,12 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                     </span>
                     {r.note && (
                       <span
-                        className={cn('shrink-0 font-mono text-[11px]', r.note.includes('não pronto') ? 'text-[color:var(--warn)]' : 'text-muted-foreground')}
+                        className={cn('shrink-0 font-mono text-[11px]', r.note.includes('not ready') ? 'text-[color:var(--warn)]' : 'text-muted-foreground')}
                       >
-                        {r.note}
+                        {r.note
+                          .split(' · ')
+                          .map((seg) => t(seg))
+                          .join(' · ')}
                       </span>
                     )}
                     <ChevronRight className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70" />
@@ -261,7 +267,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
 
       {/* Content blocks (e.g. ConfigMap keys) — compact key/value rows */}
       {blocks.length > 0 && (
-        <Card title="Dados">
+        <Card title={t('Data')}>
           <div className="divide-y divide-border/40">
             {blocks.map((b) => (
               <DataRow key={b.title} title={b.title} body={b.body} masked={b.masked} />
@@ -272,7 +278,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
 
       {/* Conditions */}
       {conditions.length > 0 && (
-        <Card title="Condições">
+        <Card title={t('Conditions')}>
           <div className="flex flex-wrap gap-2">
             {conditions.map((c) => (
               <ConditionPill key={c.label} chip={c} />
@@ -314,6 +320,7 @@ function WorkloadPods({
   onOpen,
   label = 'Pods',
 }: Readonly<{ ctx: string; kind: ManifestKind; namespace: string; name: string; onOpen: (p: Pod) => void; label?: string }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['workloadpods', ctx, kind, namespace, name],
     queryFn: () => api.workloadPods(ctx, kind, namespace, name),
@@ -321,13 +328,13 @@ function WorkloadPods({
   })
   const pods = q.data ?? []
   return (
-    <Card title={`${label} (${pods.length})`}>
+    <Card title={`${t(label)} (${pods.length})`}>
       {q.isLoading ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> Carregando pods...
+          <Loader2 className="size-3.5 animate-spin" /> {t('Loading pods...')}
         </div>
       ) : pods.length === 0 ? (
-        <div className="text-xs text-muted-foreground">Nenhum pod.</div>
+        <div className="text-xs text-muted-foreground">{t('No pods.')}</div>
       ) : (
         <div className="space-y-0.5">
           {pods.map((p) => (
@@ -335,7 +342,7 @@ function WorkloadPods({
               key={`${p.namespace}/${p.name}`}
               onClick={() => onOpen(p)}
               className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
-              title="Abrir detalhes do pod"
+              title={t('Open pod details')}
             >
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2">
                 {p.name}
@@ -356,6 +363,7 @@ function WorkloadPods({
 // A ConfigMap-style key/value row: short scalars inline; long/multiline values
 // collapse to a single preview line and expand on click.
 function DataRow({ title, body, masked }: Readonly<{ title: string; body: string; masked?: boolean }>) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [revealed, setRevealed] = useState(false)
 
@@ -367,11 +375,11 @@ function DataRow({ title, body, masked }: Readonly<{ title: string; body: string
           <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium">{title}</span>
           <button
             onClick={() => setRevealed((r) => !r)}
-            title={revealed ? 'Ocultar valor' : 'Revelar valor'}
+            title={revealed ? t('Hide value') : t('Reveal value')}
             className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-            {revealed ? 'Ocultar' : 'Revelar'}
+            {revealed ? t('Hide') : t('Reveal')}
           </button>
         </div>
         {revealed ? (
@@ -425,10 +433,11 @@ function Chip({ text }: Readonly<{ text: string }>) {
 }
 
 function ConditionPill({ chip }: Readonly<{ chip: DetailChip }>) {
+  const t = useT()
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', PILL[chip.tone])}>
-      {chip.label}
-      <span className="opacity-70">{chip.value}</span>
+      {t(chip.label)}
+      <span className="opacity-70">{t(chip.value)}</span>
     </span>
   )
 }

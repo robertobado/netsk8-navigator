@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { AlertTriangle, CircleCheck, CircleOff } from 'lucide-react'
 import type { PV, PVC } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 import { StatusBadge } from './StatusBadge'
 import { HoverBubble } from './HoverBubble'
 
@@ -44,6 +45,14 @@ export function DeploymentStatus({ status }: Readonly<{ status: string }>) {
   return <StatusBadge status={status} />
 }
 
+// CronJob "State" cell (Active / Suspended) — a plain translated string can't
+// go through a bare cell renderer (no hooks outside a component), so this is
+// its own small component.
+export function CronJobStateCell({ value }: Readonly<{ value: string }>) {
+  const t = useT()
+  return <span className={cn('text-sm', value === 'Suspended' ? 'text-[color:var(--warn)]' : 'text-[color:var(--ok)]')}>{t(value)}</span>
+}
+
 const JOB_TONE: Record<string, string> = { Complete: 'var(--ok)', Failed: 'var(--err)', Running: 'var(--brand)', Suspended: 'var(--muted-foreground)' }
 export function JobStatus({ status }: Readonly<{ status: string }>) {
   const known = status in JOB_TONE
@@ -60,6 +69,7 @@ export function JobStatus({ status }: Readonly<{ status: string }>) {
 // (capacity/class/access already show as columns — for a Bound PVC they are, by
 // construction, identical to the PV's, so we only add the PV name here).
 export function PVCStatusCell({ pvc }: Readonly<{ pvc: PVC }>) {
+  const t = useT()
   const content =
     pvc.status === 'Bound' ? (
       <div className="min-w-40 space-y-1">
@@ -67,7 +77,7 @@ export function PVCStatusCell({ pvc }: Readonly<{ pvc: PVC }>) {
         <div className="font-mono text-[11px] text-[color:var(--brand)]">{pvc.volume || '—'}</div>
       </div>
     ) : (
-      <div className="max-w-56 text-muted-foreground">Ainda não vinculado a um PersistentVolume.</div>
+      <div className="max-w-56 text-muted-foreground">{t('Not yet bound to a PersistentVolume.')}</div>
     )
   return (
     <HoverBubble content={content}>
@@ -76,13 +86,14 @@ export function PVCStatusCell({ pvc }: Readonly<{ pvc: PVC }>) {
   )
 }
 
-// "Montado" cell: a Sim/Não badge; when mounted, a hover balloon lists the pods
+// "Mounted" cell: a Yes/No badge; when mounted, a hover balloon lists the pods
 // (all in the PVC's own namespace).
 export function MountedCell({ pvc }: Readonly<{ pvc: PVC }>) {
+  const t = useT()
   const pods = pvc.mountedBy ?? []
   const mounted = pods.length > 0
-  let label = 'Não'
-  if (mounted) label = pods.length > 1 ? `Sim (${pods.length})` : 'Sim'
+  let label = t('No')
+  if (mounted) label = pods.length > 1 ? `${t('Yes')} (${pods.length})` : t('Yes')
   const badge = (
     <span
       className={cn(
@@ -97,7 +108,7 @@ export function MountedCell({ pvc }: Readonly<{ pvc: PVC }>) {
   if (!mounted) return badge
   const content = (
     <div className="min-w-48 space-y-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Montado por</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">{t('Mounted by')}</div>
       {pods.map((p) => (
         <div key={p.pod} className="flex flex-col leading-tight">
           <span className="font-medium">{p.pod}</span>
@@ -109,7 +120,7 @@ export function MountedCell({ pvc }: Readonly<{ pvc: PVC }>) {
                 <span className="min-w-0 break-all text-foreground/90">{m.path}</span>
               </div>
             ))}
-            {(p.mounts ?? []).length === 0 && <span className="text-[11px] text-muted-foreground/70">volume referenciado, sem mountPath</span>}
+            {(p.mounts ?? []).length === 0 && <span className="text-[11px] text-muted-foreground/70">{t('volume referenced, no mountPath')}</span>}
           </div>
         </div>
       ))}

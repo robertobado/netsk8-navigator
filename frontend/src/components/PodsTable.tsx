@@ -11,6 +11,7 @@ import { HoverBubble } from './HoverBubble'
 import { useMetricsRefresh } from '@/lib/metrics'
 import { MiniGauge, UsageBasisToggle } from './UsageGauge'
 import { usageSortValue, readBasis, writeBasis, type UsageBasis } from '@/lib/usage'
+import { useT } from '@/lib/i18n'
 import type { DrawerTarget } from './ResourceDrawer'
 
 // --- Status reason triage (see kubelet container states) --------------------
@@ -75,6 +76,7 @@ function TerminatingStatus({
   deletedAt,
   finalizers,
 }: Readonly<{ ctx: string; namespace: string; name: string; deletedAt?: string; finalizers: string[] }>) {
+  const t = useT()
   const [, tick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => tick((t) => t + 1), 1000)
@@ -122,7 +124,7 @@ function TerminatingStatus({
   const content =
     problemEvents.length > 0 ? (
       <>
-        <div className="mb-1 font-medium text-[color:var(--warn)]">Problemas no término</div>
+        <div className="mb-1 font-medium text-[color:var(--warn)]">{t('Termination problems')}</div>
         <ul className="space-y-1">
           {problemEvents.slice(0, 4).map((e, i) => (
             <li key={`${e.reason}-${i}`}>
@@ -135,7 +137,9 @@ function TerminatingStatus({
       </>
     ) : (
       <>
-        <div className="mb-1 font-medium text-[color:var(--warn)]">Finalizers pendentes ({finalizers.length})</div>
+        <div className="mb-1 font-medium text-[color:var(--warn)]">
+          {t('Pending finalizers')} ({finalizers.length})
+        </div>
         <ul className="space-y-0.5">
           {finalizers.map((f) => (
             <li key={f} className="break-all font-mono text-[11px]">
@@ -161,6 +165,7 @@ function PodStatus({
   name,
   createdAt,
 }: Readonly<{ status: string; reason: string; deletedAt?: string; finalizers?: string[]; ctx: string; namespace: string; name: string; createdAt?: string }>) {
+  const t = useT()
   const group = classify(status, reason)
   const text = reason || status
 
@@ -168,7 +173,7 @@ function PodStatus({
     return (
       <span className="inline-flex items-center gap-2">
         <StatusBadge status="Running" />
-        <span className="relative flex size-2.5" title="Ativo">
+        <span className="relative flex size-2.5" title={t('Active')}>
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[color:var(--ok)] opacity-60" />
           <span className="relative inline-flex size-2.5 rounded-full bg-[color:var(--ok)]" />
         </span>
@@ -232,6 +237,7 @@ function PendingStatus({
   createdAt,
   children,
 }: Readonly<{ ctx: string; namespace: string; name: string; createdAt?: string; children: React.ReactNode }>) {
+  const t = useT()
   const ref = useRef<HTMLSpanElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const [hovering, setHovering] = useState(false)
@@ -276,26 +282,26 @@ function PendingStatus({
             className="w-max max-w-md rounded-lg border bg-popover/95 p-2.5 text-xs shadow-2xl shadow-black/40 backdrop-blur-xl"
           >
             <div className="mb-1 flex items-center justify-between gap-6">
-              <span className="font-medium text-muted-foreground">Detalhe</span>
+              <span className="font-medium text-muted-foreground">{t('Detail')}</span>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   setPinned((v) => !v)
                 }}
-                title={pinned ? 'Desafixar' : 'Fixar'}
+                title={pinned ? t('Unpin') : t('Pin')}
                 className={cn(
                   'inline-flex items-center gap-1 rounded px-1 text-[10px] font-medium transition-colors',
                   pinned ? 'text-[color:var(--brand)]' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 <Pin className={cn('size-3 transition-transform', pinned ? 'rotate-0 fill-current' : 'rotate-45')} />
-                {pinned ? 'fixado' : 'fixar'}
+                {pinned ? t('pinned') : t('pin')}
               </button>
             </div>
             {q.isLoading ? (
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" /> carregando…
+                <Loader2 className="size-3 animate-spin" /> {t('loading…')}
               </span>
             ) : (
               <p className="break-words text-muted-foreground">{d?.message}</p>
@@ -310,21 +316,22 @@ function PendingStatus({
 type ConnState = 'connecting' | 'live' | 'error'
 
 function LiveIndicator({ state }: Readonly<{ state: ConnState }>) {
+  const t = useT()
   if (state === 'live')
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--ok)]/12 px-2 py-0.5 text-xs font-medium text-[color:var(--ok)] ring-1 ring-inset ring-[color:var(--ok)]/25">
-        <Radio className="size-3 animate-pulse" /> ao vivo
+        <Radio className="size-3 animate-pulse" /> {t('live')}
       </span>
     )
   if (state === 'error')
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--err)]/12 px-2 py-0.5 text-xs font-medium text-[color:var(--err)] ring-1 ring-inset ring-[color:var(--err)]/25">
-        <WifiOff className="size-3" /> reconectando
+        <WifiOff className="size-3" /> {t('reconnecting')}
       </span>
     )
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-border">
-      <Radio className="size-3 animate-pulse" /> conectando
+      <Radio className="size-3 animate-pulse" /> {t('connecting')}
     </span>
   )
 }
@@ -366,6 +373,7 @@ export function PodsTable({
   onSelect?: (p: Pod) => void
   onOpenResource: (t: DrawerTarget) => void
 }>) {
+  const t = useT()
   // Batch per-pod usage (one call for all pods) → inline mini gauges. The column
   // only appears when the cluster has metrics-server and metrics aren't turned off.
   const { interval } = useMetricsRefresh()
@@ -390,7 +398,7 @@ export function PodsTable({
 
   const columns = useMemo(() => {
     const cols = [
-      col.accessor('name', { header: 'Nome', cell: (c) => <span className="font-medium">{c.getValue()}</span> }),
+      col.accessor('name', { header: 'Name', cell: (c) => <span className="font-medium">{c.getValue()}</span> }),
       col.accessor('namespace', { header: 'Namespace', cell: (c) => <span className="text-muted-foreground">{c.getValue()}</span> }),
       col.accessor('status', {
         header: 'Status',
@@ -485,7 +493,7 @@ export function PodsTable({
       data={rows}
       columns={columns}
       headerExtra={<LiveIndicator state={connState} />}
-      emptyLabel="Nenhum pod para exibir."
+      emptyLabel={t('No pods to display.')}
       storageKey="pods"
       facets={['status', 'namespace', 'node']}
       onRowClick={onSelect}

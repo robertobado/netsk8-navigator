@@ -64,13 +64,13 @@ import type {
 } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/StatusBadge'
-import { DeploymentStatus, JobStatus, MountedCell, PVCStatusCell, PVChildRow } from '@/components/resourceCells'
+import { CronJobStateCell, DeploymentStatus, JobStatus, MountedCell, PVCStatusCell, PVChildRow } from '@/components/resourceCells'
 
 // The declarative resource catalog: one entry per standard resource drives both
 // the sidebar nav and the generic table (columns, filters, detail kind). Adding a
 // resource is one entry here — the backend already lists it generically.
 
-type NavGroup = 'Workloads' | 'Rede' | 'Config' | 'Storage' | 'RBAC' | 'Governança' | 'Cluster'
+type NavGroup = 'Workloads' | 'Network' | 'Config' | 'Storage' | 'RBAC' | 'Governance' | 'Cluster'
 
 // Resources that keep revision history (e.g. ReplicaSets): old revisions are
 // hidden by default and grouped by their controller, with a toggle to reveal them.
@@ -130,7 +130,7 @@ const readyCell = (c: { getValue: () => string }) => {
 
 const dc = createColumnHelper<Deployment>()
 const deploymentCols = [
-  dc.accessor('name', { header: 'Nome', cell: nameCell }),
+  dc.accessor('name', { header: 'Name', cell: nameCell }),
   dc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   dc.accessor('ready', {
     header: 'Ready',
@@ -148,20 +148,20 @@ const deploymentCols = [
 
 const sc = createColumnHelper<Service>()
 const serviceCols = [
-  sc.accessor('name', { header: 'Nome', cell: nameCell }),
+  sc.accessor('name', { header: 'Name', cell: nameCell }),
   sc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  sc.accessor('type', { header: 'Tipo', cell: (c) => <StatusBadge status={c.getValue()} /> }),
+  sc.accessor('type', { header: 'Type', cell: (c) => <StatusBadge status={c.getValue()} /> }),
   sc.accessor('clusterIP', { header: 'Cluster IP', cell: (c) => mono(c.getValue()) }),
   sc.accessor('externalIP', { header: 'External', cell: (c) => mono(c.getValue()) }),
-  sc.accessor('ports', { header: 'Portas', cell: (c) => mono(c.getValue()) }),
+  sc.accessor('ports', { header: 'Ports', cell: (c) => mono(c.getValue()) }),
   sc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const ic = createColumnHelper<Ingress>()
 const ingressCols = [
-  ic.accessor('name', { header: 'Nome', cell: nameCell }),
+  ic.accessor('name', { header: 'Name', cell: nameCell }),
   ic.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  ic.accessor('class', { header: 'Classe', cell: (c) => muted(c.getValue()) }),
+  ic.accessor('class', { header: 'Class', cell: (c) => muted(c.getValue()) }),
   ic.accessor('hosts', { header: 'Hosts', cell: (c) => <span className="text-sm">{c.getValue() || '—'}</span> }),
   ic.accessor('address', { header: 'Address', cell: (c) => mono(c.getValue()) }),
   ic.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
@@ -169,15 +169,15 @@ const ingressCols = [
 
 const cc = createColumnHelper<ConfigMap>()
 const configMapCols = [
-  cc.accessor('name', { header: 'Nome', cell: nameCell }),
+  cc.accessor('name', { header: 'Name', cell: nameCell }),
   cc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  cc.accessor('keys', { header: 'Chaves', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
+  cc.accessor('keys', { header: 'Keys', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
   cc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const stc = createColumnHelper<StatefulSet>()
 const statefulSetCols = [
-  stc.accessor('name', { header: 'Nome', cell: nameCell }),
+  stc.accessor('name', { header: 'Name', cell: nameCell }),
   stc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   stc.accessor('ready', { header: 'Ready', cell: readyCell }),
   stc.accessor('service', { header: 'Service', cell: (c) => muted(c.getValue()) }),
@@ -186,7 +186,7 @@ const statefulSetCols = [
 
 const dsc = createColumnHelper<DaemonSet>()
 const daemonSetCols = [
-  dsc.accessor('name', { header: 'Nome', cell: nameCell }),
+  dsc.accessor('name', { header: 'Name', cell: nameCell }),
   dsc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   dsc.accessor('ready', { header: 'Ready', cell: readyCell }),
   dsc.accessor('upToDate', { header: 'Up-to-date', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
@@ -196,7 +196,7 @@ const daemonSetCols = [
 
 const rsc = createColumnHelper<ReplicaSet>()
 const replicaSetCols = [
-  rsc.accessor('name', { header: 'Nome', cell: nameCell }),
+  rsc.accessor('name', { header: 'Name', cell: nameCell }),
   rsc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   rsc.accessor('ready', { header: 'Ready', cell: readyCell }),
   rsc.accessor((r) => (r.ownerKind ? `${r.ownerKind}/${r.ownerName}` : '—'), { id: 'controlledBy', header: 'Controlled By', cell: (c) => muted(c.getValue()) }),
@@ -218,7 +218,7 @@ const replicaSetCols = [
 
 const jc = createColumnHelper<Job>()
 const jobCols = [
-  jc.accessor('name', { header: 'Nome', cell: nameCell }),
+  jc.accessor('name', { header: 'Name', cell: nameCell }),
   jc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   jc.accessor('completions', { header: 'Completions', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
   jc.accessor('status', { header: 'Status', cell: (c) => <JobStatus status={c.getValue()} /> }),
@@ -227,16 +227,16 @@ const jobCols = [
 
 const cjc = createColumnHelper<CronJob>()
 const cronJobCols = [
-  cjc.accessor('name', { header: 'Nome', cell: nameCell }),
+  cjc.accessor('name', { header: 'Name', cell: nameCell }),
   cjc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   cjc.accessor('schedule', { header: 'Schedule', cell: (c) => mono(c.getValue()) }),
-  cjc.accessor((r) => (r.suspend ? 'Suspenso' : 'Ativo'), {
+  cjc.accessor((r) => (r.suspend ? 'Suspended' : 'Active'), {
     id: 'suspend',
-    header: 'Estado',
-    cell: (c) => <span className={cn('text-sm', c.getValue() === 'Suspenso' ? 'text-[color:var(--warn)]' : 'text-[color:var(--ok)]')}>{c.getValue()}</span>,
+    header: 'State',
+    cell: (c) => <CronJobStateCell value={c.getValue()} />,
   }),
   cjc.accessor('lastSchedule', {
-    header: 'Última exec.',
+    header: 'Last run',
     cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{c.getValue() ? age(c.getValue()) : '—'}</span>,
   }),
   cjc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
@@ -245,53 +245,53 @@ const cronJobCols = [
 // Secret values are never listed — only the key count and type.
 const secc = createColumnHelper<Secret>()
 const secretCols = [
-  secc.accessor('name', { header: 'Nome', cell: nameCell }),
+  secc.accessor('name', { header: 'Name', cell: nameCell }),
   secc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  secc.accessor('type', { header: 'Tipo', cell: (c) => mono(c.getValue()) }),
-  secc.accessor('keys', { header: 'Chaves', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
+  secc.accessor('type', { header: 'Type', cell: (c) => mono(c.getValue()) }),
+  secc.accessor('keys', { header: 'Keys', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
   secc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 // Cluster-scoped — no namespace column.
 const nsc = createColumnHelper<Namespace>()
 const namespaceCols = [
-  nsc.accessor('name', { header: 'Nome', cell: nameCell }),
+  nsc.accessor('name', { header: 'Name', cell: nameCell }),
   nsc.accessor('status', { header: 'Status', cell: (c) => <StatusBadge status={c.getValue()} /> }),
   nsc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const ndc = createColumnHelper<NodeRow>()
 const nodeCols = [
-  ndc.accessor('name', { header: 'Nome', cell: nameCell }),
+  ndc.accessor('name', { header: 'Name', cell: nameCell }),
   ndc.accessor('status', { header: 'Status', cell: (c) => <StatusBadge status={c.getValue()} /> }),
   ndc.accessor('roles', { header: 'Roles', cell: (c) => muted(c.getValue()) }),
-  ndc.accessor('version', { header: 'Versão', cell: (c) => mono(c.getValue()) }),
+  ndc.accessor('version', { header: 'Version', cell: (c) => mono(c.getValue()) }),
   ndc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const pvcc = createColumnHelper<PVC>()
 const pvcCols = [
-  pvcc.accessor('name', { header: 'Nome', cell: nameCell }),
+  pvcc.accessor('name', { header: 'Name', cell: nameCell }),
   pvcc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   pvcc.accessor('status', { header: 'Status', cell: (c) => <PVCStatusCell pvc={c.row.original} /> }),
   pvcc.accessor((r) => r.mountedBy?.length ?? 0, {
     id: 'mounted',
-    header: 'Montado',
+    header: 'Mounted',
     sortDescFirst: true,
     cell: (c) => <MountedCell pvc={c.row.original} />,
   }),
-  pvcc.accessor('capacity', { header: 'Capacidade', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue() || '—'}</span> }),
-  pvcc.accessor('accessModes', { header: 'Acesso', cell: (c) => mono(c.getValue()) }),
+  pvcc.accessor('capacity', { header: 'Capacity', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue() || '—'}</span> }),
+  pvcc.accessor('accessModes', { header: 'Access', cell: (c) => mono(c.getValue()) }),
   pvcc.accessor('storageClass', { header: 'StorageClass', cell: (c) => muted(c.getValue()) }),
   pvcc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const pvc = createColumnHelper<PV>()
 const pvCols = [
-  pvc.accessor('name', { header: 'Nome', cell: nameCell }),
+  pvc.accessor('name', { header: 'Name', cell: nameCell }),
   pvc.accessor('status', { header: 'Status', cell: (c) => <StatusBadge status={c.getValue()} /> }),
-  pvc.accessor('capacity', { header: 'Capacidade', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue() || '—'}</span> }),
-  pvc.accessor('accessModes', { header: 'Acesso', cell: (c) => mono(c.getValue()) }),
+  pvc.accessor('capacity', { header: 'Capacity', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue() || '—'}</span> }),
+  pvc.accessor('accessModes', { header: 'Access', cell: (c) => mono(c.getValue()) }),
   pvc.accessor('reclaim', { header: 'Reclaim', cell: (c) => muted(c.getValue()) }),
   pvc.accessor('claim', { header: 'Claim', cell: (c) => muted(c.getValue()) }),
   pvc.accessor('storageClass', { header: 'StorageClass', cell: (c) => muted(c.getValue()) }),
@@ -301,7 +301,7 @@ const pvCols = [
 const scc = createColumnHelper<StorageClass>()
 const storageClassCols = [
   scc.accessor('name', {
-    header: 'Nome',
+    header: 'Name',
     cell: (c) => (
       <span className="inline-flex items-center gap-1.5">
         <span className="font-medium">{c.getValue()}</span>
@@ -319,39 +319,39 @@ const storageClassCols = [
 
 const hpac = createColumnHelper<HPA>()
 const hpaCols = [
-  hpac.accessor('name', { header: 'Nome', cell: nameCell }),
+  hpac.accessor('name', { header: 'Name', cell: nameCell }),
   hpac.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  hpac.accessor('reference', { header: 'Alvo', cell: (c) => mono(c.getValue()) }),
-  hpac.accessor('minPods', { header: 'Mín', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
-  hpac.accessor('maxPods', { header: 'Máx', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
-  hpac.accessor('replicas', { header: 'Réplicas', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
+  hpac.accessor('reference', { header: 'Target', cell: (c) => mono(c.getValue()) }),
+  hpac.accessor('minPods', { header: 'Min', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
+  hpac.accessor('maxPods', { header: 'Max', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
+  hpac.accessor('replicas', { header: 'Replicas', cell: (c) => <span className="font-mono text-sm tabular-nums">{c.getValue()}</span> }),
   hpac.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const esc = createColumnHelper<EndpointSlice>()
 const endpointSliceCols = [
-  esc.accessor('name', { header: 'Nome', cell: nameCell }),
+  esc.accessor('name', { header: 'Name', cell: nameCell }),
   esc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   esc.accessor('service', { header: 'Service', cell: (c) => muted(c.getValue()) }),
-  esc.accessor('addressType', { header: 'Tipo', cell: (c) => mono(c.getValue()) }),
-  esc.accessor((r) => `${r.ready}/${r.total}`, { id: 'ready', header: 'Prontos', cell: (c) => readyCell({ getValue: () => c.getValue() as string }) }),
-  esc.accessor('ports', { header: 'Portas', cell: (c) => mono(c.getValue()) }),
+  esc.accessor('addressType', { header: 'Type', cell: (c) => mono(c.getValue()) }),
+  esc.accessor((r) => `${r.ready}/${r.total}`, { id: 'ready', header: 'Ready', cell: (c) => readyCell({ getValue: () => c.getValue() as string }) }),
+  esc.accessor('ports', { header: 'Ports', cell: (c) => mono(c.getValue()) }),
   esc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const npc = createColumnHelper<NetworkPolicy>()
 const networkPolicyCols = [
-  npc.accessor('name', { header: 'Nome', cell: nameCell }),
+  npc.accessor('name', { header: 'Name', cell: nameCell }),
   npc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  npc.accessor('podSelector', { header: 'Pods alvo', cell: (c) => mono(c.getValue()) }),
-  npc.accessor('policyTypes', { header: 'Tipos', cell: (c) => muted(c.getValue()) }),
+  npc.accessor('podSelector', { header: 'Target pods', cell: (c) => mono(c.getValue()) }),
+  npc.accessor('policyTypes', { header: 'Types', cell: (c) => muted(c.getValue()) }),
   npc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const icc = createColumnHelper<IngressClass>()
 const ingressClassCols = [
   icc.accessor('name', {
-    header: 'Nome',
+    header: 'Name',
     cell: (c) => (
       <span className="inline-flex items-center gap-1.5">
         <span className="font-medium">{c.getValue()}</span>
@@ -369,7 +369,7 @@ const num = (c: { getValue: () => unknown }) => <span className="font-mono text-
 
 const sac = createColumnHelper<ServiceAccountRow>()
 const serviceAccountCols = [
-  sac.accessor('name', { header: 'Nome', cell: nameCell }),
+  sac.accessor('name', { header: 'Name', cell: nameCell }),
   sac.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   sac.accessor('secrets', { header: 'Secrets', cell: num }),
   sac.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
@@ -377,55 +377,55 @@ const serviceAccountCols = [
 
 const rlc = createColumnHelper<Role>()
 const roleCols = [
-  rlc.accessor('name', { header: 'Nome', cell: nameCell }),
+  rlc.accessor('name', { header: 'Name', cell: nameCell }),
   rlc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  rlc.accessor('rules', { header: 'Regras', cell: num }),
+  rlc.accessor('rules', { header: 'Rules', cell: num }),
   rlc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 const clusterRoleCols = [
-  rlc.accessor('name', { header: 'Nome', cell: nameCell }),
-  rlc.accessor('rules', { header: 'Regras', cell: num }),
+  rlc.accessor('name', { header: 'Name', cell: nameCell }),
+  rlc.accessor('rules', { header: 'Rules', cell: num }),
   rlc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const rbc = createColumnHelper<RoleBinding>()
 const subjectsCell = (c: { getValue: () => unknown }) => mono(((c.getValue() as string[] | null) ?? []).join(', '))
 const roleBindingCols = [
-  rbc.accessor('name', { header: 'Nome', cell: nameCell }),
+  rbc.accessor('name', { header: 'Name', cell: nameCell }),
   rbc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   rbc.accessor('role', { header: 'Role', cell: (c) => mono(c.getValue()) }),
-  rbc.accessor('subjects', { header: 'Sujeitos', cell: subjectsCell }),
+  rbc.accessor('subjects', { header: 'Subjects', cell: subjectsCell }),
   rbc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 const clusterRoleBindingCols = [
-  rbc.accessor('name', { header: 'Nome', cell: nameCell }),
+  rbc.accessor('name', { header: 'Name', cell: nameCell }),
   rbc.accessor('role', { header: 'Role', cell: (c) => mono(c.getValue()) }),
-  rbc.accessor('subjects', { header: 'Sujeitos', cell: subjectsCell }),
+  rbc.accessor('subjects', { header: 'Subjects', cell: subjectsCell }),
   rbc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const rqc = createColumnHelper<ResourceQuota>()
 const resourceQuotaCols = [
-  rqc.accessor('name', { header: 'Nome', cell: nameCell }),
+  rqc.accessor('name', { header: 'Name', cell: nameCell }),
   rqc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   rqc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const lrc = createColumnHelper<LimitRange>()
 const limitRangeCols = [
-  lrc.accessor('name', { header: 'Nome', cell: nameCell }),
+  lrc.accessor('name', { header: 'Name', cell: nameCell }),
   lrc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
   lrc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const pdbc = createColumnHelper<PDB>()
 const pdbCols = [
-  pdbc.accessor('name', { header: 'Nome', cell: nameCell }),
+  pdbc.accessor('name', { header: 'Name', cell: nameCell }),
   pdbc.accessor('namespace', { header: 'Namespace', cell: (c) => muted(c.getValue()) }),
-  pdbc.accessor('criteria', { header: 'Critério', cell: (c) => mono(c.getValue()) }),
+  pdbc.accessor('criteria', { header: 'Criteria', cell: (c) => mono(c.getValue()) }),
   pdbc.accessor((r) => r.current - r.desired, {
     id: 'healthy',
-    header: 'Saudáveis',
+    header: 'Healthy',
     // A PDB is healthy when current >= desired (enough healthy pods for the budget),
     // not on strict equality — desired is a minimum, and is often 0 or below current.
     cell: (c) => {
@@ -439,7 +439,7 @@ const pdbCols = [
     },
   }),
   pdbc.accessor('allowed', {
-    header: 'Disrupções',
+    header: 'Disruptions',
     cell: (c) => (
       <span className={cn('font-mono text-sm tabular-nums', (c.getValue() as number) > 0 ? 'text-[color:var(--ok)]' : 'text-muted-foreground')}>
         {c.getValue() as number}
@@ -452,7 +452,7 @@ const pdbCols = [
 const prc = createColumnHelper<PriorityClass>()
 const priorityClassCols = [
   prc.accessor('name', {
-    header: 'Nome',
+    header: 'Name',
     cell: (c) => (
       <span className="inline-flex items-center gap-1.5">
         <span className="font-medium">{c.getValue()}</span>
@@ -462,14 +462,14 @@ const priorityClassCols = [
       </span>
     ),
   }),
-  prc.accessor('value', { header: 'Valor', cell: num, sortDescFirst: true }),
-  prc.accessor('preemption', { header: 'Preempção', cell: (c) => muted(c.getValue()) }),
+  prc.accessor('value', { header: 'Value', cell: num, sortDescFirst: true }),
+  prc.accessor('preemption', { header: 'Preemption', cell: (c) => muted(c.getValue()) }),
   prc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
 
 const ruc = createColumnHelper<RuntimeClass>()
 const runtimeClassCols = [
-  ruc.accessor('name', { header: 'Nome', cell: nameCell }),
+  ruc.accessor('name', { header: 'Name', cell: nameCell }),
   ruc.accessor('handler', { header: 'Handler', cell: (c) => mono(c.getValue()) }),
   ruc.accessor('age', { header: 'Age', cell: (c) => ageCell(c.getValue()), sortingFn: ageSort }),
 ] as ColumnDef<never, unknown>[]
@@ -539,7 +539,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'services',
     label: 'Services',
     icon: Network,
-    group: 'Rede',
+    group: 'Network',
     resource: 'services',
     manifest: 'service',
     facets: ['namespace', 'type'],
@@ -550,7 +550,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'ingresses',
     label: 'Ingresses',
     icon: Route,
-    group: 'Rede',
+    group: 'Network',
     resource: 'ingresses',
     manifest: 'ingress',
     facets: ['namespace', 'class'],
@@ -560,7 +560,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'ingressclasses',
     label: 'IngressClasses',
     icon: Signpost,
-    group: 'Rede',
+    group: 'Network',
     resource: 'ingressclasses',
     manifest: 'ingressclass',
     facets: ['controller'],
@@ -571,7 +571,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'endpointslices',
     label: 'EndpointSlices',
     icon: Cable,
-    group: 'Rede',
+    group: 'Network',
     resource: 'endpointslices',
     manifest: 'endpointslice',
     facets: ['namespace', 'addressType'],
@@ -581,7 +581,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'networkpolicies',
     label: 'NetworkPolicies',
     icon: ShieldCheck,
-    group: 'Rede',
+    group: 'Network',
     resource: 'networkpolicies',
     manifest: 'networkpolicy',
     facets: ['namespace'],
@@ -645,7 +645,7 @@ export const RESOURCES: ResourceDef[] = [
       resource: 'persistentvolumes',
       manifest: 'pv',
       countHeader: 'PVs',
-      title: 'PersistentVolumes desta classe',
+      title: 'PersistentVolumes in this class',
       parentKey: (sc) => sc.name as string,
       childKey: (pv) => pv.storageClass as string,
       renderChild: (pv) => <PVChildRow pv={pv as unknown as PV} />,
@@ -745,7 +745,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'resourcequotas',
     label: 'ResourceQuotas',
     icon: Scale,
-    group: 'Governança',
+    group: 'Governance',
     resource: 'resourcequotas',
     manifest: 'resourcequota',
     facets: ['namespace'],
@@ -755,7 +755,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'limitranges',
     label: 'LimitRanges',
     icon: Ruler,
-    group: 'Governança',
+    group: 'Governance',
     resource: 'limitranges',
     manifest: 'limitrange',
     facets: ['namespace'],
@@ -765,7 +765,7 @@ export const RESOURCES: ResourceDef[] = [
     key: 'poddisruptionbudgets',
     label: 'PodDisruptionBudgets',
     icon: HeartPulse,
-    group: 'Governança',
+    group: 'Governance',
     resource: 'poddisruptionbudgets',
     manifest: 'poddisruptionbudget',
     facets: ['namespace'],

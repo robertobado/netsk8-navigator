@@ -17,7 +17,7 @@ export function MetricsControls() {
             key={o.ms}
             type="button"
             onClick={() => setMetricsRefresh(o.ms)}
-            title={o.ms === 0 ? 'Ocultar métricas' : `Atualizar a cada ${o.label}`}
+            title={o.ms === 0 ? t('Hide metrics') : `${t('Refresh every')} ${o.label}`}
             className={cn(
               'rounded-md py-1 text-xs transition-colors',
               o.ms === ms

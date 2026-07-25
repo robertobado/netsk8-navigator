@@ -25,17 +25,19 @@ import { VantaControls } from '@/components/VantaControls'
 import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
 import { LanguageToggle } from '@/components/LanguageToggle'
-import { useT } from '@/lib/i18n'
+import { useT, type TFunc } from '@/lib/i18n'
 import { IssueCarousel } from '@/components/IssueCarousel'
 import type { IssueItem, Pod } from '@/lib/api'
 
 // Titles for the special (non-catalog) views; catalog resources and CRDs derive
 // their own labels from the catalog / discovery.
-const VIEW_TITLES: Record<View, string> = {
-  overview: 'Visão geral do cluster',
-  pods: 'Pods',
-  topology: 'Topologia do cluster',
-  events: 'Eventos do cluster',
+function viewTitles(t: TFunc): Record<View, string> {
+  return {
+    overview: t('Cluster overview'),
+    pods: 'Pods',
+    topology: t('Cluster topology'),
+    events: t('Cluster events'),
+  }
 }
 
 const CTX_KEY = 'netsk8s.ctx'
@@ -123,7 +125,7 @@ function AppMain() {
   // The route CRD selected by the current view, if any (#crd:group/ver/res).
   const activeRoute = view.startsWith('crd:') ? routes.find((r) => crdView(r) === view) : undefined
   const resDef = resourceByKey(view)
-  const viewTitle = activeRoute?.label ?? resDef?.label ?? VIEW_TITLES[view as View] ?? 'Recurso'
+  const viewTitle = activeRoute?.label ?? resDef?.label ?? viewTitles(t)[view as View] ?? t('Resource')
 
   return (
     <>
@@ -262,6 +264,7 @@ function OverviewPanel({
   loading: boolean
   error: Error | null
 }) {
+  const t = useT()
   const [pod, setPod] = useState<Pod | null>(null)
   const [nodeTarget, setNodeTarget] = useState<DrawerTarget | null>(null)
   const issuesQ = useQuery({ queryKey: ['issues', ctx], queryFn: () => api.issues(ctx!), enabled: !!ctx, refetchInterval: 10_000 })
@@ -276,10 +279,10 @@ function OverviewPanel({
     <>
       {error && <ErrorBanner message={error.message} />}
 
-      {/* 1) Métricas */}
+      {/* 1) Metrics */}
       {ctx && <MetricsSection ctx={ctx} scope="cluster" />}
 
-      {/* 2) Painéis */}
+      {/* 2) Panels */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Nodes" value={ov(overview?.nodes)} sub={overview ? `${overview.readyNodes} ready` : undefined} icon={Server} loading={loading} />
         <StatCard label="Pods" value={ov(overview?.pods)} icon={Boxes} loading={loading} />
@@ -289,11 +292,11 @@ function OverviewPanel({
         <StatCard label="Failed" value={ov(overview?.failed)} tone="err" icon={CircleAlert} loading={loading} />
       </div>
 
-      {/* 3) Carrosséis — one panel per issue category that has items. */}
+      {/* 3) Carousels — one panel per issue category that has items. */}
       {!!(issues && issues.nodesNotReady.length + issues.pending.length + issues.failed.length > 0) && (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {issues.nodesNotReady.length > 0 && (
-            <IssueCarousel title="Nodes não prontos" icon={Server} items={issues.nodesNotReady} tone="err" onOpen={openItem} />
+            <IssueCarousel title={t('Not-ready nodes')} icon={Server} items={issues.nodesNotReady} tone="err" onOpen={openItem} />
           )}
           {issues.pending.length > 0 && <IssueCarousel title="Pending" icon={CircleDot} items={issues.pending} tone="warn" onOpen={openItem} />}
           {issues.failed.length > 0 && <IssueCarousel title="Failed" icon={CircleAlert} items={issues.failed} tone="err" onOpen={openItem} />}

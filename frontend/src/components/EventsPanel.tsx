@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Info, Inbox, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
+import { tAgo, useT } from '@/lib/i18n'
 
 // Events involving a resource, most recent first. Warnings stand out; repeats show ×N.
 export function EventsPanel({ ctx, namespace, name, kind }: Readonly<{ ctx: string; namespace: string; name: string; kind?: string }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['events', ctx, namespace, name, kind],
     queryFn: () => api.events(ctx, namespace, name, kind),
@@ -15,14 +17,14 @@ export function EventsPanel({ ctx, namespace, name, kind }: Readonly<{ ctx: stri
   if (q.isLoading) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Carregando eventos...
+        <Loader2 className="size-4 animate-spin" /> {t('Loading events...')}
       </div>
     )
   }
   if (events.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Inbox className="size-5" /> Nenhum evento recente para este pod.
+        <Inbox className="size-5" /> {t('No recent events for this pod.')}
       </div>
     )
   }
@@ -44,7 +46,7 @@ export function EventsPanel({ ctx, namespace, name, kind }: Readonly<{ ctx: stri
                   <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">×{e.count}</span>
                 )}
                 <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums" title={e.last}>
-                  há {age(e.last)}
+                  {tAgo(t, age(e.last))}
                 </span>
               </div>
               <p className="mt-1 break-words text-xs text-muted-foreground">{e.message}</p>

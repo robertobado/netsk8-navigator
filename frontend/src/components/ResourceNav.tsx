@@ -18,15 +18,15 @@ const inGroup = (g: ResourceDef['group']) => RESOURCES.filter((r) => r.group ===
 export function ResourceNav({ active, onSelect, routes = [] }: Readonly<{ active: string; onSelect: (v: string) => void; routes?: RouteKind[] }>) {
   const t = useT()
   // Nav is composed from the resource catalog + a few special views. Detected
-  // route CRDs (HTTPRoute, IngressRoute, …) append under "Rede", below Ingresses.
+  // route CRDs (HTTPRoute, IngressRoute, …) append under "Network", below Ingresses.
   const groups: { title?: string; items: NavItem[] }[] = [
     { items: [{ view: 'overview', label: t('nav.overview'), icon: LayoutDashboard }] },
     { title: t('group.workloads'), items: [{ view: 'pods', label: t('nav.pods'), icon: Boxes }, ...inGroup('Workloads')] },
-    { title: t('group.rede'), items: [...inGroup('Rede'), ...routes.map((rk) => ({ view: crdView(rk), label: rk.label, icon: Waypoints }))] },
+    { title: t('group.rede'), items: [...inGroup('Network'), ...routes.map((rk) => ({ view: crdView(rk), label: rk.label, icon: Waypoints }))] },
     { title: t('group.config'), items: inGroup('Config') },
     { title: t('group.storage'), items: inGroup('Storage') },
     { title: t('group.rbac'), items: inGroup('RBAC') },
-    { title: t('group.governanca'), items: inGroup('Governança') },
+    { title: t('group.governanca'), items: inGroup('Governance') },
     {
       title: t('group.cluster'),
       items: [...inGroup('Cluster'), { view: 'events', label: t('nav.events'), icon: Bell }, { view: 'topology', label: t('nav.topology'), icon: Share2 }],

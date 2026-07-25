@@ -7,11 +7,13 @@ import { age, cn } from '@/lib/utils'
 import { DataTable } from './DataTable'
 import { DetailBody } from './DetailView'
 import { EventsPanel } from './EventsPanel'
+import { tf, useT } from '@/lib/i18n'
 
 const col = createColumnHelper<CRDItem>()
 
 // Generic list for a route-like CRD (HTTPRoute, IngressRoute, VirtualService, …).
 export function CustomResourceView({ ctx, ns, rk }: Readonly<{ ctx: string; ns: string; rk: RouteKind }>) {
+  const t = useT()
   const [item, setItem] = useState<CRDItem | null>(null)
   const q = useQuery({
     queryKey: ['crd', ctx, rk.group, rk.version, rk.resource, ns],
@@ -22,7 +24,7 @@ export function CustomResourceView({ ctx, ns, rk }: Readonly<{ ctx: string; ns: 
   const columns = useMemo(
     () =>
       [
-        col.accessor('name', { header: 'Nome', cell: (c) => <span className="font-medium">{c.getValue()}</span> }),
+        col.accessor('name', { header: 'Name', cell: (c) => <span className="font-medium">{c.getValue()}</span> }),
         col.accessor('namespace', { header: 'Namespace', cell: (c) => <span className="text-muted-foreground">{c.getValue() || '—'}</span> }),
         col.accessor('hosts', { header: 'Hosts', cell: (c) => <span className="text-sm">{c.getValue() || '—'}</span> }),
         col.accessor('refs', { header: 'Gateways', cell: (c) => <span className="font-mono text-xs text-muted-foreground">{c.getValue() || '—'}</span> }),
@@ -44,7 +46,7 @@ export function CustomResourceView({ ctx, ns, rk }: Readonly<{ ctx: string; ns: 
         loading={q.isLoading}
         storageKey={`crd-${rk.resource}`}
         facets={['namespace']}
-        emptyLabel={`Nenhum ${rk.kind} para exibir.`}
+        emptyLabel={tf(t, 'No {kind} to display.', { kind: rk.kind })}
         onRowClick={setItem}
       />
       <CRDDrawer ctx={ctx} rk={rk} item={item} onClose={() => setItem(null)} />
@@ -55,6 +57,7 @@ export function CustomResourceView({ ctx, ns, rk }: Readonly<{ ctx: string; ns: 
 type Tab = 'detail' | 'events' | 'yaml'
 
 function CRDDrawer({ ctx, rk, item, onClose }: Readonly<{ ctx: string; rk: RouteKind; item: CRDItem | null; onClose: () => void }>) {
+  const t = useT()
   const [tab, setTab] = useState<Tab>('detail')
   useEffect(() => setTab('detail'), [item])
   useEffect(() => {
@@ -91,8 +94,8 @@ function CRDDrawer({ ctx, rk, item, onClose }: Readonly<{ ctx: string; rk: Route
             </header>
 
             <div className="flex gap-1 border-b px-5 py-2.5">
-              <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label="Detalhes" />
-              <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label="Eventos" />
+              <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label={t('Details')} />
+              <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label={t('nav.events')} />
               <TabButton active={tab === 'yaml'} onClick={() => setTab('yaml')} icon={FileCode2} label="YAML" />
             </div>
 
@@ -109,6 +112,7 @@ function CRDDrawer({ ctx, rk, item, onClose }: Readonly<{ ctx: string; rk: Route
 }
 
 function CRDDetail({ ctx, rk, namespace, name }: Readonly<{ ctx: string; rk: RouteKind; namespace: string; name: string }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['crddetail', ctx, rk.group, rk.version, rk.resource, namespace, name],
     queryFn: () => crdDetail(ctx, rk, namespace, name),
@@ -116,14 +120,15 @@ function CRDDetail({ ctx, rk, namespace, name }: Readonly<{ ctx: string; rk: Rou
   if (q.isLoading)
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Carregando detalhes...
+        <Loader2 className="mr-2 size-4 animate-spin" /> {t('Loading details...')}
       </div>
     )
-  if (q.isError || !q.data) return <div className="p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message ?? 'Erro'}</div>
+  if (q.isError || !q.data) return <div className="p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message ?? t('Error')}</div>
   return <DetailBody d={q.data} ctx={ctx} kind={rk.kind} namespace={namespace} name={name} />
 }
 
 function CRDYaml({ ctx, rk, namespace, name }: Readonly<{ ctx: string; rk: RouteKind; namespace: string; name: string }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['crdmanifest', ctx, rk.group, rk.version, rk.resource, namespace, name],
     queryFn: () => crdManifest(ctx, rk, namespace, name),
@@ -131,7 +136,7 @@ function CRDYaml({ ctx, rk, namespace, name }: Readonly<{ ctx: string; rk: Route
   if (q.isLoading)
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Carregando YAML...
+        <Loader2 className="mr-2 size-4 animate-spin" /> {t('Loading YAML...')}
       </div>
     )
   if (q.isError) return <div className="p-6 text-center text-sm text-[color:var(--err)]">{(q.error as Error)?.message}</div>

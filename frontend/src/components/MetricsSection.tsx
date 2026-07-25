@@ -6,6 +6,7 @@ import { api, type Gauge, type MetricSeries, type NodeUsageItem } from '@/lib/ap
 import { cn } from '@/lib/utils'
 import { useMetricsRefresh } from '@/lib/metrics'
 import { fmtBytes, fmtCores } from '@/lib/usage'
+import { useT } from '@/lib/i18n'
 
 const RANGES = ['1h', '6h', '24h'] as const
 type Scope = 'cluster' | 'pod' | 'node'
@@ -35,11 +36,12 @@ function MetricsSectionInner({
 }
 
 function SectionShell({ source, right, children }: Readonly<{ source?: string; right?: React.ReactNode; children: React.ReactNode }>) {
+  const t = useT()
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Activity className="size-4 text-[color:var(--brand)]" /> Métricas
+          <Activity className="size-4 text-[color:var(--brand)]" /> {t('Metrics')}
           {source && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wider text-muted-foreground">{source}</span>}
         </h3>
         {right}
@@ -51,6 +53,7 @@ function SectionShell({ source, right, children }: Readonly<{ source?: string; r
 
 // ---- Instantaneous gauges (metrics-server) --------------------------------
 function Gauges({ ctx, scope, namespace, name, refreshMs }: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; refreshMs: number }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['usage', ctx, scope, namespace, name],
     queryFn: () => api.usage(ctx, scope, { namespace, name }),
@@ -66,10 +69,10 @@ function Gauges({ ctx, scope, namespace, name, refreshMs }: Readonly<{ ctx: stri
   const nodes = scope === 'cluster' && nodesQ.data?.available ? (nodesQ.data.items ?? []) : []
 
   return (
-    <SectionShell source="metrics-server · instantâneo">
+    <SectionShell source={`metrics-server · ${t('instant')}`}>
       <div className="grid gap-3 md:grid-cols-2">
         <MetricPanel title="CPU" icon={Cpu} kind="cores" g={q.data?.cpu} loading={q.isLoading} nodes={nodes} />
-        <MetricPanel title="Memória" icon={MemoryStick} kind="bytes" g={q.data?.memory} loading={q.isLoading} nodes={nodes} />
+        <MetricPanel title={t('Memory')} icon={MemoryStick} kind="bytes" g={q.data?.memory} loading={q.isLoading} nodes={nodes} />
       </div>
     </SectionShell>
   )
@@ -209,6 +212,7 @@ function GaugeCard({
   bare,
   compact,
 }: Readonly<{ title: string; icon: typeof Cpu; g?: Gauge; kind: 'cores' | 'bytes'; loading?: boolean; bare?: boolean; compact?: boolean }>) {
+  const t = useT()
   const dim = compact ? { w: 116, h: 96 } : { w: 148, h: 122 }
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
   const used = g?.used ?? 0
@@ -283,10 +287,10 @@ function GaugeCard({
           <div className="text-[11px] text-muted-foreground">
             {hasCeiling ? (
               <>
-                de <span className="font-mono text-foreground">{fmt(total)}</span> alocáveis
+                {t('of')} <span className="font-mono text-foreground">{fmt(total)}</span> {t('allocatable')}
               </>
             ) : (
-              'sem limite definido'
+              t('no limit set')
             )}
           </div>
         ))}
@@ -303,6 +307,7 @@ function TimeSeries({
   source,
   refreshMs,
 }: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; source?: string; refreshMs: number }>) {
+  const t = useT()
   const [range, setRange] = useState<string>('1h')
   const q = useQuery({
     queryKey: ['metrics', ctx, scope, namespace, name, range],
@@ -361,7 +366,7 @@ function TimeSeries({
           nodes={nodes}
         />
         <TimeChartPanel
-          title="Memória"
+          title={t('Memory')}
           icon={MemoryStick}
           kind="bytes"
           color="var(--primary)"
@@ -442,6 +447,7 @@ function NodeChartCarousel({
   refreshMs,
   nodes,
 }: Readonly<{ title: string; kind: 'cores' | 'bytes'; color: string; ctx: string; range: string; refreshMs: number; nodes: NodeUsageItem[] }>) {
+  const t = useT()
   const pickG = (n: NodeUsageItem) => (kind === 'cores' ? n.cpu : n.memory)
   const sorted = useMemo(() => {
     const ratio = (n: NodeUsageItem) => {
@@ -484,19 +490,19 @@ function NodeChartCarousel({
       </div>
       {len > 1 && (
         <div className="mt-1 flex items-center gap-1 border-t border-border/50 pt-1.5">
-          <button type="button" onClick={() => go(-1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label="Anterior">
+          <button type="button" onClick={() => go(-1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label={t('Previous')}>
             <ChevronLeft className="size-3.5" />
           </button>
           <span className="min-w-[2.5rem] text-center text-[10px] tabular-nums text-muted-foreground">
             {idx + 1}/{len}
           </span>
-          <button type="button" onClick={() => go(1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label="Próximo">
+          <button type="button" onClick={() => go(1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label={t('Next')}>
             <ChevronRight className="size-3.5" />
           </button>
           <button
             type="button"
             onClick={() => setPinned((v) => !v)}
-            title={pinned ? 'Retomar carrossel' : 'Fixar neste nó'}
+            title={pinned ? t('Resume carousel') : t('Pin to this node')}
             className={cn('ml-auto rounded p-0.5 transition-colors', pinned ? 'text-[color:var(--brand)]' : 'text-muted-foreground hover:text-foreground')}
           >
             <Pin className={cn('size-3 transition-transform', pinned ? 'rotate-0 fill-current' : 'rotate-45')} />
@@ -519,6 +525,7 @@ const Chart = memo(function Chart({
   height = 140,
   loading,
 }: Readonly<{ title: string; series?: MetricSeries; ceiling?: number; color: string; kind: 'cores' | 'bytes'; height?: number; loading?: boolean }>) {
+  const t = useT()
   const gid = useId()
   // Memoize so the derived domain/data useMemos have a stable dependency
   // (a fresh `?? []` array each render would defeat their memoization).
@@ -531,7 +538,7 @@ const Chart = memo(function Chart({
   if (points.length === 0) {
     return (
       <div className="flex items-center justify-center text-xs text-muted-foreground" style={{ height }}>
-        {loading ? 'Carregando...' : 'Sem dados no período'}
+        {loading ? t('Loading...') : t('No data in this period')}
       </div>
     )
   }
@@ -597,7 +604,7 @@ const Chart = memo(function Chart({
                           className="inline-block h-0.5 w-3 rounded-full"
                           style={{ background: 'color-mix(in srgb, var(--foreground) 55%, transparent)' }}
                         />{' '}
-                        Utilização
+                        {t('Utilization')}
                       </span>
                       <span className="font-mono font-medium tabular-nums">{Math.round(Number(pv))}%</span>
                     </div>

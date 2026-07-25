@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronsUpDown, Search, Server } from 'lucide-react'
 import type { ContextInfo } from '@/lib/api'
 import { cn, shortContext } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 interface Props {
   contexts: ContextInfo[]
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -39,8 +41,8 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
           <Server className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">{current ? shortContext(current.name) : 'Selecionar cluster'}</span>
-          <span className="block truncate text-xs text-muted-foreground">{current ? current.server : `${contexts.length} contextos disponíveis`}</span>
+          <span className="block truncate text-sm font-semibold">{current ? shortContext(current.name) : t('Select cluster')}</span>
+          <span className="block truncate text-xs text-muted-foreground">{current ? current.server : `${contexts.length} ${t('contexts available')}`}</span>
         </span>
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </button>
@@ -53,12 +55,12 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar cluster..."
+              placeholder={t('Search cluster...')}
               className="w-full bg-transparent py-2.5 text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
           <div className="max-h-72 overflow-y-auto p-1.5">
-            {filtered.length === 0 && <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nenhum contexto encontrado.</p>}
+            {filtered.length === 0 && <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t('No context found.')}</p>}
             {filtered.map((c) => (
               <button
                 key={c.name}
@@ -77,7 +79,7 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
                   <span className="block truncate font-medium">{shortContext(c.name)}</span>
                   <span className="block truncate text-xs text-muted-foreground">{c.name}</span>
                 </span>
-                {c.current && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">atual</span>}
+                {c.current && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{t('current')}</span>}
               </button>
             ))}
           </div>

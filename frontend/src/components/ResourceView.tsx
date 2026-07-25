@@ -4,6 +4,7 @@ import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { RefreshCw, ServerCrash } from 'lucide-react'
 import { api, type ManifestKind, type PodUsageEntry } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 import type { ResourceDef, ResourceExpand } from '@/lib/resources'
 import { DataTable } from './DataTable'
 import { useMetricsRefresh } from '@/lib/metrics'
@@ -47,6 +48,7 @@ function countColumn(expand: ResourceExpand, group: Map<string, Row[]>) {
 
 // Generic list view driven by a catalog entry (see lib/resources).
 export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx: string; ns: string }>) {
+  const t = useT()
   const [target, setTarget] = useState<DrawerTarget | null>(null)
   const q = useQuery({
     queryKey: ['resources', def.resource, ctx, ns],
@@ -166,11 +168,15 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
     return (
       <div className="flex h-56 flex-col items-center justify-center gap-2 rounded-2xl border bg-card/60 text-center backdrop-blur-xl">
         <ServerCrash className="size-6 text-[color:var(--err)]" />
-        <p className="text-sm font-medium text-[color:var(--err)]">Não foi possível carregar {def.label}.</p>
+        <p className="text-sm font-medium text-[color:var(--err)]">
+          {t('Could not load')} {def.label}.
+        </p>
         <p className="max-w-md text-xs text-muted-foreground">
           {auth
-            ? 'A conexão com a API do Kubernetes falhou — credencial expirada ou sem permissão. Renove o login do cluster (ex.: credenciais AWS) e tente de novo.'
-            : 'A API do Kubernetes não respondeu a esta listagem.'}
+            ? t(
+                'The connection to the Kubernetes API failed — expired credential or no permission. Renew the cluster login (e.g. AWS credentials) and try again.',
+              )
+            : t('The Kubernetes API did not respond to this listing.')}
         </p>
         <p className="max-w-lg truncate px-4 font-mono text-[10px] text-muted-foreground/60" title={raw}>
           {raw}
@@ -180,7 +186,7 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
           disabled={q.isFetching}
           className="mt-1 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
         >
-          <RefreshCw className={cn('size-3.5', q.isFetching && 'animate-spin')} /> Tentar novamente
+          <RefreshCw className={cn('size-3.5', q.isFetching && 'animate-spin')} /> {t('Try again')}
         </button>
       </div>
     )
@@ -212,10 +218,11 @@ function ChildList({
   render,
   onOpen,
 }: Readonly<{ title: string; kids: Row[]; render: (c: Record<string, unknown>) => ReactNode; onOpen: (k: Row) => void }>) {
+  const t = useT()
   return (
     <div className="ml-1 border-l-2 border-border/60 pl-3">
       <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-        {title} <span className="tabular-nums text-muted-foreground/50">({kids.length})</span>
+        {t(title)} <span className="tabular-nums text-muted-foreground/50">({kids.length})</span>
       </div>
       <div className="max-h-96 space-y-0.5 overflow-auto pr-1">
         {kids.map((k) => (
@@ -238,9 +245,10 @@ function ChildList({
 
 // The controller's revision history, shown when a current ReplicaSet row expands.
 function RevisionHistory({ revs, onOpen }: Readonly<{ revs: Row[]; onOpen: (r: Row) => void }>) {
+  const t = useT()
   return (
     <div className="ml-1 border-l-2 border-border/60 pl-3">
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Histórico de revisões</div>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">{t('Revision history')}</div>
       <div className="space-y-0.5">
         {revs.map((r) => {
           const rev = r as unknown as { name: string; revision: string; ready: string; age: string; current: boolean }
@@ -257,7 +265,9 @@ function RevisionHistory({ revs, onOpen }: Readonly<{ revs: Row[]; onOpen: (r: R
               <span className="w-8 shrink-0 font-mono text-muted-foreground tabular-nums">r{rev.revision || '?'}</span>
               <span className="min-w-0 flex-1 truncate font-medium">{rev.name}</span>
               {rev.current && (
-                <span className="shrink-0 rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">atual</span>
+                <span className="shrink-0 rounded-full bg-[color:var(--ok)]/12 px-1.5 py-0.5 text-[10px] font-medium text-[color:var(--ok)]">
+                  {t('current')}
+                </span>
               )}
               <span className="shrink-0 font-mono text-muted-foreground tabular-nums">{rev.ready}</span>
               <span className="w-10 shrink-0 text-right font-mono text-muted-foreground tabular-nums">{age(rev.age)}</span>

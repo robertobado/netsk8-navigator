@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Info, Inbox, Loader2, Radio, RefreshCw, Search, ServerCrash } from 'lucide-react'
 import { api, kindToSlug } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
+import { tAgo, useT } from '@/lib/i18n'
 import type { DrawerTarget } from './ResourceDrawer'
 
 type Filter = 'all' | 'warning'
@@ -17,6 +18,7 @@ const MAX_SHOWN = 400
 // free-text search. Each row links back to the involved object's drawer when we
 // know how to open that kind.
 export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: string; onOpen: (t: DrawerTarget) => void }>) {
+  const t = useT()
   const q = useQuery({
     queryKey: ['allEvents', ctx, ns],
     queryFn: () => api.allEvents(ctx, ns),
@@ -50,7 +52,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
   if (q.isLoading) {
     return (
       <div className="flex h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Carregando eventos...
+        <Loader2 className="size-4 animate-spin" /> {t('Loading events...')}
       </div>
     )
   }
@@ -60,11 +62,13 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
     return (
       <div className="flex h-56 flex-col items-center justify-center gap-2 text-center">
         <ServerCrash className="size-6 text-[color:var(--err)]" />
-        <p className="text-sm font-medium text-[color:var(--err)]">Não foi possível carregar os eventos deste cluster.</p>
+        <p className="text-sm font-medium text-[color:var(--err)]">{t('Could not load events for this cluster.')}</p>
         <p className="max-w-md text-xs text-muted-foreground">
           {auth
-            ? 'A conexão com a API do Kubernetes falhou — credencial expirada ou sem permissão para listar eventos. Renove o login do cluster (ex.: credenciais AWS) e tente de novo.'
-            : 'A API do Kubernetes não respondeu à listagem de eventos.'}
+            ? t(
+                'The connection to the Kubernetes API failed — expired credential or no permission to list events. Renew the cluster login (e.g. AWS credentials) and try again.',
+              )
+            : t('The Kubernetes API did not respond to the event listing.')}
         </p>
         <p className="max-w-lg truncate font-mono text-[10px] text-muted-foreground/60" title={raw}>
           {raw}
@@ -74,7 +78,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
           disabled={q.isFetching}
           className="mt-1 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
         >
-          <RefreshCw className={cn('size-3.5', q.isFetching && 'animate-spin')} /> Tentar novamente
+          <RefreshCw className={cn('size-3.5', q.isFetching && 'animate-spin')} /> {t('Try again')}
         </button>
       </div>
     )
@@ -85,21 +89,21 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border bg-card/40 p-0.5 text-sm">
           <FilterTab active={filter === 'all'} onClick={() => setFilter('all')}>
-            Todos <span className="tabular-nums text-muted-foreground">{events.length}</span>
+            {t('All')} <span className="tabular-nums text-muted-foreground">{events.length}</span>
           </FilterTab>
           <FilterTab active={filter === 'warning'} onClick={() => setFilter('warning')}>
             <AlertTriangle className="size-3.5 text-[color:var(--warn)]" /> Warnings <span className="tabular-nums text-muted-foreground">{warnings}</span>
           </FilterTab>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--ok)]/12 px-2 py-0.5 text-xs font-medium text-[color:var(--ok)] ring-1 ring-inset ring-[color:var(--ok)]/25">
-          <Radio className="size-3 animate-pulse" /> ao vivo
+          <Radio className="size-3 animate-pulse" /> {t('live')}
         </span>
         <div className="relative ml-auto min-w-56 flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Filtrar por motivo, objeto ou mensagem..."
+            placeholder={t('Filter by reason, object, or message...')}
             className="w-full rounded-lg border bg-card/40 py-1.5 pl-8 pr-3 text-sm outline-none transition-colors focus:border-[color:var(--brand)]"
           />
         </div>
@@ -107,7 +111,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
 
       {shown.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Inbox className="size-5" /> Nenhum evento {filter === 'warning' ? 'de warning ' : ''}encontrado.
+          <Inbox className="size-5" /> {filter === 'warning' ? t('No warning events found.') : t('No events found.')}
         </div>
       ) : (
         <ul className="space-y-2">
@@ -150,7 +154,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
                     </span>
                   )}
                   <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums" title={e.last}>
-                    há {age(e.last)}
+                    {tAgo(t, age(e.last))}
                   </span>
                 </div>
                 <p className="mt-1 break-words text-xs text-muted-foreground">{e.message}</p>
@@ -163,7 +167,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
 
       {capped && (
         <p className="pb-2 text-center text-xs text-muted-foreground">
-          Mostrando os {MAX_SHOWN} eventos mais recentes de {shown.length}. Refine com o filtro ou a busca para ver os demais.
+          {t('Showing the')} {MAX_SHOWN} {t('most recent events out of')} {shown.length}. {t('Narrow with the filter or search to see the rest.')}
         </p>
       )}
     </div>

@@ -3,9 +3,11 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { execURL } from '@/lib/api'
+import { useT } from '@/lib/i18n'
 
 // Interactive shell into a pod container: xterm.js <-> WebSocket <-> SPDY exec.
 export function TerminalPanel({ ctx, namespace, pod, container }: { ctx: string; namespace: string; pod: string; container?: string }) {
+  const t = useT()
   const host = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export function TerminalPanel({ ctx, namespace, pod, container }: { ctx: string;
     }
 
     ws.onopen = () => {
-      term.writeln('\x1b[90mConectando ao container...\x1b[0m')
+      term.writeln(`\x1b[90m${t('Connecting to container...')}\x1b[0m`)
       sendResize()
       term.focus()
     }
@@ -45,8 +47,8 @@ export function TerminalPanel({ ctx, namespace, pod, container }: { ctx: string;
       const text = typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data)
       term.write(text)
     }
-    ws.onclose = () => term.writeln('\r\n\x1b[90m[sessão encerrada]\x1b[0m')
-    ws.onerror = () => term.writeln('\r\n\x1b[31m[erro de conexão]\x1b[0m')
+    ws.onclose = () => term.writeln(`\r\n\x1b[90m[${t('session closed')}]\x1b[0m`)
+    ws.onerror = () => term.writeln(`\r\n\x1b[31m[${t('connection error')}]\x1b[0m`)
 
     const dataSub = term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'stdin', data }))
@@ -58,15 +60,19 @@ export function TerminalPanel({ ctx, namespace, pod, container }: { ctx: string;
     }
     window.addEventListener('resize', onResize)
     // Fit again on next tick once the drawer finished its open transition.
-    const t = setTimeout(onResize, 60)
+    const resizeTimer = setTimeout(onResize, 60)
 
     return () => {
-      clearTimeout(t)
+      clearTimeout(resizeTimer)
       window.removeEventListener('resize', onResize)
       dataSub.dispose()
       ws.close()
       term.dispose()
     }
+    // `t` is intentionally excluded: its identity changes every render, and
+    // including it would reconnect this WebSocket session on any unrelated
+    // preference change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, namespace, pod, container])
 
   return <div ref={host} className="h-full w-full bg-[#0b0e14] p-2" />

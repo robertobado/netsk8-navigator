@@ -2,8 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Boxes, ChevronRight, Layers, Loader2, type LucideIcon } from 'lucide-react'
 import { api, type ManifestKind, type Pod } from '@/lib/api'
 import { RESOURCES } from '@/lib/resources'
+import { tf, useT } from '@/lib/i18n'
 
-// Human labels for the "Ver detalhes do X" link, keyed by manifest slug.
+// Human labels for the "View X details" link, keyed by manifest slug.
 const KIND_LABEL: Partial<Record<ManifestKind, string>> = {
   deployment: 'deployment',
   statefulset: 'statefulset',
@@ -30,10 +31,11 @@ function ExpansionShell({ children }: Readonly<{ children: React.ReactNode }>) {
 }
 
 function Loading() {
+  const t = useT()
   return (
     <ExpansionShell>
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> Carregando...
+        <Loader2 className="size-3.5 animate-spin" /> {t('Loading...')}
       </div>
     </ExpansionShell>
   )
@@ -110,17 +112,18 @@ export function WorkloadPodsExpansion({
   name,
   onOpen,
 }: Readonly<{ ctx: string; kind: ManifestKind; namespace: string; name: string; onOpen: OpenTarget }>) {
+  const t = useT()
   const q = useQuery({ queryKey: ['workloadPods', ctx, kind, namespace, name], queryFn: () => api.workloadPods(ctx, kind, namespace, name) })
   if (q.isLoading) return <Loading />
   const label = KIND_LABEL[kind] ?? kind
   const isSvc = kind === 'service'
   return (
     <ExpansionShell>
-      <DetailLink label={`Ver detalhes do ${label}`} onClick={() => onOpen(kind, namespace, name)} />
+      <DetailLink label={tf(t, 'View {kind} details', { kind: label })} onClick={() => onOpen(kind, namespace, name)} />
       <PodListBody
-        title={isSvc ? 'Pods de backend' : 'Pods'}
+        title={isSvc ? t('Backend pods') : 'Pods'}
         pods={q.data ?? []}
-        empty={isSvc ? 'Nenhum pod corresponde ao selector deste service.' : 'Nenhum pod ativo para este workload.'}
+        empty={isSvc ? t("No pods match this service's selector.") : t('No active pods for this workload.')}
         onOpen={onOpen}
       />
     </ExpansionShell>
@@ -136,12 +139,13 @@ export function ConsumersExpansion({
   name,
   onOpen,
 }: Readonly<{ ctx: string; kind: 'configmap' | 'secret'; namespace: string; name: string; onOpen: OpenTarget }>) {
+  const t = useT()
   const q = useQuery({ queryKey: ['consumers', ctx, kind, namespace, name], queryFn: () => api.consumers(ctx, kind, namespace, name) })
   if (q.isLoading) return <Loading />
   return (
     <ExpansionShell>
-      <DetailLink label={`Ver detalhes do ${KIND_LABEL[kind] ?? kind}`} onClick={() => onOpen(kind, namespace, name)} />
-      <PodListBody title="Consumido por" pods={q.data ?? []} empty="Nenhum pod consome este recurso." onOpen={onOpen} />
+      <DetailLink label={tf(t, 'View {kind} details', { kind: KIND_LABEL[kind] ?? kind })} onClick={() => onOpen(kind, namespace, name)} />
+      <PodListBody title={t('Consumed by')} pods={q.data ?? []} empty={t('No pods consume this resource.')} onOpen={onOpen} />
     </ExpansionShell>
   )
 }
@@ -149,15 +153,16 @@ export function ConsumersExpansion({
 // --- ServiceAccount → bindings + pods running as it -------------------------
 
 export function ServiceAccountExpansion({ ctx, namespace, name, onOpen }: Readonly<{ ctx: string; namespace: string; name: string; onOpen: OpenTarget }>) {
+  const t = useT()
   const q = useQuery({ queryKey: ['saUsage', ctx, namespace, name], queryFn: () => api.serviceAccountUsage(ctx, namespace, name) })
   if (q.isLoading) return <Loading />
   const bindings = q.data?.bindings ?? []
   const pods = q.data?.pods ?? []
   return (
     <ExpansionShell>
-      <DetailLink label="Ver detalhes do service account" onClick={() => onOpen('serviceaccount', namespace, name)} />
+      <DetailLink label={t('View service account details')} onClick={() => onOpen('serviceaccount', namespace, name)} />
       {bindings.length === 0 && pods.length === 0 && (
-        <p className="py-1 text-xs text-muted-foreground">Nenhum binding referencia esta SA e nenhum pod a usa.</p>
+        <p className="py-1 text-xs text-muted-foreground">{t('No binding references this SA and no pod uses it.')}</p>
       )}
       {bindings.length > 0 && (
         <div className="mb-2">
@@ -186,7 +191,7 @@ export function ServiceAccountExpansion({ ctx, namespace, name, onOpen }: Readon
           </div>
         </div>
       )}
-      {pods.length > 0 && <PodListBody title="Pods usando esta SA" pods={pods} empty="" onOpen={onOpen} />}
+      {pods.length > 0 && <PodListBody title={t('Pods using this SA')} pods={pods} empty="" onOpen={onOpen} />}
     </ExpansionShell>
   )
 }
@@ -194,6 +199,7 @@ export function ServiceAccountExpansion({ ctx, namespace, name, onOpen }: Readon
 // --- Node → workloads --------------------------------------------------------
 
 export function NodeExpansion({ ctx, node, onOpen }: Readonly<{ ctx: string; node: string; onOpen: OpenTarget }>) {
+  const t = useT()
   const q = useQuery({ queryKey: ['nodeWorkloads', ctx, node], queryFn: () => api.nodeWorkloads(ctx, node) })
   if (q.isLoading) return <Loading />
   const groups = q.data ?? []
@@ -201,13 +207,13 @@ export function NodeExpansion({ ctx, node, onOpen }: Readonly<{ ctx: string; nod
 
   return (
     <ExpansionShell>
-      <DetailLink label="Ver detalhes do node" onClick={() => onOpen('node', '', node)} />
+      <DetailLink label={t('View node details')} onClick={() => onOpen('node', '', node)} />
       {groups.length === 0 ? (
-        <p className="py-1 text-xs text-muted-foreground">Nenhum pod agendado neste node.</p>
+        <p className="py-1 text-xs text-muted-foreground">{t('No pods scheduled on this node.')}</p>
       ) : (
         <>
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            Workloads no node <span className="tabular-nums text-muted-foreground/50">({totalPods} pods)</span>
+            {t('Workloads on this node')} <span className="tabular-nums text-muted-foreground/50">({totalPods} pods)</span>
           </div>
           <div className="max-h-[26rem] space-y-2 overflow-auto pr-1">
             {groups.map((g) => {
@@ -219,7 +225,7 @@ export function NodeExpansion({ ctx, node, onOpen }: Readonly<{ ctx: string; nod
                     <Icon className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{g.kind}</span>
                     {standalone ? (
-                      <span className="text-xs text-muted-foreground">Pods avulsos</span>
+                      <span className="text-xs text-muted-foreground">{t('Standalone pods')}</span>
                     ) : (
                       <button
                         type="button"
@@ -252,6 +258,7 @@ export function NodeExpansion({ ctx, node, onOpen }: Readonly<{ ctx: string; nod
 // --- Namespace → resources by type ------------------------------------------
 
 export function NamespaceExpansion({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: string; onOpen: OpenTarget }>) {
+  const t = useT()
   const q = useQuery({ queryKey: ['namespaceSummary', ctx, ns], queryFn: () => api.namespaceSummary(ctx, ns) })
   if (q.isLoading) return <Loading />
   const groups = q.data ?? []
@@ -259,13 +266,13 @@ export function NamespaceExpansion({ ctx, ns, onOpen }: Readonly<{ ctx: string; 
 
   return (
     <ExpansionShell>
-      <DetailLink label="Ver detalhes do namespace" onClick={() => onOpen('namespace', '', ns)} />
+      <DetailLink label={t('View namespace details')} onClick={() => onOpen('namespace', '', ns)} />
       {groups.length === 0 ? (
-        <p className="py-1 text-xs text-muted-foreground">Nenhum recurso neste namespace.</p>
+        <p className="py-1 text-xs text-muted-foreground">{t('No resources in this namespace.')}</p>
       ) : (
         <>
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            Recursos no namespace <span className="tabular-nums text-muted-foreground/50">({total})</span>
+            {t('Resources in this namespace')} <span className="tabular-nums text-muted-foreground/50">({total})</span>
           </div>
           <div className="max-h-[26rem] space-y-2 overflow-auto pr-1">
             {groups.map((g) => {

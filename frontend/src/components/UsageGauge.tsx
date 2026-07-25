@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { Gauge, PodUsageEntry } from '@/lib/api'
 import { fmtBytes, fmtCores, type UsageBasis } from '@/lib/usage'
+import { useT } from '@/lib/i18n'
 
 // Shared inline usage gauges, used by the pods and deployments tables. A tiny
 // 270° arc showing usage vs. its ceiling, with % + absolute value.
@@ -24,6 +25,7 @@ function mgArc(f0: number, f1: number): string {
 
 // A tiny arc gauge for a single metric: % on top, absolute below, colored by zone.
 export function MiniGauge({ g, kind }: Readonly<{ g?: Gauge; kind: 'cores' | 'bytes' }>) {
+  const t = useT()
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
   const used = g?.used ?? 0
   const total = g?.total ?? 0 // effective ceiling (limit→request)
@@ -31,9 +33,9 @@ export function MiniGauge({ g, kind }: Readonly<{ g?: Gauge; kind: 'cores' | 'by
   let color = 'var(--muted-foreground)'
   if (total > 0) color = frac >= 0.9 ? 'var(--err)' : frac >= 0.8 ? 'var(--warn)' : 'var(--ok)'
   const label = kind === 'cores' ? 'C' : 'M'
-  let ceilTxt = 'sem limite'
+  let ceilTxt = t('no limit')
   if (total > 0) ceilTxt = `${(g?.limit ?? 0) > 0 ? fmt(g!.limit!) : fmt(g!.request ?? 0)} (${Math.round(frac * 100)}%)`
-  const title = `${kind === 'cores' ? 'CPU' : 'Memória'}: ${fmt(used)} / ${ceilTxt}`
+  const title = `${kind === 'cores' ? 'CPU' : t('Memory')}: ${fmt(used)} / ${ceilTxt}`
   return (
     <span className="inline-flex items-center gap-1.5" title={title}>
       <span className="relative">
@@ -57,6 +59,7 @@ export function MiniGauge({ g, kind }: Readonly<{ g?: Gauge; kind: 'cores' | 'by
 
 // Header toggle choosing whether a usage column sorts by % or absolute value.
 export function UsageBasisToggle({ basis, onChange }: Readonly<{ basis: UsageBasis; onChange: (b: UsageBasis) => void }>) {
+  const t = useT()
   return (
     <span className="inline-flex overflow-hidden rounded-md border text-[9px] font-medium">
       {(['pct', 'abs'] as const).map((b) => (
@@ -67,7 +70,7 @@ export function UsageBasisToggle({ basis, onChange }: Readonly<{ basis: UsageBas
             e.stopPropagation()
             onChange(b)
           }}
-          title={b === 'pct' ? 'Ordenar por % de utilização' : 'Ordenar por valor absoluto'}
+          title={b === 'pct' ? t('Sort by % utilization') : t('Sort by absolute value')}
           className={cn('px-1 py-0.5 transition-colors', basis === b ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground')}
         >
           {b === 'pct' ? '%' : 'val'}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clock, Pin, type LucideIcon } from 'lucide-react'
 import type { IssueItem } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 // Live-ticking relative age (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
@@ -29,6 +30,7 @@ export function IssueCarousel({
   tone = 'warn',
   onOpen,
 }: Readonly<{ title: string; icon: LucideIcon; items: IssueItem[]; tone?: 'warn' | 'err' | 'muted'; onOpen: (item: IssueItem) => void }>) {
+  const t = useT()
   const [i, setI] = useState(0)
   const [pinned, setPinned] = useState(false)
   const len = items.length
@@ -57,7 +59,7 @@ export function IssueCarousel({
         type="button"
         onClick={() => onOpen(cur)}
         className="group block w-full rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-accent/40"
-        title="Abrir detalhes"
+        title={t('Open details')}
       >
         <div key={idx} className="nk-blur">
           <div className="flex items-center gap-2">
@@ -78,7 +80,7 @@ export function IssueCarousel({
               {cur.reason}
             </span>
             <span className="truncate text-[11px] text-muted-foreground" title={cur.message}>
-              {cur.message || 'sem detalhe'}
+              {cur.message || t('no detail')}
             </span>
             <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70" />
           </div>
@@ -92,7 +94,7 @@ export function IssueCarousel({
             onClick={() => go(-1)}
             disabled={len < 2}
             className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            aria-label="Anterior"
+            aria-label={t('Previous')}
           >
             <ChevronLeft className="size-3.5" />
           </button>
@@ -104,7 +106,7 @@ export function IssueCarousel({
             onClick={() => go(1)}
             disabled={len < 2}
             className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            aria-label="Próximo"
+            aria-label={t('Next')}
           >
             <ChevronRight className="size-3.5" />
           </button>
@@ -112,14 +114,14 @@ export function IssueCarousel({
         <button
           type="button"
           onClick={() => setPinned((v) => !v)}
-          title={pinned ? 'Retomar carrossel' : 'Fixar neste item'}
+          title={pinned ? t('Resume carousel') : t('Pin this item')}
           className={cn(
             'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors',
             pinned ? 'text-[color:var(--brand)]' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           <Pin className={cn('size-3 transition-transform', pinned ? 'rotate-0 fill-current' : 'rotate-45')} />
-          {pinned ? 'fixado' : 'fixar'}
+          {pinned ? t('pinned') : t('pin')}
         </button>
       </div>
     </div>
