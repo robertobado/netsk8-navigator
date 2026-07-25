@@ -5,6 +5,7 @@ import { Activity, ChevronLeft, ChevronRight, Cpu, MemoryStick, Pin, Server } fr
 import { api, type Gauge, type MetricSeries, type NodeUsageItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useMetricsRefresh } from '@/lib/metrics'
+import { fmtBytes, fmtCores } from '@/lib/usage'
 
 const RANGES = ['1h', '6h', '24h'] as const
 type Scope = 'cluster' | 'pod' | 'node'
@@ -525,16 +526,4 @@ const Chart = memo(function Chart({
 function fmtTime(t: number): string {
   const d = new Date(t * 1000)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-function fmtCores(v: number): string {
-  return v >= 1 ? v.toFixed(2) : v.toFixed(3)
-}
-function fmtBytes(v: number): string {
-  const u = ['B', 'Ki', 'Mi', 'Gi', 'Ti']
-  let i = 0
-  while (v >= 1024 && i < u.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)}${u[i]}`
 }

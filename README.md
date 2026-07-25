@@ -35,7 +35,7 @@ sem estado além das suas preferências locais.
 
 ## Arquitetura
 
-```
+```text
 backend/    Go — client-go dynamic client + discovery RESTMapper, API REST fina
 frontend/   React + Vite + TypeScript — Tailwind v4, TanStack Table/Query, Monaco
 ```
@@ -61,19 +61,48 @@ pnpm install
 pnpm dev
 ```
 
-Abra `http://localhost:5173`. Não há build de produção de binário único
-ainda (o backend não embute a SPA) — isso está no roadmap.
+Abra `http://localhost:5173`.
 
 ### Comandos úteis
 
 ```bash
 # Backend
-cd backend && go build ./... && go vet ./...
+cd backend && go build ./... && go vet ./... && go test ./...
 
 # Frontend
 cd frontend && pnpm exec tsc -b && pnpm build   # typecheck + build
 cd frontend && pnpm exec oxlint src              # lint (linter oficial do projeto)
 ```
+
+## Binário único (sem Vite, sem processo separado)
+
+Buildar o frontend antes do backend embute a SPA no binário Go
+(`internal/web`, via `go:embed`) — um processo só, uma porta só, API e UI
+juntas:
+
+```bash
+cd frontend && pnpm install && pnpm build   # gera backend/internal/web/dist
+cd ../backend && go build -o netsk8-navigator .
+ADDR=127.0.0.1:8080 ./netsk8-navigator      # abra http://127.0.0.1:8080
+```
+
+Sem o passo do `pnpm build`, `go build` continua funcionando normalmente —
+só não há UI embutida (o log diz "no embedded frontend build"); é o
+caminho normal quando você só quer a API, ou está iterando no backend em
+dev.
+
+## Docker
+
+```bash
+docker build -t netsk8-navigator .
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -v "$HOME/.kube:/kube:ro" -e KUBECONFIG=/kube/config \
+  netsk8-navigator
+```
+
+Mapeie a porta só para `127.0.0.1` do host (como acima) para manter o
+mesmo modelo de segurança — sem isso, `-p 8080:8080` expõe o backend
+sem autenticação para qualquer coisa na sua rede.
 
 ## Modelo de segurança
 

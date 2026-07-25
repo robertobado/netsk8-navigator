@@ -15,6 +15,12 @@ export default defineConfig({
     // default warning is unrealistic here. Raise it just above Monaco's chunk;
     // anything genuinely larger still warns.
     chunkSizeWarningLimit: 3000,
+    // Build straight into the Go module so `go build` can //go:embed it,
+    // producing a single binary that serves both the API and the UI
+    // (see internal/web). Dev mode is unaffected — it still uses the Vite
+    // dev server below, proxying /api to the Go backend.
+    outDir: '../backend/internal/web/dist',
+    emptyOutDir: true,
   },
   server: {
     port: 5173,

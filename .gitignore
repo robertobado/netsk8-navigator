@@ -11,9 +11,13 @@ backend/*.exe
 
 # Frontend
 frontend/node_modules/
-frontend/dist/
 frontend/dist-ssr/
 frontend/*.local
+
+# Frontend build embedded into the Go binary (see internal/web) — generated,
+# keep only the placeholder that lets `go build` succeed without it.
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
 
 # Logs
 *.log

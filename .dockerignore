@@ -1,0 +1,7 @@
+**/.git
+**/.DS_Store
+frontend/node_modules
+frontend/dist
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+Memory.md

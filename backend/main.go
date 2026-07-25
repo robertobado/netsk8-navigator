@@ -10,6 +10,7 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/api"
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
+	"github.com/robertobado/netsk8-navigator/backend/internal/web"
 )
 
 func main() {
@@ -34,8 +35,18 @@ func main() {
 	log.Printf("preferences at %s", cfg.Path())
 
 	srv := api.NewServer(mgr, cfg)
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/", srv.Routes())
+	if h := web.Handler(); h != nil {
+		mux.Handle("/", h)
+		log.Print("serving embedded frontend build")
+	} else {
+		log.Print("no embedded frontend build — run the Vite dev server separately (pnpm dev)")
+	}
+
 	log.Printf("netsk8s-navigator backend listening on %s", addr)
-	if err := http.ListenAndServe(addr, srv.Routes()); err != nil {
+	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
