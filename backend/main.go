@@ -1,4 +1,4 @@
-// netsk8s-navigator backend: a web-based Kubernetes navigator (Lens for the browser).
+// netsk8-navigator backend: a web-based Kubernetes navigator (Lens for the browser).
 // Reads the local kubeconfig and serves a REST API the React frontend consumes.
 package main
 
@@ -21,7 +21,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
-		fmt.Println("netsk8s-navigator " + version)
+		fmt.Println("netsk8-navigator " + version)
 		return
 	}
 
@@ -64,7 +64,7 @@ func main() {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("netsk8s-navigator %s backend listening on %s", version, addr)
+	log.Printf("netsk8-navigator %s backend listening on %s", version, addr)
 	if err := httpSrv.ListenAndServe(); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

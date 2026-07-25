@@ -12,12 +12,13 @@ RUN cd frontend && pnpm build
 
 # --- backend build: a single static binary with the SPA embedded ---
 FROM golang:1.26-alpine AS backend
+ARG VERSION=dev
 WORKDIR /src
 COPY backend/go.mod backend/go.sum backend/
 RUN cd backend && go mod download
 COPY backend backend/
 COPY --from=frontend /src/backend/internal/web/dist backend/internal/web/dist
-RUN cd backend && CGO_ENABLED=0 go build -o /out/netsk8-navigator .
+RUN cd backend && CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /out/netsk8-navigator .
 
 # --- final image ---
 FROM gcr.io/distroless/static-debian12

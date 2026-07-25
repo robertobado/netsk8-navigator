@@ -68,7 +68,7 @@ release:
     Baixe o binário da sua plataforma acima, ou:
 
     ```bash
-    docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Tag }}
+    docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Version }}
     ```
 
     Instruções completas de build a partir do fonte no
