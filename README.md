@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" width="120" alt="Netsk8 Navigator" />
+  <img src="docs/logo-animated.svg" width="190" alt="Netsk8 Navigator" />
 </p>
 
 <h1 align="center">Netsk8 Navigator</h1>
@@ -23,9 +23,53 @@
   <a href="https://sonarcloud.io/summary/new_code?id=robertobado_netsk8-navigator"><img src="https://sonarcloud.io/api/project_badges/measure?project=robertobado_netsk8-navigator&metric=coverage" alt="Coverage" /></a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/overview.png" alt="Netsk8 Navigator — cluster overview with live metrics and a live pods table" width="100%" />
+</p>
+
 ---
 
-## Releases
+## What it is
+
+Netsk8 Navigator is an SPA that reads your `kubeconfig` and browses any
+Kubernetes cluster (standard resources + CRDs) through a thin Go backend
+that talks directly to the cluster API. Nothing installed on the cluster,
+no agent, no state beyond your local preferences — the same trust model as
+running `kubectl` from your own machine.
+
+- 🗂️ **All standard resources** (Workloads, Network, Config, Storage, RBAC,
+  Governance, Cluster) in filterable, sortable tables, with row expansion
+  for relationships — Node → workloads, Namespace → resources, ConfigMap/
+  Secret → consumers, ServiceAccount → bindings, and more.
+- 🧩 **Generic CRD browser** for route resources (Gateway API, Traefik
+  IngressRoute, Istio VirtualService, Contour HTTPProxy).
+- 📝 **Detail view + YAML manifest editor** (Monaco) for reading and
+  editing any object in place.
+- 🔌 **Live logs, exec, and events** over SSE/WebSocket — pods stream in
+  real time, no manual refresh.
+- 📊 **CPU/memory metrics** at cluster, node, and pod level when the
+  cluster exposes `metrics-server` or Prometheus.
+- 🕸️ **Cluster topology** — a live graph of how workloads, pods, and
+  services connect within a namespace.
+- 🌐 **Multi-cluster & multi-version** — switch kubeconfig context without
+  restarting anything; every resource is resolved via discovery/RESTMapper
+  at request time, so it works against whatever Kubernetes version the
+  cluster actually serves.
+
+## See it in action
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/deployments.png" alt="Deployments table with live CPU/memory columns" /><br/><sub>Filterable, sortable resource tables</sub></td>
+    <td width="50%"><img src="docs/screenshots/topology.png" alt="Cluster topology graph for a namespace" /><br/><sub>Live topology: workloads → pods → services</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/manifest.png" alt="YAML manifest editor powered by Monaco" /><br/><sub>Read/edit any object's YAML in place</sub></td>
+    <td width="50%"><img src="docs/screenshots/events.png" alt="Live cluster events feed" /><br/><sub>Cluster-wide events, live and filterable</sub></td>
+  </tr>
+</table>
+
+## Quick start
 
 Ready-to-run binaries (Linux/macOS/Windows) + a Docker image on every
 [release](https://github.com/robertobado/netsk8-navigator/releases) — no
@@ -37,90 +81,9 @@ tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # or linux_amd64, windows_amd64
 ./netsk8-navigator
 ```
 
-Prefer running from source or via Docker? See the sections below.
+Prefer Docker, or building from source? Keep reading.
 
-## What it is
-
-Netsk8 Navigator is an SPA that reads your `kubeconfig` and browses any
-Kubernetes cluster (standard resources + CRDs) through a thin Go backend
-that talks directly to the cluster API. Nothing installed on the cluster,
-no agent, no state beyond your local preferences.
-
-- Tables for all standard resources (Workloads, Network, Config, Storage,
-  RBAC, Governance, Cluster) — filterable, with row expansion for
-  relationships (Node → workloads, Namespace → resources, ConfigMap/Secret →
-  consumers, …).
-- Generic browser for route CRDs (Gateway API, Traefik IngressRoute, Istio
-  VirtualService, Contour).
-- Detail view + YAML manifest (Monaco editor) for in-place reading and
-  editing.
-- Real-time pod logs, exec, and events (SSE/WebSocket).
-- CPU/memory metrics (cluster, node, pod) when the cluster exposes
-  `metrics-server` or Prometheus.
-- Multi-cluster: switch kubeconfig context without restarting anything.
-- Multi-version: each resource is resolved via discovery/RESTMapper at
-  request time, so it works against any Kubernetes version the cluster
-  serves.
-
-## Architecture
-
-```text
-backend/    Go — client-go dynamic client + discovery RESTMapper, thin REST API
-frontend/   React + Vite + TypeScript — Tailwind v4, TanStack Table/Query, Monaco
-```
-
-The design is **catalog-driven**: adding a standard resource is one entry
-in the backend catalog (`backend/internal/api/catalog.go`) + one entry in
-the frontend catalog (`frontend/src/lib/resources.tsx`) — no new handlers
-or views. Full details on the extension pattern in
-[ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Running locally
-
-Prerequisites: Go 1.26+, Node 20+, [pnpm](https://pnpm.io).
-
-```bash
-# Backend — API at http://127.0.0.1:8080 (reads ~/.kube/config, or $KUBECONFIG)
-cd backend
-go run .
-
-# Frontend — dev server at http://localhost:5173, proxying /api → :8080
-cd frontend
-pnpm install
-pnpm dev
-```
-
-Open `http://localhost:5173`.
-
-### Useful commands
-
-```bash
-# Backend
-cd backend && go build ./... && go vet ./... && go test ./...
-
-# Frontend
-cd frontend && pnpm exec tsc -b && pnpm build   # typecheck + build
-cd frontend && pnpm exec oxlint src              # lint (the project's linter)
-```
-
-## Single binary (no Vite, no separate process)
-
-Building the frontend before the backend embeds the SPA into the Go binary
-(`internal/web`, via `go:embed`) — one process, one port, API and UI
-together:
-
-```bash
-cd frontend && pnpm install && pnpm build   # generates backend/internal/web/dist
-cd ../backend && go build -o netsk8-navigator .
-ADDR=127.0.0.1:8080 ./netsk8-navigator      # open http://127.0.0.1:8080
-```
-
-Without the `pnpm build` step, `go build` still works normally — there's
-just no embedded UI (the log says "no embedded frontend build"); this is
-the normal path when you only want the API, or you're iterating on the
-backend in dev.
-
-## Docker
+### Docker
 
 ```bash
 docker build -t netsk8-navigator .
@@ -144,6 +107,60 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   netsk8-navigator
 ```
 
+### From source
+
+Prerequisites: Go 1.26+, Node 20+, [pnpm](https://pnpm.io).
+
+```bash
+# Backend — API at http://127.0.0.1:8080 (reads ~/.kube/config, or $KUBECONFIG)
+cd backend
+go run .
+
+# Frontend — dev server at http://localhost:5173, proxying /api → :8080
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:5173`.
+
+```bash
+# Useful commands
+cd backend && go build ./... && go vet ./... && go test ./...          # backend
+cd frontend && pnpm exec tsc -b && pnpm build                          # typecheck + build
+cd frontend && pnpm exec oxlint src                                    # lint (the project's linter)
+```
+
+### Single binary (no Vite, no separate process)
+
+Building the frontend before the backend embeds the SPA into the Go binary
+(`internal/web`, via `go:embed`) — one process, one port, API and UI
+together:
+
+```bash
+cd frontend && pnpm install && pnpm build   # generates backend/internal/web/dist
+cd ../backend && go build -o netsk8-navigator .
+ADDR=127.0.0.1:8080 ./netsk8-navigator      # open http://127.0.0.1:8080
+```
+
+Without the `pnpm build` step, `go build` still works normally — there's
+just no embedded UI (the log says "no embedded frontend build"); this is
+the normal path when you only want the API, or you're iterating on the
+backend in dev.
+
+## Architecture
+
+```text
+backend/    Go — client-go dynamic client + discovery RESTMapper, thin REST API
+frontend/   React + Vite + TypeScript — Tailwind v4, TanStack Table/Query, Monaco
+```
+
+The design is **catalog-driven**: adding a standard resource is one entry
+in the backend catalog (`backend/internal/api/catalog.go`) + one entry in
+the frontend catalog (`frontend/src/lib/resources.tsx`) — no new handlers
+or views. Full details on the extension pattern in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Security model
 
 This backend **has no authentication, no TLS, and uses CORS `*`**. It can
@@ -158,6 +175,14 @@ same trust level as running `kubectl` directly.
   the same access your kubeconfig credentials have.
 - Don't run this as a shared service or behind an internet-facing proxy
   without putting authentication/authorization in front of it.
+
+## Contributing
+
+Issues and pull requests are welcome — the catalog-driven design in
+[ARCHITECTURE.md](ARCHITECTURE.md) makes adding a new resource type a small,
+self-contained change. Before opening a PR, make sure `go build ./... && go
+vet ./... && go test ./...` (backend) and `pnpm exec tsc -b && pnpm build &&
+pnpm exec oxlint src` (frontend) all pass — the same checks run in CI.
 
 ## License
 
