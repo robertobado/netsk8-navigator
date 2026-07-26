@@ -73,9 +73,6 @@ jobs:
   macos-app-bundle:
     name: Build signed .app + .dmg (macOS)
     needs: binaries
-    # Same secret gate as the notarize block in .goreleaser.yaml — a clean
-    # no-op until the 5 MACOS_* secrets exist (see docs/MACOS_SIGNING.md).
-    if: ${{ secrets.MACOS_SIGN_P12 != '' }}
     # Unlike the `binaries` job above (which signs the raw per-arch binaries
     # via quill on ubuntu-latest — see .goreleaser.yaml's `notarize` block),
     # a real .app bundle needs a genuine bundle-level codesign seal
@@ -91,11 +88,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # `secrets` isn't a valid context in a job-level `if:`, only in steps
+      # — so the "clean no-op until the 5 MACOS_* secrets exist" gate (same
+      # one .goreleaser.yaml's notarize block uses) has to live here instead,
+      # with every following step checking this step's output.
+      - name: Check whether macOS signing is configured
+        id: gate
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+        run: echo "enabled=${MACOS_SIGN_P12:+true}" >> "$GITHUB_OUTPUT"
+
       - name: Compute version
         id: version
+        if: steps.gate.outputs.enabled == 'true'
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Download darwin binaries from the release
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           gh release download "$GITHUB_REF_NAME" \
             --repo "${{ github.repository }}" \
@@ -103,6 +112,7 @@ jobs:
             --dir dist-download
 
       - name: Merge into a universal binary
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           mkdir -p dist-universal
           tar -xzf dist-download/netsk8-navigator_*_darwin_amd64.tar.gz -C /tmp netsk8-navigator
@@ -113,6 +123,7 @@ jobs:
             -output dist-universal/netsk8-navigator
 
       - name: Import signing certificate into a temporary keychain
+        if: steps.gate.outputs.enabled == 'true'
         env:
           MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
           MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
@@ -128,13 +139,14 @@ jobs:
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" \
-            $(security list-keychains -d user | sed 's/"//g')
+          mapfile -t existing_keychains < <(security list-keychains -d user | sed 's/^[[:space:]]*"//;s/"[[:space:]]*$//')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${existing_keychains[@]}"
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Build and sign the .app
         id: build
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
             | grep 'Developer ID Application' | head -1 \
@@ -148,6 +160,7 @@ jobs:
           echo "app_path=dist-app/Netsk8 Navigator.app" >> "$GITHUB_OUTPUT"
 
       - name: Notarize + staple the .app
+        if: steps.gate.outputs.enabled == 'true'
         env:
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
@@ -164,6 +177,7 @@ jobs:
 
       - name: Build the .dmg
         id: dmg
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           DMG_PATH="dist-app/netsk8-navigator_${{ steps.version.outputs.version }}_macOS.dmg"
           ./packaging/macos/make-dmg.sh \
@@ -173,6 +187,7 @@ jobs:
           echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload .dmg to the release
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.dmg_path }}" \
             --repo "${{ github.repository }}" --clobber
