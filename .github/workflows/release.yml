@@ -129,6 +129,7 @@ jobs:
           MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           echo "$MACOS_SIGN_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
 
@@ -139,10 +140,11 @@ jobs:
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          mapfile -t existing_keychains < <(security list-keychains -d user | sed 's/^[[:space:]]*"//;s/"[[:space:]]*$//')
+          existing_keychains=()
+          while IFS= read -r kc; do
+            existing_keychains+=("$kc")
+          done < <(security list-keychains -d user | sed 's/^[[:space:]]*"//;s/"[[:space:]]*$//')
           security list-keychains -d user -s "$KEYCHAIN_PATH" "${existing_keychains[@]}"
-
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Build and sign the .app
         id: build
