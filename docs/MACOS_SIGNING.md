@@ -61,8 +61,69 @@ gh secret set MACOS_NOTARY_ISSUER_ID --body "SEU_ISSUER_ID"
 2. Baixar o `.tar.gz` **pelo navegador** num Mac (só assim ele ganha o
    atributo de quarentena de verdade) e confirmar que o binário abre sem
    o aviso do Gatekeeper.
-3. Ou, sem precisar baixar de novo: `spctl -a -vvv --type execute
-   ./netsk8-navigator` deve responder `source=Notarized Developer ID`.
+3. Ou, sem precisar baixar de novo: `codesign -dv --verbose=4
+   ./netsk8-navigator` deve mostrar `Authority=Developer ID Application: ...`
+   e `Timestamp=...`.
+
+**Nota**: `spctl -a -vvv --type execute` costuma responder `rejected (the
+code is valid but does not seem to be an app)` para este binário — isso é
+esperado e não indica falha. Esse assessment do `spctl` foi desenhado para
+bundles `.app`, não para executáveis Unix soltos. Da mesma forma, dar
+**duplo-clique no binário pelo Finder** pode disparar o aviso de malware do
+Gatekeeper mesmo com tudo assinado/notarizado corretamente — binários soltos
+(diferente de `.app`/`.pkg`/`.dmg`) não suportam "staple" do ticket de
+notarização, e o Finder lida mal com a execução direta de um Mach-O sem
+bundle. **O jeito certo de rodar é pelo Terminal** (`chmod +x
+netsk8-navigator && ./netsk8-navigator`) — nesse caminho o Gatekeeper valida
+o ticket online normalmente e libera sem aviso algum.
+
+## App bundle (.dmg) para duplo-clique
+
+Os binários crus assinados/notarizados acima funcionam bem via Terminal, mas
+**não podem receber "staple"** do ticket de notarização (isso só existe para
+`.app`/`.pkg`/`.dmg`) — então dar duplo-clique neles no Finder ainda pode
+disparar o aviso do Gatekeeper. Pra resolver isso de vez, o job
+`macos-app-bundle` (`.github/workflows/release.yml`, roda em `macos-latest`
+— grátis pra repositórios públicos) empacota os binários darwin num `.app`
+de verdade:
+
+1. Funde os binários amd64+arm64 num binário universal (`lipo`).
+2. Monta `Netsk8 Navigator.app` via `packaging/macos/build-app.sh` — ícone
+   gerado a partir do `logo.png` da raiz (`sips`+`iconutil`, nativos do
+   macOS), `Info.plist`, e um launcher (`packaging/macos/launcher.sh`) que
+   abre uma janela do Terminal com os logs + o navegador na UI.
+3. Assina o bundle inteiro com `codesign` de verdade (não o `quill` usado
+   acima — `quill` só assina binários soltos, não sabe gerar o selo de
+   bundle `_CodeSignature/CodeResources` que cobre `Info.plist`+
+   `Resources/`, e esse selo só o `codesign` real sabe gerar, daí precisar
+   de um runner macOS pra esse job específico).
+4. Notariza (`notarytool submit --wait`) e dá staple (`stapler staple`) no
+   `.app` — com o ticket staplado, o Gatekeeper valida offline, sem
+   depender de internet no Mac do usuário.
+5. Empacota num `.dmg` (`packaging/macos/make-dmg.sh` — `.app` + atalho pra
+   `/Applications`) e anexa à mesma release do GitHub.
+
+**Reaproveita os mesmos 5 secrets** já configurados acima — nenhum secret
+novo é necessário.
+
+Pra reproduzir localmente (útil pra debugar sem esperar o CI), com a
+identidade já instalada no seu Keychain:
+
+```bash
+./packaging/macos/build-app.sh \
+  /caminho/pro/netsk8-navigator \
+  0.0.2-teste \
+  ./dist-app \
+  "Developer ID Application: Seu Nome (TEUTEUTEUTE)"
+
+ditto -c -k --keepParent "./dist-app/Netsk8 Navigator.app" ./dist-app/app.zip
+xcrun notarytool submit ./dist-app/app.zip \
+  --key AuthKey_XXXXXXXXXX.p8 --key-id SEU_KEY_ID --issuer SEU_ISSUER_ID --wait
+xcrun stapler staple "./dist-app/Netsk8 Navigator.app"
+
+./packaging/macos/make-dmg.sh "./dist-app/Netsk8 Navigator.app" \
+  ./dist-app/netsk8-navigator.dmg "Netsk8 Navigator"
+```
 
 ## Rotação / expiração
 

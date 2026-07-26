@@ -37,16 +37,25 @@ archives:
 checksum:
   name_template: checksums.txt
 
-# Signs + notarizes the darwin binaries so macOS Gatekeeper doesn't block
-# them on first launch. Cross-platform (anchore/quill, embedded as a Go
-# lib) — no macOS runner needed, works fine from the ubuntu-latest job
-# below. A no-op until the 5 MACOS_* secrets exist in the repo (see
-# docs/MACOS_SIGNING.md) — every other artifact is unaffected either way.
+# Signs + notarizes the raw darwin binaries so macOS Gatekeeper doesn't
+# block them on first launch (mainly relevant if run via Terminal — a raw
+# Unix binary can't have a notarization ticket "stapled" to it, so Finder
+# double-click can still warn; see the .app/.dmg note below). Cross-platform
+# (anchore/quill, embedded as a Go lib) — no macOS runner needed, works fine
+# from the ubuntu-latest job below. A no-op until the 5 MACOS_* secrets
+# exist in the repo (see docs/MACOS_SIGNING.md) — every other artifact is
+# unaffected either way.
 #
 # `ne .Env.MACOS_SIGN_P12 ""` (not the docs' usual `isEnvSet`) because the
 # workflow always maps the secret into the env, even when unset in the repo
 # (as "") — isEnvSet would see it as "set" and try to sign with an empty
 # certificate, failing the whole release.
+#
+# For a proper double-click experience, the release workflow's separate
+# `macos-app-bundle` job (macos-latest, not goreleaser) wraps these binaries
+# into a signed+notarized+stapled .app/.dmg — quill only signs flat Mach-O
+# binaries, not bundles, so that job uses the real `codesign`/`notarytool`,
+# which only exist on macOS. See packaging/macos/ and docs/MACOS_SIGNING.md.
 notarize:
   macos:
     - enabled: '{{ ne .Env.MACOS_SIGN_P12 "" }}'

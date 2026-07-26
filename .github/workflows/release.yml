@@ -70,6 +70,117 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
+  macos-app-bundle:
+    name: Build signed .app + .dmg (macOS)
+    needs: binaries
+    # Same secret gate as the notarize block in .goreleaser.yaml — a clean
+    # no-op until the 5 MACOS_* secrets exist (see docs/MACOS_SIGNING.md).
+    if: ${{ secrets.MACOS_SIGN_P12 != '' }}
+    # Unlike the `binaries` job above (which signs the raw per-arch binaries
+    # via quill on ubuntu-latest — see .goreleaser.yaml's `notarize` block),
+    # a real .app bundle needs a genuine bundle-level codesign seal
+    # (_CodeSignature/CodeResources over Info.plist + Resources/), which
+    # only Apple's own codesign can produce. That requires a real macOS
+    # runner. This repo is public, so macos-latest minutes are free.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Compute version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download darwin binaries from the release
+        run: |
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "${{ github.repository }}" \
+            --pattern 'netsk8-navigator_*_darwin_*.tar.gz' \
+            --dir dist-download
+
+      - name: Merge into a universal binary
+        run: |
+          mkdir -p dist-universal
+          tar -xzf dist-download/netsk8-navigator_*_darwin_amd64.tar.gz -C /tmp netsk8-navigator
+          mv /tmp/netsk8-navigator /tmp/netsk8-navigator-amd64
+          tar -xzf dist-download/netsk8-navigator_*_darwin_arm64.tar.gz -C /tmp netsk8-navigator
+          mv /tmp/netsk8-navigator /tmp/netsk8-navigator-arm64
+          lipo -create /tmp/netsk8-navigator-amd64 /tmp/netsk8-navigator-arm64 \
+            -output dist-universal/netsk8-navigator
+
+      - name: Import signing certificate into a temporary keychain
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "$MACOS_SIGN_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 1200 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_SIGN_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/"//g')
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Build and sign the .app
+        id: build
+        run: |
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep 'Developer ID Application' | head -1 \
+            | sed -E 's/^[[:space:]]*[0-9]+\) [A-F0-9]+ "(.*)"$/\1/')
+          mkdir -p dist-app
+          ./packaging/macos/build-app.sh \
+            dist-universal/netsk8-navigator \
+            "${{ steps.version.outputs.version }}" \
+            dist-app \
+            "$IDENTITY"
+          echo "app_path=dist-app/Netsk8 Navigator.app" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize + staple the .app
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          echo "$MACOS_NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+          ditto -c -k --keepParent "${{ steps.build.outputs.app_path }}" "$RUNNER_TEMP/app-submit.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/app-submit.zip" \
+            --key "$RUNNER_TEMP/notary-key.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" \
+            --issuer "$MACOS_NOTARY_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "${{ steps.build.outputs.app_path }}"
+
+      - name: Build the .dmg
+        id: dmg
+        run: |
+          DMG_PATH="dist-app/netsk8-navigator_${{ steps.version.outputs.version }}_macOS.dmg"
+          ./packaging/macos/make-dmg.sh \
+            "${{ steps.build.outputs.app_path }}" \
+            "$DMG_PATH" \
+            "Netsk8 Navigator"
+          echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload .dmg to the release
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.dmg_path }}" \
+            --repo "${{ github.repository }}" --clobber
+
+      - name: Remove temporary keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
   docker-build:
     name: Build Docker image (${{ matrix.name }}, ${{ matrix.platform }})
     # Native runner per architecture — no QEMU emulation. GitHub's arm64-
