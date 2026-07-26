@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
@@ -9,6 +11,36 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
 )
+
+func TestHandlePodPending(t *testing.T) {
+	s := newTestServer(t, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod", CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Hour))},
+		Status: corev1.PodStatus{
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: "Unschedulable", Message: "insufficient cpu"},
+			},
+		},
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/pods/prod/web/pending", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["reason"] != "Unschedulable" || out["message"] != "insufficient cpu" || out["since"] == "" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func TestHandlePodPending_NotFound(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/pods/prod/missing/pending", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
 
 func TestOrDefault(t *testing.T) {
 	if got := orDefault("", "fallback"); got != "fallback" {

@@ -36,7 +36,21 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Without an explicit http(s) URL, jsdom treats the document as an opaque
+    // origin and leaves `localStorage` undefined — several lib modules
+    // (usage.ts, preferences.ts) touch it directly at the top level.
+    environmentOptions: { jsdom: { url: 'http://localhost/' } },
     setupFiles: ['./src/vitest.setup.ts'],
-    coverage: { provider: 'v8', reporter: ['text', 'html'] },
+    coverage: {
+      provider: 'v8',
+      // 'lcov' is what SonarCloud's sonar.javascript.lcov.reportPaths expects
+      // (see ../sonar-project.properties + the sonarcloud job in ci.yml).
+      reporter: ['text', 'html', 'lcov'],
+      // Vitest 4 only instruments files actually imported by a test unless
+      // told otherwise — without this, dozens of untested components would
+      // simply be absent from the report instead of showing up as 0%.
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/vitest.setup.ts', 'src/vite-env.d.ts', 'src/main.tsx'],
+    },
   },
 })

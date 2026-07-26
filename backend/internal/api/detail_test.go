@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -687,4 +689,88 @@ func TestLimitRangeDetail(t *testing.T) {
 	if len(d.Sections[0].Items) != 2 {
 		t.Errorf("got %d items, want 2 (default cpu + min cpu)", len(d.Sections[0].Items))
 	}
+}
+
+// --- handleDetail (HTTP) ----------------------------------------------------
+
+func TestHandleDetail(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: meta("web", "prod"),
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/detail/deployment/prod/web", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var d resourceDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != "Deployment" || d.Name != "web" {
+		t.Errorf("got %+v", d)
+	}
+}
+
+func TestHandleDetail_UnknownKind(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/detail/bogus/prod/web", "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestHandleDetail_NotFound(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/detail/deployment/prod/missing", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleDetail_SecretIsAudited(t *testing.T) {
+	s := newTestServer(t, &corev1.Secret{ObjectMeta: meta("creds", "prod"), Data: map[string][]byte{"key": []byte("shh")}})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/detail/secret/prod/creds", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEnrichPVCConsumers(t *testing.T) {
+	t.Run("not bound — nothing added", func(t *testing.T) {
+		s := newTestServer(t)
+		d := &resourceDetail{Status: []chip{{Label: "Phase", Value: "Pending"}}}
+		enrichPVCConsumers(t.Context(), s, "test", "prod", "data", d)
+		if len(d.Status) != 1 {
+			t.Errorf("got %+v, want no change for an unbound claim", d.Status)
+		}
+	})
+
+	t.Run("bound with a mounting pod", func(t *testing.T) {
+		s := newTestServer(t, &corev1.Pod{
+			ObjectMeta: meta("web-1", "prod"),
+			Spec: corev1.PodSpec{Volumes: []corev1.Volume{{
+				Name:         "data",
+				VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "data"}},
+			}}},
+		})
+		d := &resourceDetail{Status: []chip{{Label: "Phase", Value: string(corev1.ClaimBound)}}}
+		enrichPVCConsumers(t.Context(), s, "test", "prod", "data", d)
+		if len(d.Refs) != 1 || d.Refs[0].Name != "web-1" {
+			t.Errorf("Refs = %+v", d.Refs)
+		}
+		last := d.Status[len(d.Status)-1]
+		if last.Label != "Mounted" || last.Value != "Yes" {
+			t.Errorf("got %+v, want Mounted=Yes", last)
+		}
+	})
+
+	t.Run("bound with no mounting pod", func(t *testing.T) {
+		s := newTestServer(t)
+		d := &resourceDetail{Status: []chip{{Label: "Phase", Value: string(corev1.ClaimBound)}}}
+		enrichPVCConsumers(t.Context(), s, "test", "prod", "data", d)
+		last := d.Status[len(d.Status)-1]
+		if last.Label != "Mounted" || last.Value != "No" {
+			t.Errorf("got %+v, want Mounted=No", last)
+		}
+	})
 }

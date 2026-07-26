@@ -34,17 +34,23 @@ func NewStore() (*Store, error) {
 		// pod restart is an acceptable trade-off for staying up.
 		dir = os.TempDir()
 	}
-	s := &Store{
-		path: filepath.Join(dir, "netsk8", "config.json"),
-		data: fileData{Clusters: map[string]json.RawMessage{}},
-	}
+	return NewStoreAt(filepath.Join(dir, "netsk8", "config.json")), nil
+}
+
+// NewStoreAt builds a Store backed by an explicit path, bypassing the OS
+// config-dir resolution NewStore does. Meant for tests that need a hermetic,
+// disposable location (e.g. t.TempDir()) instead of touching the real user
+// config file — exported so callers outside this package (e.g. internal/api's
+// handler tests) can build one too.
+func NewStoreAt(path string) *Store {
+	s := &Store{path: path, data: fileData{Clusters: map[string]json.RawMessage{}}}
 	if raw, err := os.ReadFile(s.path); err == nil {
 		_ = json.Unmarshal(raw, &s.data) // tolerate/ignore a corrupt file
 		if s.data.Clusters == nil {
 			s.data.Clusters = map[string]json.RawMessage{}
 		}
 	}
-	return s, nil
+	return s
 }
 
 // Path is the resolved config file location (useful for diagnostics).

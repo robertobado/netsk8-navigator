@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
@@ -89,4 +91,49 @@ func TestFailedDetail(t *testing.T) {
 			t.Errorf("got reason=%q since=%v", reason, since)
 		}
 	})
+}
+
+func TestHandleIssues(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "pending-1", Namespace: "prod"},
+			Status:     corev1.PodStatus{Phase: corev1.PodPending},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "failed-1", Namespace: "prod"},
+			Status:     corev1.PodStatus{Phase: corev1.PodFailed, Reason: "Evicted"},
+		},
+		&corev1.Pod{
+			// Terminating pods are neither pending nor failed — should be skipped.
+			ObjectMeta: metav1.ObjectMeta{Name: "terminating-1", Namespace: "prod", DeletionTimestamp: &metav1.Time{Time: time.Now()}},
+			Status:     corev1.PodStatus{Phase: corev1.PodPending},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
+			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{
+				{Type: corev1.NodeReady, Status: corev1.ConditionFalse, Reason: "KubeletNotReady"},
+			}},
+		},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/issues", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Pending       []issueItem `json:"pending"`
+		Failed        []issueItem `json:"failed"`
+		NodesNotReady []issueItem `json:"nodesNotReady"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Pending) != 1 || out.Pending[0].Name != "pending-1" {
+		t.Errorf("pending = %+v", out.Pending)
+	}
+	if len(out.Failed) != 1 || out.Failed[0].Name != "failed-1" || out.Failed[0].Reason != "Evicted" {
+		t.Errorf("failed = %+v", out.Failed)
+	}
+	if len(out.NodesNotReady) != 1 || out.NodesNotReady[0].Name != "node-1" || out.NodesNotReady[0].Reason != "KubeletNotReady" {
+		t.Errorf("nodesNotReady = %+v", out.NodesNotReady)
+	}
 }

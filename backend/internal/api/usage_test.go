@@ -1,6 +1,11 @@
 package api
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	kubernetesfake "k8s.io/client-go/kubernetes/fake"
+)
 
 func TestNodePeak(t *testing.T) {
 	cases := []struct {
@@ -30,5 +35,19 @@ func TestPickCeiling(t *testing.T) {
 	}
 	if got := pickCeiling(0, 0); got != 0 {
 		t.Errorf("neither set: got %v, want 0", got)
+	}
+}
+
+// hasMetricsServer and everything gated behind it aren't exercised here: the
+// fake typed clientset's RESTClient() has no working transport configured, so
+// a raw AbsPath().DoRaw() call panics instead of erroring cleanly (unlike a
+// real cluster without metrics-server, which just 404s). Same category as
+// podexec.go/podlogs.go — needs a live cluster (or a much heavier fake HTTP
+// transport) to exercise safely.
+
+func TestUsageFor_UnknownScope(t *testing.T) {
+	client := kubernetesfake.NewSimpleClientset()
+	if _, _, err := usageFor(context.Background(), client, "bogus", "", ""); err == nil {
+		t.Error("want an error for an unknown scope")
 	}
 }

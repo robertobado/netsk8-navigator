@@ -3,10 +3,12 @@ package api
 import (
 	"fmt"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,6 +35,12 @@ var testGVRs = map[string]kube.Resource{
 	"namespaces":             {GVR: corev1.SchemeGroupVersion.WithResource("namespaces"), Namespaced: false},
 	"serviceaccounts":        {GVR: corev1.SchemeGroupVersion.WithResource("serviceaccounts"), Namespaced: true},
 	"persistentvolumeclaims": {GVR: corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"), Namespaced: true},
+	"secrets":                {GVR: corev1.SchemeGroupVersion.WithResource("secrets"), Namespaced: true},
+	"nodes":                  {GVR: corev1.SchemeGroupVersion.WithResource("nodes"), Namespaced: false},
+	"jobs":                   {GVR: batchv1.SchemeGroupVersion.WithResource("jobs"), Namespaced: true},
+	"statefulsets":           {GVR: appsv1.SchemeGroupVersion.WithResource("statefulsets"), Namespaced: true},
+	"daemonsets":             {GVR: appsv1.SchemeGroupVersion.WithResource("daemonsets"), Namespaced: true},
+	"replicasets":            {GVR: appsv1.SchemeGroupVersion.WithResource("replicasets"), Namespaced: true},
 }
 
 // fakeManager is a test-only clusterManager backed by client-go's fake
@@ -80,6 +88,38 @@ func newFakeManager(objs ...runtime.Object) *fakeManager {
 		}
 		return true, filtered, nil
 	})
+	// Same gap, same fix, for Events — handleEvents filters by
+	// "involvedObject.name"/"involvedObject.kind".
+	client.PrependReactor("list", "events", func(action ktesting.Action) (bool, runtime.Object, error) {
+		la, ok := action.(ktesting.ListAction)
+		if !ok {
+			return false, nil, nil
+		}
+		restr := la.GetListRestrictions()
+		if restr.Fields == nil || restr.Fields.Empty() {
+			return false, nil, nil
+		}
+		obj, err := client.Tracker().List(
+			corev1.SchemeGroupVersion.WithResource("events"),
+			corev1.SchemeGroupVersion.WithKind("Event"),
+			la.GetNamespace(),
+		)
+		if err != nil {
+			return true, nil, err
+		}
+		all, ok := obj.(*corev1.EventList)
+		if !ok {
+			return false, nil, nil
+		}
+		filtered := &corev1.EventList{}
+		for _, e := range all.Items {
+			set := fields.Set{"involvedObject.name": e.InvolvedObject.Name, "involvedObject.kind": e.InvolvedObject.Kind}
+			if restr.Fields.Matches(set) {
+				filtered.Items = append(filtered.Items, e)
+			}
+		}
+		return true, filtered, nil
+	})
 	return &fakeManager{
 		client:  client,
 		dynamic: dynamicfake.NewSimpleDynamicClient(scheme.Scheme, objs...),
@@ -112,10 +152,10 @@ func (f *fakeManager) PodWatcherFor(string) (*kube.PodWatcher, error) {
 // config.Store.
 func newTestServer(t *testing.T, objs ...runtime.Object) *Server {
 	t.Helper()
-	cfg, err := config.NewStore()
-	if err != nil {
-		t.Fatalf("config.NewStore: %v", err)
-	}
+	// A disposable temp-file store, not config.NewStore()'s real OS config dir —
+	// otherwise a test that exercises the PUT preferences handlers would write
+	// to the developer's actual ~/Library/Application Support/netsk8/config.json.
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
 	return NewServer(newFakeManager(objs...), cfg, "")
 }
 
