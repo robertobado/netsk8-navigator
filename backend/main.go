@@ -27,6 +27,10 @@ func main() {
 		return
 	}
 
+	mgr, cfg := mustInit()
+	srv := api.NewServer(mgr, cfg, os.Getenv("CORS_ORIGIN"))
+	handler := wrapWithAuth(buildMux(srv))
+
 	addr := os.Getenv("ADDR")
 	if addr == "" {
 		// Loopback-only by default: this backend has no auth (unless AUTH_PASSWORD
@@ -35,7 +39,24 @@ func main() {
 		// that exposure.
 		addr = "127.0.0.1:8080"
 	}
+	// ReadHeaderTimeout guards against slow-header attacks; Read/WriteTimeout are
+	// deliberately left unset (0 = no limit) — logs/exec/watch are long-lived SSE
+	// and WebSocket streams that must not be cut off by a fixed deadline.
+	httpSrv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
+	log.Printf("netsk8-navigator %s backend listening on %s", version, addr)
+	if err := serve(httpSrv); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
+}
+
+// mustInit loads the kubeconfig and preferences store, exiting the process on
+// failure — main() has nothing useful it can do to recover from either.
+func mustInit() (*kube.Manager, *config.Store) {
 	mgr, err := kube.NewManager()
 	if err != nil {
 		log.Fatalf("failed to load kubeconfig: %v", err)
@@ -47,9 +68,12 @@ func main() {
 		log.Fatalf("failed to init preferences store: %v", err)
 	}
 	log.Printf("preferences at %s", cfg.Path())
+	return mgr, cfg
+}
 
-	srv := api.NewServer(mgr, cfg, os.Getenv("CORS_ORIGIN"))
-
+// buildMux wires the API under /api/ and, when present, the embedded frontend
+// build at the root.
+func buildMux(srv *api.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
 	if h := web.Handler(); h != nil {
@@ -58,41 +82,35 @@ func main() {
 	} else {
 		log.Print("no embedded frontend build — run the Vite dev server separately (pnpm dev)")
 	}
+	return mux
+}
 
-	var handler http.Handler = mux
-	if pass := os.Getenv("AUTH_PASSWORD"); pass != "" {
-		user := os.Getenv("AUTH_USER")
-		if user == "" {
-			user = "admin"
-		}
-		handler = withBasicAuth(user, pass, handler)
-		log.Print("HTTP Basic Auth enabled (AUTH_PASSWORD set)")
-	} else {
+// wrapWithAuth gates next behind HTTP Basic Auth when AUTH_PASSWORD is set,
+// otherwise returns it unchanged.
+func wrapWithAuth(next http.Handler) http.Handler {
+	pass := os.Getenv("AUTH_PASSWORD")
+	if pass == "" {
 		log.Print("no AUTH_PASSWORD set — serving with no authentication (see README > Security model)")
+		return next
 	}
-
-	// ReadHeaderTimeout guards against slow-header attacks; Read/WriteTimeout are
-	// deliberately left unset (0 = no limit) — logs/exec/watch are long-lived SSE
-	// and WebSocket streams that must not be cut off by a fixed deadline.
-	httpSrv := &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
+	user := os.Getenv("AUTH_USER")
+	if user == "" {
+		user = "admin"
 	}
+	log.Print("HTTP Basic Auth enabled (AUTH_PASSWORD set)")
+	return withBasicAuth(user, pass, next)
+}
 
+// serve starts httpSrv, over TLS when both TLS_CERT and TLS_KEY are set.
+func serve(httpSrv *http.Server) error {
 	certFile, keyFile := os.Getenv("TLS_CERT"), os.Getenv("TLS_KEY")
-	log.Printf("netsk8-navigator %s backend listening on %s", version, addr)
-	if certFile != "" || keyFile != "" {
-		if certFile == "" || keyFile == "" {
-			log.Fatal("TLS_CERT and TLS_KEY must both be set to enable TLS")
-		}
-		err = httpSrv.ListenAndServeTLS(certFile, keyFile)
-	} else {
-		err = httpSrv.ListenAndServe()
+	if certFile == "" && keyFile == "" {
+		return httpSrv.ListenAndServe()
 	}
-	if err != nil {
-		log.Fatalf("server error: %v", err)
+	if certFile == "" || keyFile == "" {
+		log.Fatal("TLS_CERT and TLS_KEY must both be set to enable TLS")
 	}
+	return httpSrv.ListenAndServeTLS(certFile, keyFile)
 }
 
 // withBasicAuth requires HTTP Basic Auth credentials matching user/password.

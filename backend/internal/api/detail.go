@@ -447,6 +447,24 @@ func orDash(s string) string {
 
 func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 	d := base("Ingress", o.ObjectMeta)
+	d.Status = ingressStatusChips(o)
+
+	sections, backends := ingressRuleSections(o)
+	d.Sections = append(d.Sections, sections...)
+	if db := o.Spec.DefaultBackend; db != nil && db.Service != nil {
+		backends = appendUnique(backends, db.Service.Name)
+	}
+	for _, svc := range backends {
+		d.Refs = append(d.Refs, detailRef{Group: "Backends", Kind: "service", Namespace: o.Namespace, Name: svc})
+	}
+
+	if tls := ingressTLSSection(o); tls != nil {
+		d.Sections = append(d.Sections, *tls)
+	}
+	return d
+}
+
+func ingressStatusChips(o *networkingv1.Ingress) []chip {
 	class := ""
 	if o.Spec.IngressClassName != nil {
 		class = *o.Spec.IngressClassName
@@ -454,23 +472,20 @@ func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 	addr := ""
 	if len(o.Status.LoadBalancer.Ingress) > 0 {
 		lb := o.Status.LoadBalancer.Ingress[0]
-		if addr = lb.Hostname; addr == "" {
+		addr = lb.Hostname
+		if addr == "" {
 			addr = lb.IP
 		}
 	}
-	d.Status = []chip{
+	return []chip{
 		{Label: "Class", Value: orDash(class), Tone: "muted"},
 		{Label: "Address", Value: orDash(addr), Tone: "muted"},
 	}
+}
 
-	seen := map[string]bool{}
-	addBackend := func(svc string) {
-		if svc == "" || seen[svc] {
-			return
-		}
-		seen[svc] = true
-		d.Refs = append(d.Refs, detailRef{Group: "Backends", Kind: "service", Namespace: o.Namespace, Name: svc})
-	}
+// ingressRuleSections builds one section per host rule and collects every
+// backend Service name referenced by a path, deduplicated.
+func ingressRuleSections(o *networkingv1.Ingress) (sections []section, backends []string) {
 	for _, r := range o.Spec.Rules {
 		host := orDash(r.Host)
 		if r.Host == "" {
@@ -479,15 +494,9 @@ func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 		items := []kv{}
 		if r.HTTP != nil {
 			for _, p := range r.HTTP.Paths {
-				svc, port := "", ""
-				if p.Backend.Service != nil {
-					svc = p.Backend.Service.Name
-					if p.Backend.Service.Port.Name != "" {
-						port = p.Backend.Service.Port.Name
-					} else {
-						port = fmt.Sprintf("%d", p.Backend.Service.Port.Number)
-					}
-					addBackend(svc)
+				svc, port := ingressPathBackend(p)
+				if svc != "" {
+					backends = appendUnique(backends, svc)
 				}
 				path := p.Path
 				if path == "" {
@@ -496,19 +505,44 @@ func ingressDetail(o *networkingv1.Ingress) *resourceDetail {
 				items = append(items, kv{Label: path, Value: fmt.Sprintf("%s:%s", svc, port)})
 			}
 		}
-		d.Sections = append(d.Sections, section{Title: host, Items: items})
+		sections = append(sections, section{Title: host, Items: items})
 	}
-	if db := o.Spec.DefaultBackend; db != nil && db.Service != nil {
-		addBackend(db.Service.Name)
+	return sections, backends
+}
+
+// ingressPathBackend reads the backend Service name/port a path routes to.
+func ingressPathBackend(p networkingv1.HTTPIngressPath) (svc, port string) {
+	if p.Backend.Service == nil {
+		return "", ""
 	}
-	if len(o.Spec.TLS) > 0 {
-		hosts := []string{}
-		for _, t := range o.Spec.TLS {
-			hosts = append(hosts, t.Hosts...)
+	svc = p.Backend.Service.Name
+	if p.Backend.Service.Port.Name != "" {
+		port = p.Backend.Service.Port.Name
+	} else {
+		port = fmt.Sprintf("%d", p.Backend.Service.Port.Number)
+	}
+	return svc, port
+}
+
+func ingressTLSSection(o *networkingv1.Ingress) *section {
+	if len(o.Spec.TLS) == 0 {
+		return nil
+	}
+	hosts := []string{}
+	for _, t := range o.Spec.TLS {
+		hosts = append(hosts, t.Hosts...)
+	}
+	return &section{Title: "TLS", Items: []kv{{Label: "Hosts", Value: strings.Join(hosts, ", ")}}}
+}
+
+// appendUnique appends v to s only if it isn't already present.
+func appendUnique(s []string, v string) []string {
+	for _, x := range s {
+		if x == v {
+			return s
 		}
-		d.Sections = append(d.Sections, section{Title: "TLS", Items: []kv{{Label: "Hosts", Value: strings.Join(hosts, ", ")}}})
 	}
-	return d
+	return append(s, v)
 }
 
 func configMapDetail(o *corev1.ConfigMap) *resourceDetail {
@@ -836,7 +870,23 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 	if svc := o.Labels["kubernetes.io/service-name"]; svc != "" {
 		d.Refs = append(d.Refs, detailRef{Group: "Service", Kind: "service", Namespace: o.Namespace, Name: svc})
 	}
+	d.Ports = endpointSlicePorts(o)
+
+	// Each endpoint backed by a Pod becomes a clickable ref (with the address as a
+	// note); endpoints without a Pod target fall back to a plain listing.
+	group := fmt.Sprintf("Endpoints (%d)", len(o.Endpoints))
+	refs, orphans := endpointSliceEndpoints(o, group)
+	d.Refs = append(d.Refs, refs...)
+	if len(orphans) > 0 {
+		d.Sections = append(d.Sections, section{Title: group, Items: orphans})
+	}
+	return d
+}
+
+// endpointSlicePorts dedupes the slice's declared ports.
+func endpointSlicePorts(o *discoveryv1.EndpointSlice) []portView {
 	seen := map[string]bool{}
+	ports := []portView{}
 	for _, p := range o.Ports {
 		pv := portView{}
 		if p.Name != nil {
@@ -851,17 +901,20 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 		key := pv.Name + "|" + pv.Port + "|" + pv.Protocol
 		if pv.Port != "" && !seen[key] {
 			seen[key] = true
-			d.Ports = append(d.Ports, pv)
+			ports = append(ports, pv)
 		}
 	}
-	// Each endpoint backed by a Pod becomes a clickable ref (with the address as a
-	// note); endpoints without a Pod target fall back to a plain listing.
-	group := fmt.Sprintf("Endpoints (%d)", len(o.Endpoints))
-	orphans := []kv{}
+	return ports
+}
+
+// endpointSliceEndpoints splits endpoints into Pod-backed clickable refs and
+// plain (address, state) listings for anything else.
+func endpointSliceEndpoints(o *discoveryv1.EndpointSlice, group string) (refs []detailRef, orphans []kv) {
 	for _, e := range o.Endpoints {
 		addr := strings.Join(e.Addresses, ", ")
+		notReady := e.Conditions.Ready != nil && !*e.Conditions.Ready
 		note := addr
-		if e.Conditions.Ready != nil && !*e.Conditions.Ready {
+		if notReady {
 			note += " · not ready"
 		}
 		if e.TargetRef != nil && e.TargetRef.Kind == "Pod" {
@@ -869,19 +922,16 @@ func endpointSliceDetail(o *discoveryv1.EndpointSlice) *resourceDetail {
 			if ns == "" {
 				ns = o.Namespace
 			}
-			d.Refs = append(d.Refs, detailRef{Group: group, Kind: "pod", Namespace: ns, Name: e.TargetRef.Name, Note: note})
-		} else {
-			state := "ready"
-			if e.Conditions.Ready != nil && !*e.Conditions.Ready {
-				state = "not ready"
-			}
-			orphans = append(orphans, kv{Label: addr, Value: state})
+			refs = append(refs, detailRef{Group: group, Kind: "pod", Namespace: ns, Name: e.TargetRef.Name, Note: note})
+			continue
 		}
+		state := "ready"
+		if notReady {
+			state = "not ready"
+		}
+		orphans = append(orphans, kv{Label: addr, Value: state})
 	}
-	if len(orphans) > 0 {
-		d.Sections = append(d.Sections, section{Title: group, Items: orphans})
-	}
-	return d
+	return refs, orphans
 }
 
 // npPeers / npPorts summarize a NetworkPolicy rule's peers and ports for display.
@@ -1190,38 +1240,51 @@ func priorityClassDetail(o *schedulingv1.PriorityClass) *resourceDetail {
 func runtimeClassDetail(o *nodev1.RuntimeClass) *resourceDetail {
 	d := base("RuntimeClass", o.ObjectMeta)
 	d.Status = []chip{{Label: "Handler", Value: orDash(o.Handler), Tone: "muted"}}
-	if o.Scheduling != nil {
-		items := []kv{}
-		if len(o.Scheduling.NodeSelector) > 0 {
-			keys := make([]string, 0, len(o.Scheduling.NodeSelector))
-			for k := range o.Scheduling.NodeSelector {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				items = append(items, kv{Label: k, Value: o.Scheduling.NodeSelector[k]})
-			}
-		}
-		for _, tol := range o.Scheduling.Tolerations {
-			key := tol.Key
-			if tol.Value != "" {
-				key += "=" + tol.Value
-			}
-			items = append(items, kv{Label: "toleration " + key, Value: string(tol.Effect)})
-		}
-		if len(items) > 0 {
-			d.Sections = append(d.Sections, section{Title: "Scheduling", Items: items})
-		}
+	if s := runtimeClassSchedulingSection(o); s != nil {
+		d.Sections = append(d.Sections, *s)
 	}
-	if o.Overhead != nil && len(o.Overhead.PodFixed) > 0 {
-		items := []kv{}
-		for name, q := range o.Overhead.PodFixed {
-			items = append(items, kv{Label: string(name), Value: q.String()})
-		}
-		sort.Slice(items, func(i, j int) bool { return items[i].Label < items[j].Label })
-		d.Sections = append(d.Sections, section{Title: "Overhead", Items: items})
+	if s := runtimeClassOverheadSection(o); s != nil {
+		d.Sections = append(d.Sections, *s)
 	}
 	return d
+}
+
+func runtimeClassSchedulingSection(o *nodev1.RuntimeClass) *section {
+	if o.Scheduling == nil {
+		return nil
+	}
+	items := []kv{}
+	keys := make([]string, 0, len(o.Scheduling.NodeSelector))
+	for k := range o.Scheduling.NodeSelector {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		items = append(items, kv{Label: k, Value: o.Scheduling.NodeSelector[k]})
+	}
+	for _, tol := range o.Scheduling.Tolerations {
+		key := tol.Key
+		if tol.Value != "" {
+			key += "=" + tol.Value
+		}
+		items = append(items, kv{Label: "toleration " + key, Value: string(tol.Effect)})
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return &section{Title: "Scheduling", Items: items}
+}
+
+func runtimeClassOverheadSection(o *nodev1.RuntimeClass) *section {
+	if o.Overhead == nil || len(o.Overhead.PodFixed) == 0 {
+		return nil
+	}
+	items := []kv{}
+	for name, q := range o.Overhead.PodFixed {
+		items = append(items, kv{Label: string(name), Value: q.String()})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Label < items[j].Label })
+	return &section{Title: "Overhead", Items: items}
 }
 
 func podDetail(p *corev1.Pod) *resourceDetail {
@@ -1299,21 +1362,7 @@ func containerState(cs corev1.ContainerStatus) string {
 
 func nodeDetail(n *corev1.Node) *resourceDetail {
 	d := base("Node", n.ObjectMeta)
-
-	readyTone, readyVal := "err", "NotReady"
-	if nodeReady(n) {
-		readyTone, readyVal = "ok", "Ready"
-	}
-	schedulable := "Yes"
-	schedTone := "ok"
-	if n.Spec.Unschedulable {
-		schedulable, schedTone = "No", "warn"
-	}
-	d.Status = []chip{
-		{Label: "Status", Value: readyVal, Tone: readyTone},
-		{Label: "Roles", Value: strings.Join(nodeRoles(n), ", "), Tone: "muted"},
-		{Label: "Schedulable", Value: schedulable, Tone: schedTone},
-	}
+	d.Status = nodeStatusChips(n)
 	isSchedulable := !n.Spec.Unschedulable
 	d.Schedulable = &isSchedulable
 
@@ -1342,7 +1391,37 @@ func nodeDetail(n *corev1.Node) *resourceDetail {
 		{Label: "Pods", Value: n.Status.Allocatable.Pods().String()},
 	}})
 
-	internalIP, hostname := "", ""
+	internalIP, hostname := nodeAddresses(n)
+	d.Sections = append(d.Sections, section{Title: "Network", Items: []kv{
+		{Label: "Internal IP", Value: internalIP},
+		{Label: "Hostname", Value: hostname},
+		{Label: "PodCIDR", Value: n.Spec.PodCIDR},
+	}})
+
+	if s := nodeTaintsSection(n); s != nil {
+		d.Sections = append(d.Sections, *s)
+	}
+	d.Conditions = nodeConditionChips(n)
+	return d
+}
+
+func nodeStatusChips(n *corev1.Node) []chip {
+	readyTone, readyVal := "err", "NotReady"
+	if nodeReady(n) {
+		readyTone, readyVal = "ok", "Ready"
+	}
+	schedulable, schedTone := "Yes", "ok"
+	if n.Spec.Unschedulable {
+		schedulable, schedTone = "No", "warn"
+	}
+	return []chip{
+		{Label: "Status", Value: readyVal, Tone: readyTone},
+		{Label: "Roles", Value: strings.Join(nodeRoles(n), ", "), Tone: "muted"},
+		{Label: "Schedulable", Value: schedulable, Tone: schedTone},
+	}
+}
+
+func nodeAddresses(n *corev1.Node) (internalIP, hostname string) {
 	for _, a := range n.Status.Addresses {
 		switch a.Type {
 		case corev1.NodeInternalIP:
@@ -1351,24 +1430,26 @@ func nodeDetail(n *corev1.Node) *resourceDetail {
 			hostname = a.Address
 		}
 	}
-	d.Sections = append(d.Sections, section{Title: "Network", Items: []kv{
-		{Label: "Internal IP", Value: internalIP},
-		{Label: "Hostname", Value: hostname},
-		{Label: "PodCIDR", Value: n.Spec.PodCIDR},
-	}})
+	return internalIP, hostname
+}
 
-	if len(n.Spec.Taints) > 0 {
-		items := []kv{}
-		for _, t := range n.Spec.Taints {
-			key := t.Key
-			if t.Value != "" {
-				key += "=" + t.Value
-			}
-			items = append(items, kv{Label: key, Value: string(t.Effect)})
-		}
-		d.Sections = append(d.Sections, section{Title: "Taints", Items: items})
+func nodeTaintsSection(n *corev1.Node) *section {
+	if len(n.Spec.Taints) == 0 {
+		return nil
 	}
+	items := []kv{}
+	for _, t := range n.Spec.Taints {
+		key := t.Key
+		if t.Value != "" {
+			key += "=" + t.Value
+		}
+		items = append(items, kv{Label: key, Value: string(t.Effect)})
+	}
+	return &section{Title: "Taints", Items: items}
+}
 
+func nodeConditionChips(n *corev1.Node) []chip {
+	conditions := make([]chip, 0, len(n.Status.Conditions))
 	for _, c := range n.Status.Conditions {
 		tone := "ok"
 		if c.Type == corev1.NodeReady {
@@ -1378,9 +1459,9 @@ func nodeDetail(n *corev1.Node) *resourceDetail {
 		} else if c.Status == corev1.ConditionTrue {
 			tone = "warn" // pressure conditions being True is bad
 		}
-		d.Conditions = append(d.Conditions, chip{Label: string(c.Type), Value: string(c.Status), Tone: tone})
+		conditions = append(conditions, chip{Label: string(c.Type), Value: string(c.Status), Tone: tone})
 	}
-	return d
+	return conditions
 }
 
 func nodeLabel(n *corev1.Node, key string) string {

@@ -38,30 +38,48 @@ func (s *Server) handlePodPending(w http.ResponseWriter, r *http.Request) {
 
 func pendingReason(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) (reason, message string) {
 	// 1) Not scheduled yet (the most common Pending cause).
-	for _, c := range pod.Status.Conditions {
-		if c.Type == corev1.PodScheduled && c.Status != corev1.ConditionTrue {
-			reason = orDefault(c.Reason, "Unschedulable")
-			message = c.Message
-			if message == "" {
-				if _, m := latestWarning(ctx, client, pod); m != "" {
-					message = m
-				}
-			}
-			return reason, message
-		}
+	if reason, message, ok := unschedulableReason(ctx, client, pod); ok {
+		return reason, message
 	}
 	// 2) A container is stuck waiting (image pull, config, etc.).
+	if reason, message, ok := waitingContainerReason(pod); ok {
+		return reason, message
+	}
+	// 3) Fall back to the latest Warning event.
+	if reason, message := latestWarning(ctx, client, pod); reason != "" {
+		return reason, message
+	}
+	return "Pending", ""
+}
+
+// unschedulableReason reports the pod's PodScheduled condition when it hasn't
+// been scheduled yet, falling back to the latest Warning event for a message
+// when the condition itself carries none.
+func unschedulableReason(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) (reason, message string, ok bool) {
+	for _, c := range pod.Status.Conditions {
+		if c.Type != corev1.PodScheduled || c.Status == corev1.ConditionTrue {
+			continue
+		}
+		reason = orDefault(c.Reason, "Unschedulable")
+		message = c.Message
+		if message == "" {
+			_, message = latestWarning(ctx, client, pod)
+		}
+		return reason, message, true
+	}
+	return "", "", false
+}
+
+// waitingContainerReason reports the first init/regular container found stuck
+// in a Waiting state with a reason (image pull, config, etc.).
+func waitingContainerReason(pod *corev1.Pod) (reason, message string, ok bool) {
 	waiting := append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...), pod.Status.ContainerStatuses...)
 	for _, cs := range waiting {
 		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
-			return cs.State.Waiting.Reason, cs.State.Waiting.Message
+			return cs.State.Waiting.Reason, cs.State.Waiting.Message, true
 		}
 	}
-	// 3) Fall back to the latest Warning event.
-	if rea, msg := latestWarning(ctx, client, pod); rea != "" {
-		return rea, msg
-	}
-	return "Pending", ""
+	return "", "", false
 }
 
 func latestWarning(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) (reason, message string) {

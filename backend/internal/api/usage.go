@@ -28,6 +28,18 @@ type mUsage struct {
 	Memory resource.Quantity `json:"memory"`
 }
 
+// metricsAPIPath is the metrics-server API group/version every usage handler
+// reads from.
+const metricsAPIPath = "/apis/metrics.k8s.io/v1beta1"
+
+// podsMetricsPath returns the metrics-server pods endpoint, scoped to ns when set.
+func podsMetricsPath(ns string) string {
+	if ns == "" {
+		return metricsAPIPath + "/pods"
+	}
+	return metricsAPIPath + "/namespaces/" + ns + "/pods"
+}
+
 // hasMetricsServer reports whether the Metrics API (metrics-server) is served,
 // enabling instantaneous CPU/memory gauges even without Prometheus. Cached.
 func (s *Server) hasMetricsServer(ctx context.Context, client kubernetes.Interface, name string) bool {
@@ -38,7 +50,7 @@ func (s *Server) hasMetricsServer(ctx context.Context, client kubernetes.Interfa
 	}
 	s.monMu.Unlock()
 
-	_, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1").DoRaw(ctx)
+	_, err := client.CoreV1().RESTClient().Get().AbsPath(metricsAPIPath).DoRaw(ctx)
 	ok := err == nil
 	s.monMu.Lock()
 	s.msCache[name] = ok
@@ -94,15 +106,22 @@ func (s *Server) handlePodsUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	ns := r.URL.Query().Get("namespace") // "" == all namespaces
 
-	// 1. Live usage for all pods in a single metrics-server call.
-	metricsPath := "/apis/metrics.k8s.io/v1beta1/pods"
-	if ns != "" {
-		metricsPath = "/apis/metrics.k8s.io/v1beta1/namespaces/" + ns + "/pods"
-	}
-	raw, err := client.CoreV1().RESTClient().Get().AbsPath(metricsPath).DoRaw(ctx)
+	items, err := livePodUsage(ctx, client, ns)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
+	}
+	addPodRequestsLimits(ctx, client, ns, items)
+
+	writeJSON(w, http.StatusOK, map[string]any{"available": true, "items": items})
+}
+
+// livePodUsage fetches live per-pod CPU/memory usage in a single
+// metrics-server call, keyed by "namespace/pod".
+func livePodUsage(ctx context.Context, client kubernetes.Interface, ns string) (map[string]podUsageEntry, error) {
+	raw, err := client.CoreV1().RESTClient().Get().AbsPath(podsMetricsPath(ns)).DoRaw(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var pm struct {
 		Items []struct {
@@ -116,10 +135,8 @@ func (s *Server) handlePodsUsage(w http.ResponseWriter, r *http.Request) {
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(raw, &pm); err != nil {
-		writeError(w, http.StatusBadGateway, err)
-		return
+		return nil, err
 	}
-
 	items := make(map[string]podUsageEntry, len(pm.Items))
 	for _, it := range pm.Items {
 		var e podUsageEntry
@@ -130,31 +147,35 @@ func (s *Server) handlePodsUsage(w http.ResponseWriter, r *http.Request) {
 		}
 		items[it.Metadata.Namespace+"/"+it.Metadata.Name] = e
 	}
+	return items, nil
+}
 
-	// 2. Requests/limits from the pod specs (one list call).
+// addPodRequestsLimits fills in each pod's request/limit/total from its spec
+// (one list call), leaving pods missing from items (e.g. a metrics-server lag)
+// with a zeroed usage but correct request/limit.
+func addPodRequestsLimits(ctx context.Context, client kubernetes.Interface, ns string, items map[string]podUsageEntry) {
 	pods, err := client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
-	if err == nil {
-		for i := range pods.Items {
-			p := &pods.Items[i]
-			key := p.Namespace + "/" + p.Name
-			e, ok := items[key]
-			if !ok {
-				e.CPU.Unit, e.Memory.Unit = "cores", "bytes"
-			}
-			var limCPU, limMem, reqCPU, reqMem float64
-			for _, c := range p.Spec.Containers {
-				limCPU += c.Resources.Limits.Cpu().AsApproximateFloat64()
-				limMem += c.Resources.Limits.Memory().AsApproximateFloat64()
-				reqCPU += c.Resources.Requests.Cpu().AsApproximateFloat64()
-				reqMem += c.Resources.Requests.Memory().AsApproximateFloat64()
-			}
-			e.CPU.Request, e.CPU.Limit, e.CPU.Total = reqCPU, limCPU, pickCeiling(limCPU, reqCPU)
-			e.Memory.Request, e.Memory.Limit, e.Memory.Total = reqMem, limMem, pickCeiling(limMem, reqMem)
-			items[key] = e
-		}
+	if err != nil {
+		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"available": true, "items": items})
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		key := p.Namespace + "/" + p.Name
+		e, ok := items[key]
+		if !ok {
+			e.CPU.Unit, e.Memory.Unit = "cores", "bytes"
+		}
+		var limCPU, limMem, reqCPU, reqMem float64
+		for _, c := range p.Spec.Containers {
+			limCPU += c.Resources.Limits.Cpu().AsApproximateFloat64()
+			limMem += c.Resources.Limits.Memory().AsApproximateFloat64()
+			reqCPU += c.Resources.Requests.Cpu().AsApproximateFloat64()
+			reqMem += c.Resources.Requests.Memory().AsApproximateFloat64()
+		}
+		e.CPU.Request, e.CPU.Limit, e.CPU.Total = reqCPU, limCPU, pickCeiling(limCPU, reqCPU)
+		e.Memory.Request, e.Memory.Limit, e.Memory.Total = reqMem, limMem, pickCeiling(limMem, reqMem)
+		items[key] = e
+	}
 }
 
 // nodeUsageItem is a node's CPU + memory gauges (used vs. allocatable).
@@ -180,7 +201,7 @@ func (s *Server) handleNodesUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes").DoRaw(ctx)
+	raw, err := client.CoreV1().RESTClient().Get().AbsPath(metricsAPIPath + "/nodes").DoRaw(ctx)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -252,15 +273,24 @@ func (s *Server) handleDeploymentsUsage(w http.ResponseWriter, r *http.Request) 
 	}
 	ns := r.URL.Query().Get("namespace")
 
-	// 1. Live per-pod usage (single metrics-server call).
-	metricsPath := "/apis/metrics.k8s.io/v1beta1/pods"
-	if ns != "" {
-		metricsPath = "/apis/metrics.k8s.io/v1beta1/namespaces/" + ns + "/pods"
-	}
-	raw, err := client.CoreV1().RESTClient().Get().AbsPath(metricsPath).DoRaw(ctx)
+	usedCPU, usedMem, err := podUsageMaps(ctx, client, ns)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
+	}
+	rsToDeploy := replicaSetOwners(ctx, client, ns)
+	items := aggregateDeploymentUsage(ctx, client, ns, rsToDeploy, usedCPU, usedMem)
+	finalizeUsageTotals(items)
+
+	writeJSON(w, http.StatusOK, map[string]any{"available": true, "items": items})
+}
+
+// podUsageMaps fetches live per-pod CPU/memory usage in a single
+// metrics-server call, keyed by "namespace/pod".
+func podUsageMaps(ctx context.Context, client kubernetes.Interface, ns string) (usedCPU, usedMem map[string]float64, err error) {
+	raw, err := client.CoreV1().RESTClient().Get().AbsPath(podsMetricsPath(ns)).DoRaw(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 	var pm struct {
 		Items []struct {
@@ -271,11 +301,9 @@ func (s *Server) handleDeploymentsUsage(w http.ResponseWriter, r *http.Request) 
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(raw, &pm); err != nil {
-		writeError(w, http.StatusBadGateway, err)
-		return
+		return nil, nil, err
 	}
-	usedCPU := map[string]float64{}
-	usedMem := map[string]float64{}
+	usedCPU, usedMem = map[string]float64{}, map[string]float64{}
 	for _, it := range pm.Items {
 		k := it.Metadata.Namespace + "/" + it.Metadata.Name
 		for _, c := range it.Containers {
@@ -283,62 +311,81 @@ func (s *Server) handleDeploymentsUsage(w http.ResponseWriter, r *http.Request) 
 			usedMem[k] += c.Usage.Memory.AsApproximateFloat64()
 		}
 	}
+	return usedCPU, usedMem, nil
+}
 
-	// 2. ReplicaSet → owning Deployment.
+// replicaSetOwners maps "namespace/replicaset" to its owning Deployment's name.
+func replicaSetOwners(ctx context.Context, client kubernetes.Interface, ns string) map[string]string {
 	rsToDeploy := map[string]string{}
-	if rss, err := client.AppsV1().ReplicaSets(ns).List(ctx, metav1.ListOptions{}); err == nil {
-		for i := range rss.Items {
-			rs := &rss.Items[i]
-			for _, o := range rs.OwnerReferences {
-				if o.Controller != nil && *o.Controller && o.Kind == "Deployment" {
-					rsToDeploy[rs.Namespace+"/"+rs.Name] = o.Name
-					break
-				}
-			}
+	rss, err := client.AppsV1().ReplicaSets(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return rsToDeploy
+	}
+	for i := range rss.Items {
+		rs := &rss.Items[i]
+		if deploy := controllerOwnerName(rs.OwnerReferences, "Deployment"); deploy != "" {
+			rsToDeploy[rs.Namespace+"/"+rs.Name] = deploy
 		}
 	}
+	return rsToDeploy
+}
 
-	// 3. Aggregate each pod into its deployment.
+// aggregateDeploymentUsage sums each pod's usage/requests/limits into its
+// owning Deployment (Pod → ReplicaSet → Deployment).
+func aggregateDeploymentUsage(
+	ctx context.Context, client kubernetes.Interface, ns string, rsToDeploy map[string]string, usedCPU, usedMem map[string]float64,
+) map[string]podUsageEntry {
 	items := map[string]podUsageEntry{}
-	if pods, err := client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{}); err == nil {
-		for i := range pods.Items {
-			p := &pods.Items[i]
-			rsName := ""
-			for _, o := range p.OwnerReferences {
-				if o.Controller != nil && *o.Controller && o.Kind == "ReplicaSet" {
-					rsName = o.Name
-					break
-				}
-			}
-			if rsName == "" {
-				continue
-			}
-			deploy := rsToDeploy[p.Namespace+"/"+rsName]
-			if deploy == "" {
-				continue
-			}
-			key := p.Namespace + "/" + deploy
-			e := items[key]
-			e.CPU.Unit, e.Memory.Unit = "cores", "bytes"
-			pk := p.Namespace + "/" + p.Name
-			e.CPU.Used += usedCPU[pk]
-			e.Memory.Used += usedMem[pk]
-			for _, c := range p.Spec.Containers {
-				e.CPU.Request += c.Resources.Requests.Cpu().AsApproximateFloat64()
-				e.CPU.Limit += c.Resources.Limits.Cpu().AsApproximateFloat64()
-				e.Memory.Request += c.Resources.Requests.Memory().AsApproximateFloat64()
-				e.Memory.Limit += c.Resources.Limits.Memory().AsApproximateFloat64()
-			}
-			items[key] = e
-		}
+	pods, err := client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return items
 	}
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		rsName := controllerOwnerName(p.OwnerReferences, "ReplicaSet")
+		if rsName == "" {
+			continue
+		}
+		deploy := rsToDeploy[p.Namespace+"/"+rsName]
+		if deploy == "" {
+			continue
+		}
+		key := p.Namespace + "/" + deploy
+		e := items[key]
+		e.CPU.Unit, e.Memory.Unit = "cores", "bytes"
+		pk := p.Namespace + "/" + p.Name
+		e.CPU.Used += usedCPU[pk]
+		e.Memory.Used += usedMem[pk]
+		for _, c := range p.Spec.Containers {
+			e.CPU.Request += c.Resources.Requests.Cpu().AsApproximateFloat64()
+			e.CPU.Limit += c.Resources.Limits.Cpu().AsApproximateFloat64()
+			e.Memory.Request += c.Resources.Requests.Memory().AsApproximateFloat64()
+			e.Memory.Limit += c.Resources.Limits.Memory().AsApproximateFloat64()
+		}
+		items[key] = e
+	}
+	return items
+}
+
+// finalizeUsageTotals fills in each entry's Total (limit, else request) now
+// that every pod has been aggregated.
+func finalizeUsageTotals(items map[string]podUsageEntry) {
 	for k, e := range items {
 		e.CPU.Total = pickCeiling(e.CPU.Limit, e.CPU.Request)
 		e.Memory.Total = pickCeiling(e.Memory.Limit, e.Memory.Request)
 		items[k] = e
 	}
+}
 
-	writeJSON(w, http.StatusOK, map[string]any{"available": true, "items": items})
+// controllerOwnerName returns the name of the owner reference of kind that is
+// the controller, if any.
+func controllerOwnerName(refs []metav1.OwnerReference, kind string) string {
+	for _, o := range refs {
+		if o.Controller != nil && *o.Controller && o.Kind == kind {
+			return o.Name
+		}
+	}
+	return ""
 }
 
 func usageFor(ctx context.Context, client kubernetes.Interface, scope, ns, name string) (cpu, mem gauge, err error) {
@@ -356,7 +403,7 @@ func usageFor(ctx context.Context, client kubernetes.Interface, scope, ns, name 
 
 func nodeUsage(ctx context.Context, client kubernetes.Interface, name string) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
-	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes/" + name).DoRaw(ctx)
+	raw, err := client.CoreV1().RESTClient().Get().AbsPath(metricsAPIPath + "/nodes/" + name).DoRaw(ctx)
 	if err != nil {
 		return cpu, mem, err
 	}
@@ -378,7 +425,7 @@ func nodeUsage(ctx context.Context, client kubernetes.Interface, name string) (c
 
 func podUsage(ctx context.Context, client kubernetes.Interface, ns, name string) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
-	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/namespaces/" + ns + "/pods/" + name).DoRaw(ctx)
+	raw, err := client.CoreV1().RESTClient().Get().AbsPath(podsMetricsPath(ns) + "/" + name).DoRaw(ctx)
 	if err != nil {
 		return cpu, mem, err
 	}
@@ -414,7 +461,7 @@ func podUsage(ctx context.Context, client kubernetes.Interface, ns, name string)
 
 func clusterUsage(ctx context.Context, client kubernetes.Interface) (cpu, mem gauge, err error) {
 	cpu.Unit, mem.Unit = "cores", "bytes"
-	raw, err := client.CoreV1().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/nodes").DoRaw(ctx)
+	raw, err := client.CoreV1().RESTClient().Get().AbsPath(metricsAPIPath + "/nodes").DoRaw(ctx)
 	if err != nil {
 		return cpu, mem, err
 	}

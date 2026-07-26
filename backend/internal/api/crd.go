@@ -240,6 +240,16 @@ func gatewayCRDDetail(d *resourceDetail, obj map[string]any) {
 		d.Status = append(d.Status, chip{Label: "Class", Value: gc, Tone: "muted"})
 	}
 	listeners, _, _ := unstructured.NestedSlice(obj, "spec", "listeners")
+	if items := gatewayListenerItems(listeners); len(items) > 0 {
+		d.Sections = append(d.Sections, section{Title: "Listeners", Items: items})
+	}
+	if addrs := gatewayAddresses(obj); len(addrs) > 0 {
+		d.Sections = append(d.Sections, section{Title: "Addresses", Items: []kv{{Label: "Address", Value: strings.Join(addrs, ", ")}}})
+	}
+}
+
+// gatewayListenerItems summarizes each listener as "protocol/port · hostname".
+func gatewayListenerItems(listeners []any) []kv {
 	items := []kv{}
 	for _, l := range listeners {
 		lis, ok := l.(map[string]any)
@@ -256,20 +266,19 @@ func gatewayCRDDetail(d *resourceDetail, obj map[string]any) {
 		}
 		items = append(items, kv{Label: name, Value: val})
 	}
-	if len(items) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Listeners", Items: items})
-	}
-	if addrs := nestedRefs(obj, "status", "addresses"); len(addrs) > 0 {
-		av := []string{}
-		for _, a := range addrs {
-			if v, ok := a["value"].(string); ok {
-				av = append(av, v)
-			}
-		}
-		if len(av) > 0 {
-			d.Sections = append(d.Sections, section{Title: "Addresses", Items: []kv{{Label: "Address", Value: strings.Join(av, ", ")}}})
+	return items
+}
+
+// gatewayAddresses collects the Gateway's assigned addresses from status.
+func gatewayAddresses(obj map[string]any) []string {
+	addrs := nestedRefs(obj, "status", "addresses")
+	av := []string{}
+	for _, a := range addrs {
+		if v, ok := a["value"].(string); ok {
+			av = append(av, v)
 		}
 	}
+	return av
 }
 
 // genericSpecSection lists top-level spec fields as a readable overview.
@@ -406,22 +415,30 @@ func extractHosts(obj map[string]any) []string {
 // extractRefs pulls the parent/gateway names a route attaches to.
 func extractRefs(obj map[string]any) []string {
 	for _, path := range [][]string{{"spec", "parentRefs"}, {"spec", "gateways"}} {
-		if slice, ok, _ := unstructured.NestedSlice(obj, path...); ok {
-			names := []string{}
-			for _, e := range slice {
-				switch v := e.(type) {
-				case map[string]any: // parentRefs → {name: ...}
-					if n, has := v["name"].(string); has {
-						names = append(names, n)
-					}
-				case string: // istio gateways → ["name", ...]
-					names = append(names, v)
-				}
-			}
-			if len(names) > 0 {
-				return names
-			}
+		slice, ok, _ := unstructured.NestedSlice(obj, path...)
+		if !ok {
+			continue
+		}
+		if names := refNamesFromSlice(slice); len(names) > 0 {
+			return names
 		}
 	}
 	return nil
+}
+
+// refNamesFromSlice extracts ref names from either shape: {name: ...} objects
+// (Gateway API parentRefs) or bare strings (Istio gateways).
+func refNamesFromSlice(slice []any) []string {
+	names := []string{}
+	for _, e := range slice {
+		switch v := e.(type) {
+		case map[string]any: // parentRefs → {name: ...}
+			if n, has := v["name"].(string); has {
+				names = append(names, n)
+			}
+		case string: // istio gateways → ["name", ...]
+			names = append(names, v)
+		}
+	}
+	return names
 }

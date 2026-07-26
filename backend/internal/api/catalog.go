@@ -331,17 +331,25 @@ func enrichJobs(ctx context.Context, s *Server, contextName, ns string, rows []a
 	if err != nil {
 		return
 	}
-	// Job "namespace/name" → first unrecoverable pod reason.
-	problem := map[string]string{}
-	for i := range pods.Items {
-		p := &pods.Items[i]
-		job := ""
-		for _, o := range p.OwnerReferences {
-			if o.Controller != nil && *o.Controller && o.Kind == "Job" {
-				job = o.Name
-				break
-			}
+	problem := jobPodProblems(pods.Items)
+	for _, row := range rows {
+		jv, ok := row.(*kube.JobView)
+		if !ok {
+			continue
 		}
+		if r, has := problem[jv.Namespace+"/"+jv.Name]; has && jv.Status == "Running" {
+			jv.Status = r
+		}
+	}
+}
+
+// jobPodProblems maps "namespace/job" to the first unrecoverable pod reason
+// found among its pods (ImagePullBackOff, OOMKilled, ...).
+func jobPodProblems(pods []corev1.Pod) map[string]string {
+	problem := map[string]string{}
+	for i := range pods {
+		p := &pods[i]
+		job := ownerJobName(p)
 		if job == "" {
 			continue
 		}
@@ -355,15 +363,17 @@ func enrichJobs(ctx context.Context, s *Server, contextName, ns string, rows []a
 			problem[key] = reason
 		}
 	}
-	for _, row := range rows {
-		jv, ok := row.(*kube.JobView)
-		if !ok {
-			continue
-		}
-		if r, has := problem[jv.Namespace+"/"+jv.Name]; has && jv.Status == "Running" {
-			jv.Status = r
+	return problem
+}
+
+// ownerJobName returns the pod's owning Job name, if any.
+func ownerJobName(p *corev1.Pod) string {
+	for _, o := range p.OwnerReferences {
+		if o.Controller != nil && *o.Controller && o.Kind == "Job" {
+			return o.Name
 		}
 	}
+	return ""
 }
 
 // enrichPVCMounts annotates each PVC with the pods that currently mount it (in
@@ -378,44 +388,7 @@ func enrichPVCMounts(ctx context.Context, s *Server, contextName, ns string, row
 	if err != nil {
 		return
 	}
-	byClaim := map[string][]kube.PVCMount{} // "namespace/claim" → mounting pods
-	for i := range pods.Items {
-		p := &pods.Items[i]
-		// Volume name → claim key, for volumes backed by a PVC.
-		volClaim := map[string]string{}
-		for _, v := range p.Spec.Volumes {
-			if v.PersistentVolumeClaim != nil {
-				volClaim[v.Name] = p.Namespace + "/" + v.PersistentVolumeClaim.ClaimName
-			}
-		}
-		if len(volClaim) == 0 {
-			continue
-		}
-		// Collect each container's mount points for those volumes (init + regular).
-		perClaim := map[string][]kube.PVCMountPoint{}
-		addMounts := func(container string, mounts []corev1.VolumeMount) {
-			for _, m := range mounts {
-				if ck, ok := volClaim[m.Name]; ok {
-					perClaim[ck] = append(perClaim[ck], kube.PVCMountPoint{Container: container, Path: m.MountPath})
-				}
-			}
-		}
-		for _, c := range p.Spec.InitContainers {
-			addMounts(c.Name, c.VolumeMounts)
-		}
-		for _, c := range p.Spec.Containers {
-			addMounts(c.Name, c.VolumeMounts)
-		}
-		// One entry per (pod, claim) — even if no container mounts it (rare).
-		seen := map[string]bool{}
-		for _, ck := range volClaim {
-			if seen[ck] {
-				continue
-			}
-			seen[ck] = true
-			byClaim[ck] = append(byClaim[ck], kube.PVCMount{Pod: p.Name, Mounts: perClaim[ck]})
-		}
-	}
+	byClaim := pvcMountsByClaim(pods.Items)
 	for _, row := range rows {
 		pvc, ok := row.(*kube.PVCView)
 		if !ok {
@@ -425,6 +398,71 @@ func enrichPVCMounts(ctx context.Context, s *Server, contextName, ns string, row
 			pvc.MountedBy = mounts
 		}
 	}
+}
+
+// pvcMountsByClaim scans every pod once and groups, by "namespace/claim" key,
+// which pods mount which PVC and where (container + path) each mounts it.
+func pvcMountsByClaim(pods []corev1.Pod) map[string][]kube.PVCMount {
+	byClaim := map[string][]kube.PVCMount{}
+	for i := range pods {
+		p := &pods[i]
+		volClaim := volumeClaimNames(p)
+		if len(volClaim) == 0 {
+			continue
+		}
+		perClaim := containerMountPoints(p, volClaim)
+		// One entry per (pod, claim) — even if no container mounts it (rare).
+		for _, ck := range uniqueValues(volClaim) {
+			byClaim[ck] = append(byClaim[ck], kube.PVCMount{Pod: p.Name, Mounts: perClaim[ck]})
+		}
+	}
+	return byClaim
+}
+
+// volumeClaimNames maps a pod's volume name to its "namespace/claim" key, for
+// volumes backed by a PersistentVolumeClaim.
+func volumeClaimNames(p *corev1.Pod) map[string]string {
+	volClaim := map[string]string{}
+	for _, v := range p.Spec.Volumes {
+		if v.PersistentVolumeClaim != nil {
+			volClaim[v.Name] = p.Namespace + "/" + v.PersistentVolumeClaim.ClaimName
+		}
+	}
+	return volClaim
+}
+
+// containerMountPoints collects, per claim key, every (container, path) that
+// mounts it — across both init and regular containers.
+func containerMountPoints(p *corev1.Pod, volClaim map[string]string) map[string][]kube.PVCMountPoint {
+	perClaim := map[string][]kube.PVCMountPoint{}
+	addMounts := func(container string, mounts []corev1.VolumeMount) {
+		for _, m := range mounts {
+			if ck, ok := volClaim[m.Name]; ok {
+				perClaim[ck] = append(perClaim[ck], kube.PVCMountPoint{Container: container, Path: m.MountPath})
+			}
+		}
+	}
+	for _, c := range p.Spec.InitContainers {
+		addMounts(c.Name, c.VolumeMounts)
+	}
+	for _, c := range p.Spec.Containers {
+		addMounts(c.Name, c.VolumeMounts)
+	}
+	return perClaim
+}
+
+// uniqueValues dedupes a map's values.
+func uniqueValues(m map[string]string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(m))
+	for _, v := range m {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 // namespaceParam reads the ?namespace= filter ("" == all namespaces).

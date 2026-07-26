@@ -203,6 +203,75 @@ function zoneColor(f: number): string {
   return 'var(--ok)'
 }
 
+// GaugeArc renders the SVG threshold band + value arc + optional request
+// marker — pulled out of GaugeCard so its two independent ternaries (bounded
+// vs. unbounded band, marker present or not) don't nest inside the card's own.
+function GaugeArc({ hasCeiling, vfrac, color, reqMark }: Readonly<{ hasCeiling: boolean; vfrac: number; color: string; reqMark: [number, number][] | null }>) {
+  return (
+    <>
+      {hasCeiling ? (
+        <>
+          <path d={gSeg(G_RT, 0, 0.8)} stroke="var(--ok)" strokeWidth="4" fill="none" />
+          <path d={gSeg(G_RT, 0.8, 0.9)} stroke="var(--warn)" strokeWidth="4" fill="none" />
+          <path d={gSeg(G_RT, 0.9, 1)} stroke="var(--err)" strokeWidth="4" fill="none" />
+        </>
+      ) : (
+        <path d={gSeg(G_RT, 0, 1)} stroke="var(--border)" strokeWidth="4" fill="none" strokeDasharray="2 4" />
+      )}
+      <path d={gSeg(G_RV, 0, 1)} stroke="var(--border)" strokeWidth="12" fill="none" strokeLinecap="round" />
+      {hasCeiling && vfrac > 0 && <path d={gSeg(G_RV, 0, vfrac)} stroke={color} strokeWidth="12" fill="none" strokeLinecap="round" />}
+      {reqMark && (
+        <line x1={reqMark[0][0]} y1={reqMark[0][1]} x2={reqMark[1][0]} y2={reqMark[1][1]} stroke="var(--foreground)" strokeWidth="2.5" strokeLinecap="round" />
+      )}
+    </>
+  )
+}
+
+// GaugeLegend is the line below the dial: request/limit when the scope has
+// reservations, else the allocatable ceiling, else "no limit set". Three
+// mutually-exclusive early returns instead of a nested ternary.
+function GaugeLegend({
+  compact,
+  showReqLim,
+  hasCeiling,
+  request,
+  limit,
+  total,
+  fmt,
+}: Readonly<{
+  compact?: boolean
+  showReqLim: boolean
+  hasCeiling: boolean
+  request: number
+  limit: number
+  total: number
+  fmt: (n: number) => string
+}>) {
+  const t = useT()
+  if (compact) return null
+  if (showReqLim) {
+    return (
+      <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-0.5 rounded-full bg-foreground" />
+          req <span className="font-mono text-foreground">{request > 0 ? fmt(request) : '—'}</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          lim <span className="font-mono text-foreground">{limit > 0 ? fmt(limit) : '∞'}</span>
+        </span>
+      </div>
+    )
+  }
+  if (hasCeiling) {
+    return (
+      <div className="text-[11px] text-muted-foreground">
+        {t('of')} <span className="font-mono text-foreground">{fmt(total)}</span> {t('allocatable')}
+      </div>
+    )
+  }
+  return <div className="text-[11px] text-muted-foreground">{t('no limit set')}</div>
+}
+
 function GaugeCard({
   title,
   icon: Icon,
@@ -212,7 +281,6 @@ function GaugeCard({
   bare,
   compact,
 }: Readonly<{ title: string; icon: typeof Cpu; g?: Gauge; kind: 'cores' | 'bytes'; loading?: boolean; bare?: boolean; compact?: boolean }>) {
-  const t = useT()
   const dim = compact ? { w: 116, h: 96 } : { w: 148, h: 122 }
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
   const used = g?.used ?? 0
@@ -236,30 +304,7 @@ function GaugeCard({
       )}
       <div className="relative" style={{ width: dim.w, height: dim.h }}>
         <svg width={dim.w} height={dim.h} viewBox="0 0 180 150">
-          {/* threshold band: green→orange→red zones, or a muted dashed band when unbounded */}
-          {hasCeiling ? (
-            <>
-              <path d={gSeg(G_RT, 0, 0.8)} stroke="var(--ok)" strokeWidth="4" fill="none" />
-              <path d={gSeg(G_RT, 0.8, 0.9)} stroke="var(--warn)" strokeWidth="4" fill="none" />
-              <path d={gSeg(G_RT, 0.9, 1)} stroke="var(--err)" strokeWidth="4" fill="none" />
-            </>
-          ) : (
-            <path d={gSeg(G_RT, 0, 1)} stroke="var(--border)" strokeWidth="4" fill="none" strokeDasharray="2 4" />
-          )}
-          {/* value arc: muted track + colored fill to `used` */}
-          <path d={gSeg(G_RV, 0, 1)} stroke="var(--border)" strokeWidth="12" fill="none" strokeLinecap="round" />
-          {hasCeiling && vfrac > 0 && <path d={gSeg(G_RV, 0, vfrac)} stroke={color} strokeWidth="12" fill="none" strokeLinecap="round" />}
-          {reqMark && (
-            <line
-              x1={reqMark[0][0]}
-              y1={reqMark[0][1]}
-              x2={reqMark[1][0]}
-              y2={reqMark[1][1]}
-              stroke="var(--foreground)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-          )}
+          <GaugeArc hasCeiling={hasCeiling} vfrac={vfrac} color={color} reqMark={reqMark} />
         </svg>
         <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: '46%', transform: 'translateY(-50%)' }}>
           <span className={cn('font-bold leading-none tabular-nums', compact ? 'text-sm' : 'text-xl')} style={{ color }}>
@@ -272,28 +317,7 @@ function GaugeCard({
           )}
         </div>
       </div>
-      {!compact &&
-        (showReqLim ? (
-          <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-0.5 rounded-full bg-foreground" />
-              req <span className="font-mono text-foreground">{request > 0 ? fmt(request) : '—'}</span>
-            </span>
-            <span className="inline-flex items-center gap-1">
-              lim <span className="font-mono text-foreground">{limit > 0 ? fmt(limit) : '∞'}</span>
-            </span>
-          </div>
-        ) : (
-          <div className="text-[11px] text-muted-foreground">
-            {hasCeiling ? (
-              <>
-                {t('of')} <span className="font-mono text-foreground">{fmt(total)}</span> {t('allocatable')}
-              </>
-            ) : (
-              t('no limit set')
-            )}
-          </div>
-        ))}
+      <GaugeLegend compact={compact} showReqLim={showReqLim} hasCeiling={hasCeiling} request={request} limit={limit} total={total} fmt={fmt} />
     </div>
   )
 }

@@ -63,13 +63,13 @@ type fakeManager struct {
 	gvrs    map[string]kube.Resource
 }
 
-func newFakeManager(objs ...runtime.Object) *fakeManager {
-	client := kubernetesfake.NewSimpleClientset(objs...)
-	// The fake clientset's default List reactor ignores FieldSelector entirely
-	// (a known client-go testing gap), but handleNodeWorkloads relies on
-	// "spec.nodeName=..." to scope pods to a node — filter for real here so
-	// that handler's test actually exercises its filtering behavior.
-	client.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+// podsFieldSelectorReactor stands in for the fake clientset's default List
+// reactor, which ignores FieldSelector entirely (a known client-go testing
+// gap) — handleNodeWorkloads relies on "spec.nodeName=..." to scope pods to a
+// node, so this filters for real, letting that handler's test actually
+// exercise its filtering behavior.
+func podsFieldSelectorReactor(client *kubernetesfake.Clientset) ktesting.ReactionFunc {
+	return func(action ktesting.Action) (bool, runtime.Object, error) {
 		la, ok := action.(ktesting.ListAction)
 		if !ok {
 			return false, nil, nil
@@ -98,10 +98,13 @@ func newFakeManager(objs ...runtime.Object) *fakeManager {
 			}
 		}
 		return true, filtered, nil
-	})
-	// Same gap, same fix, for Events — handleEvents filters by
-	// "involvedObject.name"/"involvedObject.kind".
-	client.PrependReactor("list", "events", func(action ktesting.Action) (bool, runtime.Object, error) {
+	}
+}
+
+// eventsFieldSelectorReactor is the same fix as podsFieldSelectorReactor, for
+// handleEvents' "involvedObject.name"/"involvedObject.kind" filter.
+func eventsFieldSelectorReactor(client *kubernetesfake.Clientset) ktesting.ReactionFunc {
+	return func(action ktesting.Action) (bool, runtime.Object, error) {
 		la, ok := action.(ktesting.ListAction)
 		if !ok {
 			return false, nil, nil
@@ -130,7 +133,19 @@ func newFakeManager(objs ...runtime.Object) *fakeManager {
 			}
 		}
 		return true, filtered, nil
-	})
+	}
+}
+
+func newFakeManager(objs ...runtime.Object) *fakeManager {
+	client := kubernetesfake.NewSimpleClientset(objs...)
+	// The fake clientset's default List reactor ignores FieldSelector entirely
+	// (a known client-go testing gap), but handleNodeWorkloads relies on
+	// "spec.nodeName=..." to scope pods to a node — filter for real here so
+	// that handler's test actually exercises its filtering behavior.
+	client.PrependReactor("list", "pods", podsFieldSelectorReactor(client))
+	// Same gap, same fix, for Events — handleEvents filters by
+	// "involvedObject.name"/"involvedObject.kind".
+	client.PrependReactor("list", "events", eventsFieldSelectorReactor(client))
 	return &fakeManager{
 		client:  client,
 		dynamic: dynamicfake.NewSimpleDynamicClient(scheme.Scheme, objs...),

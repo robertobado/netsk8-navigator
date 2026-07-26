@@ -111,36 +111,62 @@ func ToPodView(p *corev1.Pod) PodView {
 // UI can flag it. Empty for healthy pods.
 func WaitingReason(p *corev1.Pod) string {
 	// Waiting containers (init first, then main).
-	for _, cs := range p.Status.InitContainerStatuses {
-		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
-			return cs.State.Waiting.Reason
-		}
+	if r := firstWaitingReason(p.Status.InitContainerStatuses); r != "" {
+		return r
 	}
-	for _, cs := range p.Status.ContainerStatuses {
-		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
-			return cs.State.Waiting.Reason
-		}
+	if r := firstWaitingReason(p.Status.ContainerStatuses); r != "" {
+		return r
 	}
 	// A failed init container that terminated (non-Completed).
-	for _, cs := range p.Status.InitContainerStatuses {
-		if t := cs.State.Terminated; t != nil && t.Reason != "" && t.Reason != "Completed" {
-			return t.Reason
-		}
+	if r := firstTerminatedReason(p.Status.InitContainerStatuses, true); r != "" {
+		return r
 	}
 	// A main container that terminated (OOMKilled, Error, Completed, ContainerCannotRun…).
-	for _, cs := range p.Status.ContainerStatuses {
-		if t := cs.State.Terminated; t != nil && t.Reason != "" {
-			return t.Reason
-		}
+	if r := firstTerminatedReason(p.Status.ContainerStatuses, false); r != "" {
+		return r
 	}
-	if PodPhase(p) == "Pending" {
-		for _, c := range p.Status.Conditions {
-			if c.Type == corev1.PodScheduled && c.Status != corev1.ConditionTrue {
-				return "Unschedulable"
-			}
+	if PodPhase(p) == "Pending" && unscheduledCondition(p) {
+		return "Unschedulable"
+	}
+	return ""
+}
+
+// firstWaitingReason returns the first container's Waiting reason, if any.
+func firstWaitingReason(statuses []corev1.ContainerStatus) string {
+	for _, cs := range statuses {
+		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			return cs.State.Waiting.Reason
 		}
 	}
 	return ""
+}
+
+// firstTerminatedReason returns the first container's Terminated reason.
+// excludeCompleted skips a clean "Completed" exit — the expected outcome for
+// an init container, not a problem worth surfacing.
+func firstTerminatedReason(statuses []corev1.ContainerStatus, excludeCompleted bool) string {
+	for _, cs := range statuses {
+		t := cs.State.Terminated
+		if t == nil || t.Reason == "" {
+			continue
+		}
+		if excludeCompleted && t.Reason == "Completed" {
+			continue
+		}
+		return t.Reason
+	}
+	return ""
+}
+
+// unscheduledCondition reports whether the pod has an explicit PodScheduled
+// condition that isn't True (absence of the condition doesn't count).
+func unscheduledCondition(p *corev1.Pod) bool {
+	for _, c := range p.Status.Conditions {
+		if c.Type == corev1.PodScheduled && c.Status != corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // PodPhase reflects the display status, accounting for terminating pods.

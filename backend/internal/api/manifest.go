@@ -136,16 +136,23 @@ func (s *Server) handleApplyManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dryRun {
-		cleanUnstructured(updated)
-		data, err := yaml.Marshal(updated.Object)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"yaml": string(data)})
+		writeDryRunYAML(w, updated)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "applied"})
+}
+
+// writeDryRunYAML responds with the cleaned YAML the API server would have
+// produced — the shared response shape for every dry-run preview (apply,
+// create), since it's the same "clean it up and marshal it back" step either way.
+func writeDryRunYAML(w http.ResponseWriter, obj *unstructured.Unstructured) {
+	cleanUnstructured(obj)
+	data, err := yaml.Marshal(obj.Object)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"yaml": string(data)})
 }
 
 // getUnstructured fetches any resource (typed kind or CRD) by manifest slug.

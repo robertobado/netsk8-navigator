@@ -139,72 +139,80 @@ func TestSubjectsIncludeSA(t *testing.T) {
 }
 
 func TestPodConsumes(t *testing.T) {
-	t.Run("configmap via volume", func(t *testing.T) {
-		p := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
-			{VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "app-config"}}}},
-		}}}
-		if !podConsumes(p, true, "app-config") {
-			t.Error("expected consumption via volume")
-		}
-		if podConsumes(p, true, "other-config") {
-			t.Error("should not match a different name")
-		}
-	})
-
-	t.Run("secret via imagePullSecrets — configmaps never match", func(t *testing.T) {
-		p := &corev1.Pod{Spec: corev1.PodSpec{ImagePullSecrets: []corev1.LocalObjectReference{{Name: "regcred"}}}}
-		if !podConsumes(p, false, "regcred") {
-			t.Error("expected secret match via imagePullSecrets")
-		}
-		if podConsumes(p, true, "regcred") {
-			t.Error("imagePullSecrets should never satisfy a configmap lookup")
-		}
-	})
-
-	t.Run("projected volume source", func(t *testing.T) {
-		p := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
-			{VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{Sources: []corev1.VolumeProjection{
-				{Secret: &corev1.SecretProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "tls"}}},
-			}}}},
-		}}}
-		if !podConsumes(p, false, "tls") {
-			t.Error("expected match via projected volume")
-		}
-	})
-
-	t.Run("container envFrom", func(t *testing.T) {
-		p := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
-			{EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "env-config"}}}}},
-		}}}
-		if !podConsumes(p, true, "env-config") {
-			t.Error("expected match via envFrom")
-		}
-	})
-
-	t.Run("container env valueFrom", func(t *testing.T) {
-		p := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
-			{Env: []corev1.EnvVar{{ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "db-secret"}, Key: "password"}}}}},
-		}}}
-		if !podConsumes(p, false, "db-secret") {
-			t.Error("expected match via env valueFrom")
-		}
-	})
-
-	t.Run("init container counts too", func(t *testing.T) {
-		p := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
-			{EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "init-secret"}}}}},
-		}}}
-		if !podConsumes(p, false, "init-secret") {
-			t.Error("expected match via init container envFrom")
-		}
-	})
-
-	t.Run("no reference at all", func(t *testing.T) {
-		p := &corev1.Pod{}
-		if podConsumes(p, true, "anything") {
-			t.Error("empty pod should not consume anything")
-		}
-	})
+	cases := []struct {
+		name        string
+		pod         *corev1.Pod
+		isConfigMap bool
+		refName     string
+		want        bool
+	}{
+		{
+			name: "configmap via volume",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
+				{VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "app-config"}}}},
+			}}},
+			isConfigMap: true, refName: "app-config", want: true,
+		},
+		{
+			name: "configmap via volume — different name doesn't match",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
+				{VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "app-config"}}}},
+			}}},
+			isConfigMap: true, refName: "other-config", want: false,
+		},
+		{
+			name:        "secret via imagePullSecrets",
+			pod:         &corev1.Pod{Spec: corev1.PodSpec{ImagePullSecrets: []corev1.LocalObjectReference{{Name: "regcred"}}}},
+			isConfigMap: false, refName: "regcred", want: true,
+		},
+		{
+			name:        "imagePullSecrets never satisfies a configmap lookup",
+			pod:         &corev1.Pod{Spec: corev1.PodSpec{ImagePullSecrets: []corev1.LocalObjectReference{{Name: "regcred"}}}},
+			isConfigMap: true, refName: "regcred", want: false,
+		},
+		{
+			name: "projected volume source",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
+				{VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{Sources: []corev1.VolumeProjection{
+					{Secret: &corev1.SecretProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "tls"}}},
+				}}}},
+			}}},
+			isConfigMap: false, refName: "tls", want: true,
+		},
+		{
+			name: "container envFrom",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
+				{EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "env-config"}}}}},
+			}}},
+			isConfigMap: true, refName: "env-config", want: true,
+		},
+		{
+			name: "container env valueFrom",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
+				{Env: []corev1.EnvVar{{ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "db-secret"}, Key: "password"}}}}},
+			}}},
+			isConfigMap: false, refName: "db-secret", want: true,
+		},
+		{
+			name: "init container counts too",
+			pod: &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "init-secret"}}}}},
+			}}},
+			isConfigMap: false, refName: "init-secret", want: true,
+		},
+		{
+			name:        "no reference at all",
+			pod:         &corev1.Pod{},
+			isConfigMap: true, refName: "anything", want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := podConsumes(tc.pod, tc.isConfigMap, tc.refName); got != tc.want {
+				t.Errorf("podConsumes() = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestKindSlug(t *testing.T) {

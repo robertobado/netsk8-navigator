@@ -6,11 +6,101 @@ import '@/lib/monaco'
 import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
 import { applyManifest, getManifest, type ManifestKind } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { checkYamlSyntax } from '@/lib/yaml'
+import { checkYamlSyntax, type YamlSyntaxError } from '@/lib/yaml'
 import { useYamlMarkers } from '@/lib/useYamlMarkers'
 import { useT } from '@/lib/i18n'
 
 type State = 'loading' | 'ready' | 'error'
+
+// The editable panel's footer: three mutually-exclusive states (just applied,
+// reviewing a dry-run diff, or idle/editing) pulled out of ManifestPanel so
+// each is a plain early return instead of a nested ternary chain.
+function ManifestFooter({
+  applied,
+  confirming,
+  dirty,
+  previewing,
+  applying,
+  yamlError,
+  error,
+  onPreview,
+  onApply,
+  onBackToEdit,
+  onDiscard,
+}: {
+  applied: boolean
+  confirming: boolean
+  dirty: boolean
+  previewing: boolean
+  applying: boolean
+  yamlError: YamlSyntaxError | null
+  error: string
+  onPreview: () => void
+  onApply: () => void
+  onBackToEdit: () => void
+  onDiscard: () => void
+}) {
+  const t = useT()
+
+  if (applied) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-sm text-[color:var(--ok)]">
+        <Check className="size-4" /> {t('Applied to cluster')}
+      </span>
+    )
+  }
+
+  if (confirming) {
+    return (
+      <>
+        <span className="inline-flex items-center gap-1.5 text-sm text-[color:var(--warn)]">
+          <AlertTriangle className="size-4" /> {t('Apply to the live cluster?')}
+        </span>
+        <button
+          onClick={onApply}
+          disabled={applying}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--err)]/90 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {applying ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          {t('Confirm apply')}
+        </button>
+        <button onClick={onBackToEdit} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          {t('Back to edit')}
+        </button>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <button
+        onClick={onPreview}
+        disabled={!dirty || previewing || !!yamlError}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+          dirty && !yamlError ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
+          previewing && 'opacity-50',
+        )}
+      >
+        {previewing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+        {t('Preview')}
+      </button>
+      {dirty && (
+        <button onClick={onDiscard} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <RotateCcw className="size-4" /> {t('Discard')}
+        </button>
+      )}
+      {yamlError ? (
+        <span className="flex items-center gap-1.5 truncate text-xs text-[color:var(--err)]">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          {t('Line')} {yamlError.line}: {yamlError.message}
+        </span>
+      ) : (
+        error && <span className="truncate text-xs text-[color:var(--err)]">{error}</span>
+      )}
+    </>
+  )
+}
 
 // Monaco-based YAML viewer/editor for a resource manifest. Editing mutates the
 // live cluster, so applying goes through a server-side dry-run first: the
@@ -202,59 +292,19 @@ export function ManifestPanel({
 
       {editable && (
         <div className="flex items-center gap-3 border-t px-4 py-3">
-          {applied ? (
-            <span className="inline-flex items-center gap-1.5 text-sm text-[color:var(--ok)]">
-              <Check className="size-4" /> {t('Applied to cluster')}
-            </span>
-          ) : confirming ? (
-            <>
-              <span className="inline-flex items-center gap-1.5 text-sm text-[color:var(--warn)]">
-                <AlertTriangle className="size-4" /> {t('Apply to the live cluster?')}
-              </span>
-              <button
-                onClick={apply}
-                disabled={applying}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--err)]/90 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {applying ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                {t('Confirm apply')}
-              </button>
-              <button onClick={() => setConfirming(false)} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-                {t('Back to edit')}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={preview}
-                disabled={!dirty || previewing || !!yamlError}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                  dirty && !yamlError ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
-                  previewing && 'opacity-50',
-                )}
-              >
-                {previewing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                {t('Preview')}
-              </button>
-              {dirty && (
-                <button
-                  onClick={() => setValue(original.current)}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-                >
-                  <RotateCcw className="size-4" /> {t('Discard')}
-                </button>
-              )}
-              {yamlError ? (
-                <span className="flex items-center gap-1.5 truncate text-xs text-[color:var(--err)]">
-                  <AlertTriangle className="size-3.5 shrink-0" />
-                  {t('Line')} {yamlError.line}: {yamlError.message}
-                </span>
-              ) : (
-                error && <span className="truncate text-xs text-[color:var(--err)]">{error}</span>
-              )}
-            </>
-          )}
+          <ManifestFooter
+            applied={applied}
+            confirming={confirming}
+            dirty={dirty}
+            previewing={previewing}
+            applying={applying}
+            yamlError={yamlError}
+            error={error}
+            onPreview={preview}
+            onApply={apply}
+            onBackToEdit={() => setConfirming(false)}
+            onDiscard={() => setValue(original.current)}
+          />
         </div>
       )}
     </div>

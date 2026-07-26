@@ -17,35 +17,9 @@ import (
 // covers any resource the cluster's RESTMapper knows about.
 // POST /api/contexts/{ctx}/create, body {"yaml":"..."}
 func (s *Server) handleCreateResource(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	obj, err := decodeCreateYAML(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	var payload struct {
-		YAML string `json:"yaml"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	jsonBytes, err := yaml.YAMLToJSON([]byte(payload.YAML))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	obj := &unstructured.Unstructured{}
-	if err := obj.UnmarshalJSON(jsonBytes); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if obj.GetAPIVersion() == "" || obj.GetKind() == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("apiVersion and kind are required"))
-		return
-	}
-	if obj.GetName() == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("metadata.name is required"))
 		return
 	}
 
@@ -60,17 +34,7 @@ func (s *Server) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-
-	ns := ""
-	if res.Namespaced {
-		ns = obj.GetNamespace()
-		if ns == "" {
-			ns = "default"
-			obj.SetNamespace(ns)
-		}
-	} else {
-		obj.SetNamespace("")
-	}
+	ns := resolveCreateNamespace(obj, res.Namespaced)
 
 	ctx, cancel := reqCtx(r)
 	defer cancel()
@@ -90,13 +54,7 @@ func (s *Server) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dryRun {
-		cleanUnstructured(created)
-		data, err := yaml.Marshal(created.Object)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"yaml": string(data)})
+		writeDryRunYAML(w, created)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{
@@ -105,4 +63,50 @@ func (s *Server) handleCreateResource(w http.ResponseWriter, r *http.Request) {
 		"namespace": ns,
 		"name":      obj.GetName(),
 	})
+}
+
+// decodeCreateYAML parses the request body's YAML into an unstructured object
+// and validates the minimum fields needed to create it.
+func decodeCreateYAML(r *http.Request) (*unstructured.Unstructured, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	var payload struct {
+		YAML string `json:"yaml"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	jsonBytes, err := yaml.YAMLToJSON([]byte(payload.YAML))
+	if err != nil {
+		return nil, err
+	}
+	obj := &unstructured.Unstructured{}
+	if err := obj.UnmarshalJSON(jsonBytes); err != nil {
+		return nil, err
+	}
+	if obj.GetAPIVersion() == "" || obj.GetKind() == "" {
+		return nil, fmt.Errorf("apiVersion and kind are required")
+	}
+	if obj.GetName() == "" {
+		return nil, fmt.Errorf("metadata.name is required")
+	}
+	return obj, nil
+}
+
+// resolveCreateNamespace picks the namespace to create into: the object's own
+// (defaulting to "default" when unset, matching kubectl's behavior), or none
+// at all for a cluster-scoped kind.
+func resolveCreateNamespace(obj *unstructured.Unstructured, namespaced bool) string {
+	if !namespaced {
+		obj.SetNamespace("")
+		return ""
+	}
+	ns := obj.GetNamespace()
+	if ns == "" {
+		ns = "default"
+		obj.SetNamespace(ns)
+	}
+	return ns
 }

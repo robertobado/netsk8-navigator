@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { Boxes, LayoutDashboard, Search, Server, Share2, type LucideIcon } from 'lucide-react'
 import { api, type ContextInfo, type ManifestKind } from '@/lib/api'
 import { shortContext } from '@/lib/utils'
@@ -29,6 +29,43 @@ interface ResourceMatch {
 const MIN_SEARCH_LEN = 2
 const MAX_MATCHES = 20
 
+// addMatch dedupes by kind/namespace/name and appends to results.
+function addMatch(results: ResourceMatch[], seen: Set<string>, kind: ManifestKind, namespace: string, name: string, resourceLabel: string) {
+  const key = `${kind}/${namespace}/${name}`
+  if (seen.has(key)) return
+  seen.add(key)
+  results.push({ kind, namespace, name, resourceLabel })
+}
+
+// matchingItems appends every item whose name contains needle, as kind, up to MAX_MATCHES.
+function matchingItems(
+  results: ResourceMatch[],
+  seen: Set<string>,
+  items: { name: string; namespace?: string }[],
+  needle: string,
+  kind: ManifestKind,
+  label: string,
+) {
+  for (const item of items) {
+    if (results.length >= MAX_MATCHES) return
+    if (item.name?.toLowerCase().includes(needle)) addMatch(results, seen, kind, item.namespace ?? '', item.name, label)
+  }
+}
+
+// matchesFromCachedResources scans every ['resources', ...] query react-query
+// has already fetched this session for ctx, appending name matches.
+function matchesFromCachedResources(results: ResourceMatch[], seen: Set<string>, qc: QueryClient, ctx: string, needle: string) {
+  for (const entry of qc.getQueryCache().findAll({ queryKey: ['resources'] })) {
+    if (results.length >= MAX_MATCHES) return
+    const [, resource, entryCtx] = entry.queryKey as [string, string, string | undefined]
+    if (entryCtx !== ctx) continue
+    const def = RESOURCES.find((r) => r.resource === resource)
+    if (!def) continue
+    const items = (entry.state.data as { name: string; namespace?: string }[] | undefined) ?? []
+    matchingItems(results, seen, items, needle, def.manifest, def.label)
+  }
+}
+
 // Instance search across every resource kind: rather than a dedicated backend
 // endpoint, this reuses whatever resource lists react-query has already
 // fetched this session (any view the user visited) plus an on-demand,
@@ -48,30 +85,8 @@ function useResourceMatches(ctx: string | undefined, search: string, enabled: bo
     if (!ctx || needle.length < MIN_SEARCH_LEN) return []
     const results: ResourceMatch[] = []
     const seen = new Set<string>()
-    const add = (kind: ManifestKind, namespace: string, name: string, resourceLabel: string) => {
-      const key = `${kind}/${namespace}/${name}`
-      if (seen.has(key)) return
-      seen.add(key)
-      results.push({ kind, namespace, name, resourceLabel })
-    }
-
-    for (const entry of qc.getQueryCache().findAll({ queryKey: ['resources'] })) {
-      const [, resource, entryCtx] = entry.queryKey as [string, string, string | undefined]
-      if (entryCtx !== ctx) continue
-      const def = RESOURCES.find((r) => r.resource === resource)
-      if (!def) continue
-      const items = (entry.state.data as { name: string; namespace?: string }[] | undefined) ?? []
-      for (const item of items) {
-        if (results.length >= MAX_MATCHES) return results
-        if (item.name?.toLowerCase().includes(needle)) add(def.manifest, item.namespace ?? '', item.name, def.label)
-      }
-    }
-
-    for (const pod of podsQ.data ?? []) {
-      if (results.length >= MAX_MATCHES) return results
-      if (pod.name.toLowerCase().includes(needle)) add('pod', pod.namespace, pod.name, 'Pods')
-    }
-
+    matchesFromCachedResources(results, seen, qc, ctx, needle)
+    matchingItems(results, seen, podsQ.data ?? [], needle, 'pod', 'Pods')
     return results
   }, [qc, ctx, search, podsQ.data])
 }
