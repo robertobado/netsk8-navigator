@@ -212,6 +212,23 @@ func fakeDynamic(t *testing.T, s *Server) *dynamicfake.FakeDynamicClient {
 	return dyn
 }
 
+// fakeClient extracts the underlying *kubernetesfake.Clientset from a server
+// built by newTestServer, for tests that need to patch in a reactor — e.g. a
+// proxy reactor, since the fake tracker has no ProxyGet behavior by default
+// (it returns a nil ResponseWrapper, which panics on .DoRaw()).
+func fakeClient(t *testing.T, s *Server) *kubernetesfake.Clientset {
+	t.Helper()
+	fm, ok := s.mgr.(*fakeManager)
+	if !ok {
+		t.Fatal("expected a *fakeManager")
+	}
+	client, ok := fm.client.(*kubernetesfake.Clientset)
+	if !ok {
+		t.Fatal("expected a *kubernetesfake.Clientset")
+	}
+	return client
+}
+
 // doRequest sends method+path through the real routing/middleware stack
 // (Server.Routes()) and returns the recorder.
 func doRequest(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {

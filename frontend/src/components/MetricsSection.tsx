@@ -435,7 +435,7 @@ function TimeChartPanel({
   nodes: NodeUsageItem[]
 }>) {
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
-  const last = series?.points.at(-1)?.v
+  const last = series?.points?.at(-1)?.v
   const hasPct = ceiling > 0
   const showNodes = nodes.length > 0
   return (

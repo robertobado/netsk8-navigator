@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingBubble } from './FloatingBubble'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('FloatingBubble', () => {
   it('renders the message linking to href', () => {
@@ -18,5 +22,14 @@ describe('FloatingBubble', () => {
 
     await user.click(screen.getByRole('button', { name: /dismiss/i }))
     expect(screen.queryByText('hello')).not.toBeInTheDocument()
+  })
+
+  it('renders parked in place, without animating, when the user prefers reduced motion', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    render(<FloatingBubble message="hello" href="https://example.com" />)
+    const link = screen.getByRole('link', { name: /hello/i })
+    // Parked via an inline transform (not the rAF loop that drives the
+    // normal drifting/fleeing behavior) — respects prefers-reduced-motion.
+    expect(link.parentElement?.getAttribute('style')).toContain('calc')
   })
 })

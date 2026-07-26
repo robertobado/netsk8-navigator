@@ -1,0 +1,120 @@
+# Metric + ClusterResourceUsage config for kwok's simulated kubelet, so a
+# real metrics-server (enabled via `kwokctl create cluster --enable
+# metrics-server`) has something to scrape at /metrics/resource and
+# metrics.k8s.io works. Passed alongside stages.yaml via a second --config
+# flag (kwokctl's --config is repeatable and merges files, unlike passing
+# a single file which replaces kwok's built-in defaults).
+#
+# Both resources below are copied verbatim (Apache 2.0, kubernetes-sigs/kwok
+# v0.8.0) from:
+#   kustomize/metrics/resource/metrics-resource.yaml
+#   kustomize/metrics/usage/usage-from-annotation.yaml
+#
+# ClusterResourceUsage reads each pod's `kwok.x-k8s.io/usage-cpu`/
+# `usage-memory` annotations (set per-workload in demo/seed/workloads.go) to
+# decide what "usage" that pod reports; Metric turns that into the
+# Prometheus-style /metrics/resource output a metrics-server scrapes.
+apiVersion: kwok.x-k8s.io/v1alpha1
+kind: ClusterResourceUsage
+metadata:
+  name: usage-from-annotation
+spec:
+  usages:
+  - usage:
+      cpu:
+        expression: |
+          "kwok.x-k8s.io/usage-cpu" in pod.metadata.annotations
+          ? Quantity(pod.metadata.annotations["kwok.x-k8s.io/usage-cpu"])
+          : Quantity("1m")
+      memory:
+        expression: |
+          "kwok.x-k8s.io/usage-memory" in pod.metadata.annotations
+          ? Quantity(pod.metadata.annotations["kwok.x-k8s.io/usage-memory"])
+          : Quantity("1Mi")
+---
+kind: Metric
+apiVersion: kwok.x-k8s.io/v1alpha1
+metadata:
+  name: metrics-resource
+spec:
+  path: "/metrics/nodes/{nodeName}/metrics/resource"
+  metrics:
+  - name: scrape_error
+    dimension: node
+    help: |
+      [ALPHA] 1 if there was an error while getting metrics from the node, 0 otherwise
+    kind: gauge
+    value: '0'
+  - name: container_start_time_seconds
+    dimension: container
+    help: |
+      [ALPHA] Start time of the container since unix epoch in seconds
+    kind: gauge
+    labels:
+    - name: container
+      value: 'container.name'
+    - name: namespace
+      value: 'pod.metadata.namespace'
+    - name: pod
+      value: 'pod.metadata.name'
+    value: 'pod.SinceSecond()'
+  - name: container_cpu_usage_seconds_total
+    dimension: container
+    help: |
+      [ALPHA] Cumulative cpu time consumed by the container in core-seconds
+    kind: counter
+    labels:
+    - name: container
+      value: 'container.name'
+    - name: namespace
+      value: 'pod.metadata.namespace'
+    - name: pod
+      value: 'pod.metadata.name'
+    value: 'pod.CumulativeUsage("cpu", container.name)'
+  - name: container_memory_working_set_bytes
+    dimension: container
+    help: |
+      [ALPHA] Current working set of the container in bytes
+    kind: gauge
+    labels:
+    - name: container
+      value: 'container.name'
+    - name: namespace
+      value: 'pod.metadata.namespace'
+    - name: pod
+      value: 'pod.metadata.name'
+    value: 'pod.Usage("memory", container.name)'
+  - name: pod_cpu_usage_seconds_total
+    dimension: pod
+    help: |
+      [ALPHA] Cumulative cpu time consumed by the pod in core-seconds
+    kind: counter
+    labels:
+    - name: namespace
+      value: 'pod.metadata.namespace'
+    - name: pod
+      value: 'pod.metadata.name'
+    value: 'pod.CumulativeUsage("cpu")'
+  - name: pod_memory_working_set_bytes
+    dimension: pod
+    help: |
+      [ALPHA] Current working set of the pod in bytes
+    kind: gauge
+    labels:
+    - name: namespace
+      value: 'pod.metadata.namespace'
+    - name: pod
+      value: 'pod.metadata.name'
+    value: 'pod.Usage("memory")'
+  - name: node_cpu_usage_seconds_total
+    dimension: node
+    help: |
+      [ALPHA] Cumulative cpu time consumed by the node in core-seconds
+    kind: counter
+    value: 'node.CumulativeUsage("cpu")'
+  - name: node_memory_working_set_bytes
+    dimension: node
+    help: |
+      [ALPHA] Current working set of the node in bytes
+    kind: gauge
+    value: 'node.Usage("memory")'

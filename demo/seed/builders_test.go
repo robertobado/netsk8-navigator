@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestBuildDeployment_ChaosLabel(t *testing.T) {
-	dep := buildDeployment("production", "billing-worker", "redis:7", 1, true)
+	dep := buildDeployment("production", "billing-worker", "redis:7", 1, true, "80m", "96Mi")
 	if dep.Spec.Template.Labels[chaosLabel] != "true" {
 		t.Errorf("chaos deployment's pod template missing %s=true label, got %v", chaosLabel, dep.Spec.Template.Labels)
 	}
@@ -13,12 +13,20 @@ func TestBuildDeployment_ChaosLabel(t *testing.T) {
 }
 
 func TestBuildDeployment_NoChaosLabelByDefault(t *testing.T) {
-	dep := buildDeployment("production", "web-frontend", "nginx:1.27", 3, false)
+	dep := buildDeployment("production", "web-frontend", "nginx:1.27", 3, false, "50m", "64Mi")
 	if _, ok := dep.Spec.Template.Labels[chaosLabel]; ok {
 		t.Errorf("non-chaos deployment should not carry %s label", chaosLabel)
 	}
 	if dep.Namespace != "production" || dep.Name != "web-frontend" {
 		t.Errorf("unexpected metadata: ns=%s name=%s", dep.Namespace, dep.Name)
+	}
+}
+
+func TestBuildDeployment_UsageAnnotations(t *testing.T) {
+	dep := buildDeployment("production", "web-frontend", "nginx:1.27", 3, false, "50m", "64Mi")
+	ann := dep.Spec.Template.Annotations
+	if ann[usageCPUAnnotation] != "50m" || ann[usageMemoryAnnotation] != "64Mi" {
+		t.Errorf("usage annotations = %v, want cpu=50m memory=64Mi", ann)
 	}
 }
 
@@ -33,7 +41,7 @@ func TestBuildService_MatchesSelector(t *testing.T) {
 }
 
 func TestBuildJob_RestartPolicyNever(t *testing.T) {
-	job := buildJob("production", "db-migrate", "busybox:1.36")
+	job := buildJob("production", "db-migrate", "busybox:1.36", "100m", "64Mi")
 	if job.Spec.Template.Spec.RestartPolicy != "Never" {
 		t.Errorf("job restart policy = %s, want Never", job.Spec.Template.Spec.RestartPolicy)
 	}

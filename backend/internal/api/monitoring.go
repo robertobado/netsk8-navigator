@@ -181,8 +181,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		step = 15 * time.Second
 	}
 
-	cpu, _ := s.promQueryRange(ctx, client, src, cpuQ, start, end, step)
-	mem, _ := s.promQueryRange(ctx, client, src, memQ, start, end, step)
+	cpu, err := s.promQueryRange(ctx, client, src, cpuQ, start, end, step)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+	mem, err := s.promQueryRange(ctx, client, src, memQ, start, end, step)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available": true,

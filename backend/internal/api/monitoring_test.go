@@ -2,13 +2,31 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
+	ktesting "k8s.io/client-go/testing"
 )
+
+// erroringResponseWrapper simulates a ProxyGet against a Service with no
+// real backend behind it — DoRaw fails the way a real "connection refused"
+// would, instead of the fake clientset's default of a nil ResponseWrapper
+// (which panics on .DoRaw()).
+type erroringResponseWrapper struct{}
+
+func (erroringResponseWrapper) DoRaw(context.Context) ([]byte, error) {
+	return nil, errors.New("connection refused")
+}
+func (erroringResponseWrapper) Stream(context.Context) (io.ReadCloser, error) {
+	return nil, errors.New("connection refused")
+}
 
 func TestPickPort(t *testing.T) {
 	svc := &corev1.Service{Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
@@ -126,6 +144,38 @@ func TestMetricQueries(t *testing.T) {
 			t.Error("want an error for an unknown scope")
 		}
 	})
+}
+
+// TestHandleMetrics_UnreachableSourceReportsUnavailable guards against a
+// regression where a Prometheus-look-alike Service that discoverProm matches
+// by name/port, but that doesn't actually answer queries (e.g. a demo/test
+// Service with no real Prometheus behind it), made handleMetrics report
+// "available: true" with points:null instead of gracefully degrading —
+// which crashed the frontend (series.points.at on null).
+func TestHandleMetrics_UnreachableSourceReportsUnavailable(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
+	}
+	s := newTestServer(t, svc)
+	fakeClient(t, s).PrependProxyReactor("services", func(ktesting.Action) (bool, rest.ResponseWrapper, error) {
+		return true, erroringResponseWrapper{}, nil
+	})
+
+	rec := doRequest(t, s, "GET", "/api/contexts/test/metrics/cluster", "")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["available"] != false {
+		t.Errorf("available = %v, want false when the matched source can't actually be queried", body["available"])
+	}
+	if _, ok := body["cpu"]; ok {
+		t.Errorf("body should not carry a cpu series when unavailable, got %v", body)
+	}
 }
 
 func TestNodeInstanceRegex(t *testing.T) {

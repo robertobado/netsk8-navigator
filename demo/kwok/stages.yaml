@@ -1,21 +1,24 @@
 # Kwok Stage resources for the netsk8-navigator demo cluster.
 #
-# The first six (general pod lifecycle) plus the two node stages below are
-# verbatim copies of kwok's own official examples (Apache License 2.0,
-# https://github.com/kubernetes-sigs/kwok, kustomize/stage/{pod,node}/...) at
-# v0.8.0. Passing --config to `kwokctl create cluster` REPLACES kwok's
-# built-in default stages entirely rather than adding to them, so this file
-# must be self-contained: it carries the full baseline (pod create -> ready
-# -> complete -> delete, node initialize -> heartbeat) plus two chaos stages
-# used for demo flavor (see docs/DEMO_CLUSTER.md):
+# The pod lifecycle stages below are verbatim copies of kwok's own official
+# examples (Apache License 2.0, https://github.com/kubernetes-sigs/kwok,
+# kustomize/stage/pod/...) at v0.8.0. Passing --config to `kwokctl create
+# cluster` REPLACES kwok's built-in default stages entirely rather than
+# adding to them, so this file must be self-contained: it carries the full
+# baseline (pod create -> ready -> complete -> delete, node initialize ->
+# heartbeat) plus one chaos stage used for demo flavor (see
+# docs/DEMO_CLUSTER.md):
 #
-#   - pod-container-running-failed: any Pod labeled
-#     `pod-container-running-failed.stage.kwok.x-k8s.io: "true"` fails
-#     shortly after starting (feeds the Issues carousel).
 #   - node-not-ready: any Node labeled
 #     `node-not-ready.stage.kwok.x-k8s.io: "true"` flips to NotReady.
 #
-# demo/seed applies both labels to a small subset of what it creates.
+# demo/seed applies that label to one node. It does NOT use kwok's own
+# "pod-container-running-failed" chaos stage (deliberately omitted here) —
+# that stage sets the whole pod to a terminal Failed phase, which makes the
+# owning Deployment's ReplicaSet spawn endless replacement pods (each
+# immediately hitting the same stage and failing again). Instead,
+# demo/seed/logs.go's breakPod patches a small, fixed set of pods into a
+# stable CrashLoopBackOff-looking state directly — see its doc comment.
 ---
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
@@ -529,91 +532,6 @@ spec:
         kubeletEndpoint:
           Port: {{ . }}
       {{ end }}
----
-apiVersion: kwok.x-k8s.io/v1alpha1
-kind: Stage
-metadata:
-  name: pod-container-running-failed
-spec:
-  resourceRef:
-    apiGroup: v1
-    kind: Pod
-  selector:
-    matchExpressions:
-    - key: '.metadata.labels["pod-container-running-failed.stage.kwok.x-k8s.io"]'
-      operator: 'In'
-      values:
-      - 'true'
-    - key: '.metadata.deletionTimestamp'
-      operator: 'DoesNotExist'
-    - key: '.status.phase'
-      operator: 'In'
-      values:
-      - 'Running'
-  delay:
-    durationMilliseconds: 1000
-    durationFrom:
-      expressionFrom: '.metadata.annotations["pod-container-running-failed.stage.kwok.x-k8s.io/delay"]'
-    jitterDurationMilliseconds: 1000
-    jitterDurationFrom:
-      expressionFrom: '.metadata.annotations["pod-container-running-failed.stage.kwok.x-k8s.io/jitter-delay"]'
-  weight: 10000
-  weightFrom:
-    expressionFrom: '.metadata.annotations["pod-container-running-failed.stage.kwok.x-k8s.io/weight"]'
-  next:
-    statusTemplate: |
-      {{ $now := Now }}
-      {{ $defaultReason := "containerFailed" }}
-      {{ $defaultMessage := "container failed" }}
-      {{ $defaultExitCode := 1 }}
-      {{ $annotations := or .metadata.annotations dict }}
-      {{ $containerName := or ( index $annotations "pod-container-running-failed.stage.kwok.x-k8s.io/container-name" ) "" }}
-      {{ $failureReason := or ( index $annotations "pod-container-running-failed.stage.kwok.x-k8s.io/reason" ) $defaultReason }}
-      {{ $failureMessage := or ( index $annotations "pod-container-running-failed.stage.kwok.x-k8s.io/message" ) $defaultMessage }}
-      {{ $failureExitCode := or ( index $annotations "pod-container-running-failed.stage.kwok.x-k8s.io/exit-code" ) $defaultExitCode }}
-      conditions:
-      - lastProbeTime: null
-        lastTransitionTime: {{ $now | Quote }}
-        status: "True"
-        reason: ""
-        type: Initialized
-      - lastTransitionTime: {{ $now | Quote }}
-        status: "False"
-        reason: ""
-        type: Ready
-      - lastTransitionTime: {{ $now | Quote }}
-        status: "False"
-        reason: ""
-        type: ContainersReady
-      containerStatuses:
-      {{ range $index, $item := .spec.containers }}
-      {{ if or ( not $containerName ) ( eq $item.name $containerName ) }}
-      - image: {{ $item.image | Quote }}
-        name: {{ $item.name | Quote }}
-        ready: false
-        restartCount: 0
-        started: false
-        state:
-          terminated:
-            exitCode: {{ $failureExitCode }}
-            finishedAt: {{ $now | Quote }}
-            reason: {{ $failureReason }}
-            message: {{ $failureMessage }}
-            startedAt: {{ $now | Quote }}
-      {{ else }}
-      - image: {{ $item.image | Quote }}
-        name: {{ $item.name | Quote }}
-        ready: true
-        restartCount: 0
-        state:
-          running:
-            startedAt: {{ $now | Quote }}
-      {{ end }}
-      {{ end }}
-      hostIP: {{ NodeIPWith .spec.nodeName | Quote }}
-      podIP: {{ PodIPWith .spec.nodeName ( or .spec.hostNetwork false ) ( or .metadata.uid "" ) ( or .metadata.name "" ) ( or .metadata.namespace "" ) | Quote }}
-      phase: Failed
-      startTime: {{ $now | Quote }}
 ---
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage

@@ -77,6 +77,7 @@ func randomID() string {
 // that keeps appending plausible lines until the pod is deleted or ctx ends.
 func runLogDaemon(ctx context.Context, client kubernetes.Interface, dynClient dynamic.Interface, logDir string) {
 	tracked := map[string]context.CancelFunc{}
+	broken := map[string]bool{}
 	var mu sync.Mutex
 
 	for {
@@ -90,14 +91,14 @@ func runLogDaemon(ctx context.Context, client kubernetes.Interface, dynClient dy
 				continue
 			}
 		}
-		consumeWatch(ctx, w, dynClient, logDir, tracked, &mu)
+		consumeWatch(ctx, client, w, dynClient, logDir, tracked, broken, &mu)
 		if ctx.Err() != nil {
 			return
 		}
 	}
 }
 
-func consumeWatch(ctx context.Context, w watch.Interface, dynClient dynamic.Interface, logDir string, tracked map[string]context.CancelFunc, mu *sync.Mutex) {
+func consumeWatch(ctx context.Context, client kubernetes.Interface, w watch.Interface, dynClient dynamic.Interface, logDir string, tracked map[string]context.CancelFunc, broken map[string]bool, mu *sync.Mutex) {
 	defer w.Stop()
 	for {
 		select {
@@ -121,18 +122,72 @@ func consumeWatch(ctx context.Context, w watch.Interface, dynClient dynamic.Inte
 					tracked[key] = cancel
 					mu.Unlock()
 					startSimulatedLog(podCtx, dynClient, logDir, pod)
-					continue
+					mu.Lock()
+				}
+			case watch.Modified:
+				if pod.Labels[chaosLabel] == "true" && pod.Status.Phase == corev1.PodRunning && !broken[key] {
+					broken[key] = true
+					mu.Unlock()
+					breakPod(ctx, client, pod)
+					mu.Lock()
 				}
 			case watch.Deleted:
 				if cancel, exists := tracked[key]; exists {
 					cancel()
 					delete(tracked, key)
 				}
+				delete(broken, key)
 			}
 			mu.Unlock()
 		}
 	}
 }
+
+// breakPod gives a "chaos" pod a stable, realistic-looking crash-loop state
+// — one container waiting with reason CrashLoopBackOff and a plausible
+// restart count — WITHOUT ever moving the pod itself out of Running. That
+// distinction matters: kwok's own "pod-container-running-failed" chaos
+// stage (see ../kwok/stages.yaml) instead sets the whole pod to phase
+// Failed, a *terminal* state, so the Deployment's ReplicaSet keeps creating
+// brand-new replacement pods forever (each immediately hitting the same
+// stage and failing again) — hundreds of pods within an hour, wildly
+// inflating cluster-wide usage since kwok's node-level usage sums every pod
+// ever scheduled there, not just live ones. Doing this ourselves, once, as
+// a container-level (not pod-level) failure avoids that churn entirely.
+func breakPod(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) {
+	patched := pod.DeepCopy()
+	if len(patched.Status.ContainerStatuses) == 0 {
+		return
+	}
+	cs := &patched.Status.ContainerStatuses[0]
+	cs.Ready = false
+	cs.Started = boolPtr(false)
+	cs.RestartCount = int32(8 + rand.Intn(20))
+	cs.LastTerminationState = corev1.ContainerState{
+		Terminated: &corev1.ContainerStateTerminated{
+			ExitCode:   1,
+			Reason:     "Error",
+			FinishedAt: metav1.NewTime(time.Now().Add(-time.Minute)),
+		},
+	}
+	cs.State = corev1.ContainerState{
+		Waiting: &corev1.ContainerStateWaiting{
+			Reason:  "CrashLoopBackOff",
+			Message: fmt.Sprintf("back-off 5m0s restarting failed container=%s pod=%s_%s(%s)", cs.Name, pod.Name, pod.Namespace, pod.UID),
+		},
+	}
+	for i, c := range patched.Status.Conditions {
+		if c.Type == corev1.PodReady || c.Type == corev1.ContainersReady {
+			patched.Status.Conditions[i].Status = corev1.ConditionFalse
+			patched.Status.Conditions[i].Reason = "ContainersNotReady"
+		}
+	}
+	if _, err := client.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, patched, metav1.UpdateOptions{}); err != nil {
+		log.Printf("marking %s/%s as crash-looping: %v", pod.Namespace, pod.Name, err)
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
 
 // startSimulatedLog writes the log file, registers the Logs CR, then spawns
 // the appender goroutine. Best-effort: a failure here just means that one

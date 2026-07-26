@@ -8,17 +8,38 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// chaosLabel marks a pod template so ../kwok/stages.yaml's
-// pod-container-running-failed stage fails it shortly after it starts.
-const chaosLabel = "pod-container-running-failed.stage.kwok.x-k8s.io"
+// chaosLabel marks a pod template for logs.go's breakPod: once the pod
+// reaches Running, its status is patched (once) into a stable, realistic
+// CrashLoopBackOff look. This is deliberately NOT kwok's own
+// "pod-container-running-failed" chaos stage label — that stage sets the
+// whole pod to a terminal Failed phase, which makes the Deployment's
+// ReplicaSet spawn endless replacement pods (see breakPod's doc comment).
+const chaosLabel = "netsk8-navigator.dev/demo-chaos"
 
-func podTemplate(name, image string, chaos bool) corev1.PodTemplateSpec {
+// usageCPUAnnotation/usageMemoryAnnotation feed ../kwok/metrics.yaml's
+// ClusterResourceUsage (a copy of kwok's usage-from-annotation.yaml): kwok's
+// simulated kubelet reports each pod's /metrics/resource usage as whatever
+// these annotations say (falling back to a flat 1m/1Mi when absent), which
+// is what a real metrics-server scrapes to answer metrics.k8s.io.
+const (
+	usageCPUAnnotation    = "kwok.x-k8s.io/usage-cpu"
+	usageMemoryAnnotation = "kwok.x-k8s.io/usage-memory"
+)
+
+func podTemplate(name, image string, chaos bool, cpu, memory string) corev1.PodTemplateSpec {
 	labels := map[string]string{"app": name}
 	if chaos {
 		labels[chaosLabel] = "true"
 	}
+	annotations := map[string]string{}
+	if cpu != "" {
+		annotations[usageCPUAnnotation] = cpu
+	}
+	if memory != "" {
+		annotations[usageMemoryAnnotation] = memory
+	}
 	return corev1.PodTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: annotations},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{{
 				Name:  name,
@@ -29,8 +50,8 @@ func podTemplate(name, image string, chaos bool) corev1.PodTemplateSpec {
 	}
 }
 
-func buildDeployment(ns, name, image string, replicas int32, chaos bool) *appsv1.Deployment {
-	tmpl := podTemplate(name, image, chaos)
+func buildDeployment(ns, name, image string, replicas int32, chaos bool, cpu, memory string) *appsv1.Deployment {
+	tmpl := podTemplate(name, image, chaos, cpu, memory)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: map[string]string{"app": name}},
 		Spec: appsv1.DeploymentSpec{
@@ -41,8 +62,8 @@ func buildDeployment(ns, name, image string, replicas int32, chaos bool) *appsv1
 	}
 }
 
-func buildStatefulSet(ns, name, image string, replicas int32) *appsv1.StatefulSet {
-	tmpl := podTemplate(name, image, false)
+func buildStatefulSet(ns, name, image string, replicas int32, cpu, memory string) *appsv1.StatefulSet {
+	tmpl := podTemplate(name, image, false, cpu, memory)
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: map[string]string{"app": name}},
 		Spec: appsv1.StatefulSetSpec{
@@ -54,8 +75,8 @@ func buildStatefulSet(ns, name, image string, replicas int32) *appsv1.StatefulSe
 	}
 }
 
-func buildDaemonSet(ns, name, image string) *appsv1.DaemonSet {
-	tmpl := podTemplate(name, image, false)
+func buildDaemonSet(ns, name, image string, cpu, memory string) *appsv1.DaemonSet {
+	tmpl := podTemplate(name, image, false, cpu, memory)
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: map[string]string{"app": name}},
 		Spec: appsv1.DaemonSetSpec{
@@ -65,8 +86,8 @@ func buildDaemonSet(ns, name, image string) *appsv1.DaemonSet {
 	}
 }
 
-func buildJob(ns, name, image string) *batchv1.Job {
-	tmpl := podTemplate(name, image, false)
+func buildJob(ns, name, image string, cpu, memory string) *batchv1.Job {
+	tmpl := podTemplate(name, image, false, cpu, memory)
 	tmpl.Spec.RestartPolicy = corev1.RestartPolicyNever
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: map[string]string{"app": name}},
@@ -74,8 +95,8 @@ func buildJob(ns, name, image string) *batchv1.Job {
 	}
 }
 
-func buildCronJob(ns, name, image, schedule string) *batchv1.CronJob {
-	tmpl := podTemplate(name, image, false)
+func buildCronJob(ns, name, image, schedule string, cpu, memory string) *batchv1.CronJob {
+	tmpl := podTemplate(name, image, false, cpu, memory)
 	tmpl.Spec.RestartPolicy = corev1.RestartPolicyNever
 	return &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: map[string]string{"app": name}},
