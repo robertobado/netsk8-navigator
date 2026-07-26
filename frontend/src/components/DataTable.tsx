@@ -85,7 +85,7 @@ function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div aria-hidden="true" className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-full z-30 mt-1.5 max-h-64 w-52 overflow-auto rounded-lg border bg-popover p-1 text-foreground shadow-lg">
             {options.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('No values')}</div>}
             {selected.length > 0 && (

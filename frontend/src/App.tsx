@@ -139,7 +139,7 @@ function AppMain() {
       <VantaBackground enabled={vanta.enabled} effect={vanta.effect} opacity={vanta.opacity} />
       <div className="relative z-10 flex h-screen">
         {/* Backdrop (mobile/tablet only, shown while the sidebar is open) */}
-        {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />}
+        {sidebarOpen && <div aria-hidden="true" className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
         {/* Sidebar: off-canvas below `lg`, static + always visible at `lg`+ */}
         <aside

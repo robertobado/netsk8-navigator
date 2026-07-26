@@ -18,10 +18,32 @@ const DEFAULTS: AppPreferences = {
 
 const LS_KEY = 'netsk8.prefs'
 
+// Picks only the known, correctly-typed fields out of an arbitrary value before
+// it's trusted as preferences — applied to both the localStorage read and the
+// server's response, since neither is guaranteed to still match this shape
+// (an older client version, a tampered value, a compromised/MITM'd response).
+function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
+  if (typeof raw !== 'object' || raw === null) return {}
+  const r = raw as Record<string, unknown>
+  const out: Partial<AppPreferences> = {}
+  if (typeof r.language === 'string') out.language = r.language
+  if (typeof r.metricsRefreshMs === 'number') out.metricsRefreshMs = r.metricsRefreshMs
+  if (typeof r.background === 'object' && r.background !== null) {
+    const b = r.background as Record<string, unknown>
+    out.background = {
+      enabled: typeof b.enabled === 'boolean' ? b.enabled : DEFAULTS.background.enabled,
+      effect: typeof b.effect === 'string' ? b.effect : DEFAULTS.background.effect,
+      opacity: typeof b.opacity === 'number' ? b.opacity : DEFAULTS.background.opacity,
+    }
+  }
+  return out
+}
+
 function load(): AppPreferences {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}')
-    return { ...DEFAULTS, ...raw, background: { ...DEFAULTS.background, ...raw?.background } }
+    const safe = sanitizePrefs(raw)
+    return { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background } }
   } catch {
     return DEFAULTS
   }
@@ -58,7 +80,8 @@ export function hydrateAppPrefs() {
     .then((r) => (r.ok ? r.json() : null))
     .then((remote) => {
       if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
-        state = { ...DEFAULTS, ...remote, background: { ...DEFAULTS.background, ...remote.background } }
+        const safe = sanitizePrefs(remote)
+        state = { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background } }
         localStorage.setItem(LS_KEY, JSON.stringify(state))
         emit()
       } else {

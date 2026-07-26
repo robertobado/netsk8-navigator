@@ -71,6 +71,7 @@ function CRDDrawer({ ctx, rk, item, onClose }: Readonly<{ ctx: string; rk: Route
   return (
     <>
       <div
+        aria-hidden="true"
         className={cn('fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity', open ? 'opacity-100' : 'pointer-events-none opacity-0')}
         onClick={onClose}
       />

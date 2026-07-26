@@ -45,7 +45,7 @@ export function RolloutHistory({
 
   return (
     <>
-      <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div aria-hidden="true" className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed left-1/2 top-[15%] z-[101] w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border bg-popover/95 shadow-2xl shadow-black/50 backdrop-blur-2xl">
         <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
