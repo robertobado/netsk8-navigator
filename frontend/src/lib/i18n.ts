@@ -213,6 +213,7 @@ const pt: Dict = {
   'Confirm apply': 'Confirmar aplicação',
   'Back to edit': 'Voltar a editar',
   Preview: 'Pré-visualizar',
+  Line: 'Linha',
 
   // --- TopologyView ---
   'Select a namespace at the top to view the topology.': 'Selecione um namespace no topo para visualizar a topologia.',

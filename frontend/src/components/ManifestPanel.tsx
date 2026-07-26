@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
-import Editor, { DiffEditor } from '@monaco-editor/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Editor, { DiffEditor, type Monaco } from '@monaco-editor/react'
+import type { editor as MonacoEditor } from 'monaco-editor'
 import { AlertTriangle, Check, Copy, Loader2, Lock, RotateCcw, Save } from 'lucide-react'
 import '@/lib/monaco'
 import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
 import { applyManifest, getManifest, type ManifestKind } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { checkYamlSyntax } from '@/lib/yaml'
 import { useT } from '@/lib/i18n'
 
 type State = 'loading' | 'ready' | 'error'
@@ -40,6 +42,37 @@ export function ManifestPanel({
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState(false)
   const [copied, setCopied] = useState(false)
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<Monaco | null>(null)
+
+  // Client-side syntax check, live as the user types — separate from the
+  // server-side dry-run validation (which also catches things like an
+  // immutable field change, not just malformed YAML).
+  const yamlError = useMemo(() => (editable ? checkYamlSyntax(value) : null), [value, editable])
+
+  // Underline the exact spot in the editor, same as Monaco's own diagnostics.
+  useEffect(() => {
+    const ed = editorRef.current
+    const monacoNs = monacoRef.current
+    const model = ed?.getModel()
+    if (!monacoNs || !model) return
+    monacoNs.editor.setModelMarkers(
+      model,
+      'yaml-syntax',
+      yamlError
+        ? [
+            {
+              severity: monacoNs.MarkerSeverity.Error,
+              message: yamlError.message,
+              startLineNumber: yamlError.line,
+              startColumn: yamlError.column,
+              endLineNumber: yamlError.line,
+              endColumn: yamlError.column + 1,
+            },
+          ]
+        : [],
+    )
+  }, [yamlError])
 
   const copy = async () => {
     try {
@@ -158,6 +191,10 @@ export function ManifestPanel({
             beforeMount={ensureNetsk8Theme}
             value={value}
             onChange={(v) => setValue(v ?? '')}
+            onMount={(ed, monacoNs) => {
+              editorRef.current = ed
+              monacoRef.current = monacoNs
+            }}
             options={{
               readOnly: !editable,
               minimap: { enabled: false },
@@ -211,10 +248,10 @@ export function ManifestPanel({
             <>
               <button
                 onClick={preview}
-                disabled={!dirty || previewing}
+                disabled={!dirty || previewing || !!yamlError}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                  dirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
+                  dirty && !yamlError ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
                   previewing && 'opacity-50',
                 )}
               >
@@ -229,7 +266,14 @@ export function ManifestPanel({
                   <RotateCcw className="size-4" /> {t('Discard')}
                 </button>
               )}
-              {error && <span className="truncate text-xs text-[color:var(--err)]">{error}</span>}
+              {yamlError ? (
+                <span className="flex items-center gap-1.5 truncate text-xs text-[color:var(--err)]">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  {t('Line')} {yamlError.line}: {yamlError.message}
+                </span>
+              ) : (
+                error && <span className="truncate text-xs text-[color:var(--err)]">{error}</span>
+              )}
             </>
           )}
         </div>
