@@ -491,23 +491,33 @@ func ingressRuleSections(o *networkingv1.Ingress) (sections []section, backends 
 		if r.Host == "" {
 			host = "*"
 		}
-		items := []kv{}
-		if r.HTTP != nil {
-			for _, p := range r.HTTP.Paths {
-				svc, port := ingressPathBackend(p)
-				if svc != "" {
-					backends = appendUnique(backends, svc)
-				}
-				path := p.Path
-				if path == "" {
-					path = "/"
-				}
-				items = append(items, kv{Label: path, Value: fmt.Sprintf("%s:%s", svc, port)})
-			}
+		items, ruleBackends := ingressRuleItems(r)
+		for _, b := range ruleBackends {
+			backends = appendUnique(backends, b)
 		}
 		sections = append(sections, section{Title: host, Items: items})
 	}
 	return sections, backends
+}
+
+// ingressRuleItems lists one item per path in a rule, plus the backend
+// Service names those paths reference.
+func ingressRuleItems(r networkingv1.IngressRule) (items []kv, backends []string) {
+	if r.HTTP == nil {
+		return items, backends
+	}
+	for _, p := range r.HTTP.Paths {
+		svc, port := ingressPathBackend(p)
+		if svc != "" {
+			backends = appendUnique(backends, svc)
+		}
+		path := p.Path
+		if path == "" {
+			path = "/"
+		}
+		items = append(items, kv{Label: path, Value: fmt.Sprintf("%s:%s", svc, port)})
+	}
+	return items, backends
 }
 
 // ingressPathBackend reads the backend Service name/port a path routes to.
