@@ -8,10 +8,11 @@ import { ResourceActions } from './ResourceActions'
 // Identity translator — decouples these tests from i18n dictionary content.
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string) => key }))
 
-const { deleteResourceMock, scaleResourceMock, restartRolloutMock, getDetailMock, rolloutHistoryMock, rolloutUndoMock } = vi.hoisted(() => ({
+const { deleteResourceMock, scaleResourceMock, restartRolloutMock, cordonNodeMock, getDetailMock, rolloutHistoryMock, rolloutUndoMock } = vi.hoisted(() => ({
   deleteResourceMock: vi.fn(),
   scaleResourceMock: vi.fn(),
   restartRolloutMock: vi.fn(),
+  cordonNodeMock: vi.fn(),
   getDetailMock: vi.fn(),
   rolloutHistoryMock: vi.fn(),
   rolloutUndoMock: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@/lib/api', () => ({
   deleteResource: deleteResourceMock,
   scaleResource: scaleResourceMock,
   restartRollout: restartRolloutMock,
+  cordonNode: cordonNodeMock,
   getDetail: getDetailMock,
   rolloutHistory: rolloutHistoryMock,
   rolloutUndo: rolloutUndoMock,
@@ -38,6 +40,7 @@ beforeEach(() => {
   deleteResourceMock.mockReset().mockResolvedValue(undefined)
   scaleResourceMock.mockReset().mockResolvedValue(undefined)
   restartRolloutMock.mockReset().mockResolvedValue(undefined)
+  cordonNodeMock.mockReset().mockResolvedValue(undefined)
   getDetailMock.mockReset().mockResolvedValue({ replicas: 2 })
   rolloutHistoryMock.mockReset().mockResolvedValue([])
   rolloutUndoMock.mockReset().mockResolvedValue(undefined)
@@ -120,5 +123,47 @@ describe('ResourceActions', () => {
     await user.click(screen.getByText('Confirm'))
 
     await waitFor(() => expect(restartRolloutMock).toHaveBeenCalledWith('c', 'deployment', 'ns', 'web'))
+  })
+
+  it('does not show a Cordon action for non-node kinds', async () => {
+    renderWithClient(<ResourceActions ctx="c" kind="deployment" namespace="ns" name="web" editable={true} />)
+    expect(await screen.findByText('Restart rollout')).toBeInTheDocument()
+    expect(screen.queryByText('Cordon')).not.toBeInTheDocument()
+  })
+
+  it('shows Cordon for a schedulable node and cordons it after confirming', async () => {
+    getDetailMock.mockResolvedValue({ schedulable: true })
+    const user = userEvent.setup()
+    renderWithClient(<ResourceActions ctx="c" kind="node" namespace="" name="node-1" editable={true} />)
+
+    await user.click(await screen.findByText('Cordon'))
+    await user.click(screen.getByText('Confirm'))
+
+    await waitFor(() => expect(cordonNodeMock).toHaveBeenCalledWith('c', 'node-1', true))
+    expect(await screen.findByText('Node cordoned')).toBeInTheDocument()
+  })
+
+  it('shows Uncordon for an already-cordoned node and uncordons it after confirming', async () => {
+    getDetailMock.mockResolvedValue({ schedulable: false })
+    const user = userEvent.setup()
+    renderWithClient(<ResourceActions ctx="c" kind="node" namespace="" name="node-1" editable={true} />)
+
+    await user.click(await screen.findByText('Uncordon'))
+    await user.click(screen.getByText('Confirm'))
+
+    await waitFor(() => expect(cordonNodeMock).toHaveBeenCalledWith('c', 'node-1', false))
+    expect(await screen.findByText('Node uncordoned')).toBeInTheDocument()
+  })
+
+  it('cancelling the cordon confirmation does not call the API', async () => {
+    getDetailMock.mockResolvedValue({ schedulable: true })
+    const user = userEvent.setup()
+    renderWithClient(<ResourceActions ctx="c" kind="node" namespace="" name="node-1" editable={true} />)
+
+    await user.click(await screen.findByText('Cordon'))
+    await user.click(screen.getByText('Cancel'))
+
+    expect(await screen.findByText('Cordon')).toBeInTheDocument()
+    expect(cordonNodeMock).not.toHaveBeenCalled()
   })
 })

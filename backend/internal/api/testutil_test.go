@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamic "k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
@@ -41,6 +42,16 @@ var testGVRs = map[string]kube.Resource{
 	"statefulsets":           {GVR: appsv1.SchemeGroupVersion.WithResource("statefulsets"), Namespaced: true},
 	"daemonsets":             {GVR: appsv1.SchemeGroupVersion.WithResource("daemonsets"), Namespaced: true},
 	"replicasets":            {GVR: appsv1.SchemeGroupVersion.WithResource("replicasets"), Namespaced: true},
+}
+
+// testGVKs stands in for a discovery-backed RESTMapper's Kind→GVR resolution
+// (ResolveGVK), keyed by the Kind as it appears in a manifest's own "kind"
+// field — used by the generic create-from-YAML endpoint.
+var testGVKs = map[string]kube.Resource{
+	"Deployment": testGVRs["deployments"],
+	"ConfigMap":  testGVRs["configmaps"],
+	"Namespace":  testGVRs["namespaces"],
+	"Pod":        testGVRs["pods"],
 }
 
 // fakeManager is a test-only clusterManager backed by client-go's fake
@@ -137,6 +148,13 @@ func (f *fakeManager) ResolveResource(_ string, resource string) (kube.Resource,
 	r, ok := f.gvrs[resource]
 	if !ok {
 		return kube.Resource{}, fmt.Errorf("fakeManager: no GVR registered for %q", resource)
+	}
+	return r, nil
+}
+func (f *fakeManager) ResolveGVK(_ string, gvk schema.GroupVersionKind) (kube.Resource, error) {
+	r, ok := testGVKs[gvk.Kind]
+	if !ok {
+		return kube.Resource{}, fmt.Errorf("fakeManager: no GVR registered for kind %q", gvk.Kind)
 	}
 	return r, nil
 }

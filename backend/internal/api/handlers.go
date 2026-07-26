@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -30,6 +31,7 @@ type clusterManager interface {
 	ClientFor(contextName string) (kubernetes.Interface, error)
 	DynamicFor(contextName string) (dynamic.Interface, error)
 	ResolveResource(contextName, resource string) (kube.Resource, error)
+	ResolveGVK(contextName string, gvk schema.GroupVersionKind) (kube.Resource, error)
 	RESTConfigFor(contextName string) (*rest.Config, error)
 	PodWatcherFor(contextName string) (*kube.PodWatcher, error)
 }
@@ -86,7 +88,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/contexts/{ctx}/manifest/{kind}/{namespace}/{name}", s.handleGetManifest)
 	mux.HandleFunc("PUT /api/contexts/{ctx}/manifest/{kind}/{namespace}/{name}", s.handleApplyManifest)
 	mux.HandleFunc("DELETE /api/contexts/{ctx}/manifest/{kind}/{namespace}/{name}", s.handleDeleteResource)
+	mux.HandleFunc("POST /api/contexts/{ctx}/create", s.handleCreateResource)
 	mux.HandleFunc("PUT /api/contexts/{ctx}/scale/{kind}/{namespace}/{name}", s.handleScaleResource)
+	mux.HandleFunc("POST /api/contexts/{ctx}/cordon/{name}", s.handleCordonNode)
 	mux.HandleFunc("POST /api/contexts/{ctx}/rollout-restart/{kind}/{namespace}/{name}", s.handleRestartRollout)
 	mux.HandleFunc("GET /api/contexts/{ctx}/rollout-history/{kind}/{namespace}/{name}", s.handleRolloutHistory)
 	mux.HandleFunc("POST /api/contexts/{ctx}/rollout-undo/{kind}/{namespace}/{name}", s.handleRolloutUndo)

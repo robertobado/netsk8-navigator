@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   applyManifest,
+  blankManifestYAML,
+  cordonNode,
+  createResource,
   deleteResource,
   listPortForwards,
   restartRollout,
@@ -118,6 +121,72 @@ describe('rollout history/undo', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toRevision: 1 }),
     })
+  })
+})
+
+describe('cordonNode', () => {
+  it('sends a POST with the cordon flag', async () => {
+    const fetchMock = mockFetch(true)
+    await cordonNode('my-ctx', 'node-1', true)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/cordon/node-1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cordon: true }),
+    })
+  })
+
+  it('propagates the backend error message on failure', async () => {
+    mockFetch(false, { error: 'node not found' }, 502, 'Bad Gateway')
+    await expect(cordonNode('my-ctx', 'missing', true)).rejects.toThrow('node not found')
+  })
+})
+
+describe('createResource', () => {
+  it('does a plain POST with no query string by default', async () => {
+    const fetchMock = mockFetch(true, { status: 'created', kind: 'ConfigMap', namespace: 'prod', name: 'cfg' })
+    const result = await createResource('my-ctx', 'yaml-here')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'yaml-here' }),
+    })
+    expect(result).toEqual({ status: 'created', kind: 'ConfigMap', namespace: 'prod', name: 'cfg' })
+  })
+
+  it('adds ?dryRun=true and returns the previewed yaml when requested', async () => {
+    const fetchMock = mockFetch(true, { yaml: 'previewed-yaml' })
+    const result = await createResource('my-ctx', 'yaml-here', { dryRun: true })
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/create?dryRun=true', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'yaml-here' }),
+    })
+    expect(result).toEqual({ yaml: 'previewed-yaml' })
+  })
+
+  it('propagates the backend error message on failure', async () => {
+    mockFetch(false, { error: 'metadata.name is required' }, 400, 'Bad Request')
+    await expect(createResource('my-ctx', 'yaml-here')).rejects.toThrow('metadata.name is required')
+  })
+})
+
+describe('blankManifestYAML', () => {
+  it('includes a namespace field for namespaced kinds', () => {
+    const yaml = blankManifestYAML('deployment', 'prod', false)
+    expect(yaml).toContain('apiVersion: apps/v1')
+    expect(yaml).toContain('kind: Deployment')
+    expect(yaml).toContain('namespace: prod')
+  })
+
+  it('defaults the namespace to "default" when none is selected', () => {
+    const yaml = blankManifestYAML('configmap', '', false)
+    expect(yaml).toContain('namespace: default')
+  })
+
+  it('omits the namespace field for cluster-scoped kinds', () => {
+    const yaml = blankManifestYAML('namespace', '', true)
+    expect(yaml).not.toContain('namespace:')
+    expect(yaml).toContain('kind: Namespace')
   })
 })
 

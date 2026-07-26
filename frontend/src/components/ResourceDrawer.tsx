@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bell, ChevronLeft, FileCode2, LayoutList, X } from 'lucide-react'
-import { KINDS_WITH_DETAIL, type ManifestKind, type Pod } from '@/lib/api'
+import { KINDS_WITH_DETAIL, SLUG_TO_KIND, type ManifestKind, type Pod } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { ManifestPanelLazy as ManifestPanel } from './ManifestPanelLazy'
 import { DetailView } from './DetailView'
@@ -17,40 +17,6 @@ export interface DrawerTarget {
 }
 
 type Tab = 'detail' | 'events' | 'yaml'
-
-// Our manifest slug → the Kubernetes Kind used in event involvedObject filters.
-const SLUG_TO_KIND: Record<ManifestKind, string> = {
-  pod: 'Pod',
-  deployment: 'Deployment',
-  service: 'Service',
-  ingress: 'Ingress',
-  configmap: 'ConfigMap',
-  replicaset: 'ReplicaSet',
-  statefulset: 'StatefulSet',
-  daemonset: 'DaemonSet',
-  job: 'Job',
-  cronjob: 'CronJob',
-  node: 'Node',
-  namespace: 'Namespace',
-  secret: 'Secret',
-  pvc: 'PersistentVolumeClaim',
-  pv: 'PersistentVolume',
-  storageclass: 'StorageClass',
-  hpa: 'HorizontalPodAutoscaler',
-  endpointslice: 'EndpointSlice',
-  networkpolicy: 'NetworkPolicy',
-  ingressclass: 'IngressClass',
-  serviceaccount: 'ServiceAccount',
-  role: 'Role',
-  clusterrole: 'ClusterRole',
-  rolebinding: 'RoleBinding',
-  clusterrolebinding: 'ClusterRoleBinding',
-  resourcequota: 'ResourceQuota',
-  limitrange: 'LimitRange',
-  poddisruptionbudget: 'PodDisruptionBudget',
-  priorityclass: 'PriorityClass',
-  runtimeclass: 'RuntimeClass',
-}
 
 // Slide-over showing a resource: a structured detail view + the raw YAML.
 export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: DrawerTarget | null; ctx: string; onClose: () => void }>) {

@@ -67,23 +67,24 @@ type portView struct {
 }
 
 type resourceDetail struct {
-	Kind       string            `json:"kind"`
-	Name       string            `json:"name"`
-	Namespace  string            `json:"namespace"`
-	Age        string            `json:"age"`
-	OwnerKind  string            `json:"ownerKind"`
-	OwnerName  string            `json:"ownerName"`
-	Status     []chip            `json:"status"`
-	Sections   []section         `json:"sections"`
-	Selector   map[string]string `json:"selector"`
-	Images     []kv              `json:"images"`
-	Conditions []chip            `json:"conditions"`
-	Labels     map[string]string `json:"labels"`
-	Refs       []detailRef       `json:"refs"`
-	Blocks     []detailBlock     `json:"blocks"`
-	Hosts      []string          `json:"hosts"` // route hostnames (linkable when not a wildcard)
-	Ports      []portView        `json:"ports"`
-	Replicas   *int32            `json:"replicas,omitempty"` // desired count, for kinds the UI can scale
+	Kind        string            `json:"kind"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Age         string            `json:"age"`
+	OwnerKind   string            `json:"ownerKind"`
+	OwnerName   string            `json:"ownerName"`
+	Status      []chip            `json:"status"`
+	Sections    []section         `json:"sections"`
+	Selector    map[string]string `json:"selector"`
+	Images      []kv              `json:"images"`
+	Conditions  []chip            `json:"conditions"`
+	Labels      map[string]string `json:"labels"`
+	Refs        []detailRef       `json:"refs"`
+	Blocks      []detailBlock     `json:"blocks"`
+	Hosts       []string          `json:"hosts"` // route hostnames (linkable when not a wildcard)
+	Ports       []portView        `json:"ports"`
+	Replicas    *int32            `json:"replicas,omitempty"`    // desired count, for kinds the UI can scale
+	Schedulable *bool             `json:"schedulable,omitempty"` // nodes only — false when cordoned
 }
 
 // detailFrom adapts a typed detail builder into one that accepts a dynamic
@@ -1313,6 +1314,8 @@ func nodeDetail(n *corev1.Node) *resourceDetail {
 		{Label: "Roles", Value: strings.Join(nodeRoles(n), ", "), Tone: "muted"},
 		{Label: "Schedulable", Value: schedulable, Tone: schedTone},
 	}
+	isSchedulable := !n.Spec.Unschedulable
+	d.Schedulable = &isSchedulable
 
 	ni := n.Status.NodeInfo
 	d.Sections = append(d.Sections, section{Title: "System", Items: []kv{

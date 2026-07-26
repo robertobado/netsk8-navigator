@@ -74,6 +74,10 @@ function AppMain() {
     setSidebarOpen(false)
   }
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // Opened from the command palette's global resource search — independent of
+  // whichever view is currently mounted, since a match can point to a kind
+  // whose list view isn't open right now.
+  const [searchTarget, setSearchTarget] = useState<DrawerTarget | null>(null)
   // Off-canvas below `lg`; the sidebar is always visible at `lg` and above.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const vanta = useVantaSettings()
@@ -222,7 +226,16 @@ function AppMain() {
           </div>
         </main>
 
-        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} contexts={contextsQ.data ?? []} onNavigate={setView} onSelectContext={setCtx} />
+        <CommandPalette
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          contexts={contextsQ.data ?? []}
+          selectedCtx={ctx}
+          onNavigate={setView}
+          onSelectContext={setCtx}
+          onOpenResource={setSearchTarget}
+        />
+        {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
       </div>
     </>
   )

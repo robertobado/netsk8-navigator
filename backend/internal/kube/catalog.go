@@ -31,3 +31,19 @@ func (m *Manager) ResolveResource(contextName, resource string) (Resource, error
 	}
 	return Resource{GVR: mapping.Resource, Namespaced: mapping.Scope.Name() == meta.RESTScopeNameNamespace}, nil
 }
+
+// ResolveGVK maps a full GroupVersionKind — as embedded in a manifest's own
+// apiVersion/kind, e.g. when creating a resource from raw YAML — to the GVR
+// the cluster serves. Unlike ResolveResource, this doesn't go through the
+// manifest-slug catalog, so it works for any kind the cluster knows about.
+func (m *Manager) ResolveGVK(contextName string, gvk schema.GroupVersionKind) (Resource, error) {
+	mapper, err := m.RESTMapperFor(contextName)
+	if err != nil {
+		return Resource{}, err
+	}
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return Resource{}, err
+	}
+	return Resource{GVR: mapping.Resource, Namespaced: mapping.Scope.Name() == meta.RESTScopeNameNamespace}, nil
+}

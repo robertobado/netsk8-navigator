@@ -551,6 +551,110 @@ export function kindToSlug(kind: string): ManifestKind | null {
   return KIND_TO_SLUG[kind] ?? null
 }
 
+/** The inverse of KIND_TO_SLUG — the k8s Kind for a manifest slug, e.g. for event filters and blank-template generation. */
+export const SLUG_TO_KIND: Record<ManifestKind, string> = {
+  pod: 'Pod',
+  deployment: 'Deployment',
+  service: 'Service',
+  ingress: 'Ingress',
+  configmap: 'ConfigMap',
+  replicaset: 'ReplicaSet',
+  statefulset: 'StatefulSet',
+  daemonset: 'DaemonSet',
+  job: 'Job',
+  cronjob: 'CronJob',
+  node: 'Node',
+  namespace: 'Namespace',
+  secret: 'Secret',
+  pvc: 'PersistentVolumeClaim',
+  pv: 'PersistentVolume',
+  storageclass: 'StorageClass',
+  hpa: 'HorizontalPodAutoscaler',
+  endpointslice: 'EndpointSlice',
+  networkpolicy: 'NetworkPolicy',
+  ingressclass: 'IngressClass',
+  serviceaccount: 'ServiceAccount',
+  role: 'Role',
+  clusterrole: 'ClusterRole',
+  rolebinding: 'RoleBinding',
+  clusterrolebinding: 'ClusterRoleBinding',
+  resourcequota: 'ResourceQuota',
+  limitrange: 'LimitRange',
+  poddisruptionbudget: 'PodDisruptionBudget',
+  priorityclass: 'PriorityClass',
+  runtimeclass: 'RuntimeClass',
+}
+
+/** apiVersion for each manifest kind's blank-template. */
+const MANIFEST_API_VERSION: Record<ManifestKind, string> = {
+  pod: 'v1',
+  deployment: 'apps/v1',
+  service: 'v1',
+  ingress: 'networking.k8s.io/v1',
+  configmap: 'v1',
+  replicaset: 'apps/v1',
+  statefulset: 'apps/v1',
+  daemonset: 'apps/v1',
+  job: 'batch/v1',
+  cronjob: 'batch/v1',
+  node: 'v1',
+  namespace: 'v1',
+  secret: 'v1',
+  pvc: 'v1',
+  pv: 'v1',
+  storageclass: 'storage.k8s.io/v1',
+  hpa: 'autoscaling/v2',
+  endpointslice: 'discovery.k8s.io/v1',
+  networkpolicy: 'networking.k8s.io/v1',
+  ingressclass: 'networking.k8s.io/v1',
+  serviceaccount: 'v1',
+  role: 'rbac.authorization.k8s.io/v1',
+  clusterrole: 'rbac.authorization.k8s.io/v1',
+  rolebinding: 'rbac.authorization.k8s.io/v1',
+  clusterrolebinding: 'rbac.authorization.k8s.io/v1',
+  resourcequota: 'v1',
+  limitrange: 'v1',
+  poddisruptionbudget: 'policy/v1',
+  priorityclass: 'scheduling.k8s.io/v1',
+  runtimeclass: 'node.k8s.io/v1',
+}
+
+/** Kinds the "New resource" dialog offers — excludes controller-managed (ReplicaSet, EndpointSlice) and non-user-created (Node) kinds. */
+export const CREATABLE_KINDS = new Set<ManifestKind>([
+  'deployment',
+  'statefulset',
+  'daemonset',
+  'job',
+  'cronjob',
+  'service',
+  'ingress',
+  'configmap',
+  'secret',
+  'namespace',
+  'pvc',
+  'pv',
+  'storageclass',
+  'hpa',
+  'networkpolicy',
+  'ingressclass',
+  'serviceaccount',
+  'role',
+  'clusterrole',
+  'rolebinding',
+  'clusterrolebinding',
+  'resourcequota',
+  'limitrange',
+  'poddisruptionbudget',
+  'priorityclass',
+  'runtimeclass',
+])
+
+/** Blank starting-point YAML for the "New resource" dialog. */
+export function blankManifestYAML(kind: ManifestKind, namespace: string, clusterScoped: boolean): string {
+  const meta = clusterScoped ? `metadata:\n  name: \n` : `metadata:\n  name: \n  namespace: ${namespace || 'default'}\n`
+  return `apiVersion: ${MANIFEST_API_VERSION[kind]}\nkind: ${SLUG_TO_KIND[kind]}\n${meta}`
+}
+
 export interface DetailKV {
   label: string
   value: string
@@ -600,6 +704,7 @@ export interface ResourceDetail {
   hosts: string[] | null
   ports: PortView[] | null
   replicas?: number
+  schedulable?: boolean // nodes only — false when cordoned
 }
 
 /** Kinds that have a structured detail view (others fall back to YAML only). */
@@ -716,6 +821,35 @@ export async function scaleResource(ctx: string, kind: ManifestKind, namespace: 
 export async function restartRollout(ctx: string, kind: ManifestKind, namespace: string, name: string) {
   const res = await fetch(`/api/contexts/${enc(ctx)}/rollout-restart/${kind}/${enc(namespace || '-')}/${enc(name)}`, { method: 'POST' })
   await throwIfError(res)
+}
+
+/** Toggles a node's schedulability — `kubectl cordon`/`uncordon`. */
+export async function cordonNode(ctx: string, name: string, cordon: boolean) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/cordon/${enc(name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cordon }),
+  })
+  await throwIfError(res)
+}
+
+export interface CreatedResource {
+  kind: string
+  namespace: string
+  name: string
+}
+
+// dryRun previews the object the API server would actually create (validation +
+// defaulting) without persisting it — same idea as applyManifest's dry-run.
+export async function createResource(ctx: string, yaml: string, opts?: { dryRun?: boolean }): Promise<CreatedResource | { yaml: string }> {
+  const qs = opts?.dryRun ? '?dryRun=true' : ''
+  const res = await fetch(`/api/contexts/${enc(ctx)}/create${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yaml }),
+  })
+  await throwIfError(res)
+  return res.json()
 }
 
 /** Kinds with revision history (undo) available — see docs/FEATURE_GAP_ANALYSIS.md for why StatefulSet/DaemonSet aren't included yet. */

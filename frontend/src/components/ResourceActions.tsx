@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, History, Loader2, RefreshCw, Scaling, Trash2 } from 'lucide-react'
-import { deleteResource, getDetail, restartRollout, scaleResource, HISTORY_KINDS, RESTARTABLE_KINDS, SCALABLE_KINDS, type ManifestKind } from '@/lib/api'
+import { AlertTriangle, Ban, Check, CheckCircle2, History, Loader2, RefreshCw, Scaling, Trash2 } from 'lucide-react'
+import {
+  cordonNode,
+  deleteResource,
+  getDetail,
+  restartRollout,
+  scaleResource,
+  HISTORY_KINDS,
+  RESTARTABLE_KINDS,
+  SCALABLE_KINDS,
+  type ManifestKind,
+} from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 import { RolloutHistory } from './RolloutHistory'
@@ -33,6 +43,7 @@ export function ResourceActions({ ctx, kind, namespace, name, editable, onDelete
     <div className="flex flex-wrap items-center gap-3 border-b px-5 py-2.5">
       {SCALABLE_KINDS.has(kind) && <ScaleAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
       {RESTARTABLE_KINDS.has(kind) && <RestartAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
+      {kind === 'node' && <CordonAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
       {HISTORY_KINDS.has(kind) && <HistoryAction ctx={ctx} kind={kind} namespace={namespace} name={name} />}
       <DeleteAction
         ctx={ctx}
@@ -258,6 +269,72 @@ function RestartAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionPr
       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       <RefreshCw className="size-4" /> {t('Restart rollout')}
+    </button>
+  )
+}
+
+function CordonAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionProps & { onDone: () => void }>) {
+  const t = useT()
+  // Same queryKey the drawer's Details tab uses — react-query dedupes the
+  // request instead of firing a second one just to read the current state.
+  const q = useQuery({ queryKey: ['detail', ctx, kind, namespace, name], queryFn: () => getDetail(ctx, kind, namespace, name) })
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState<'cordoned' | 'uncordoned' | null>(null)
+
+  const schedulable = q.data?.schedulable ?? true
+  const cordon = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await cordonNode(ctx, name, schedulable)
+      setConfirming(false)
+      setDone(schedulable ? 'cordoned' : 'uncordoned')
+      onDone()
+      q.refetch()
+      setTimeout(() => setDone(null), 3000)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (done) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-[color:var(--ok)]">
+        <Check className="size-4" /> {done === 'cordoned' ? t('Node cordoned') : t('Node uncordoned')}
+      </span>
+    )
+  }
+
+  if (confirming) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-[color:var(--warn)]">{schedulable ? t('Cordon this node now?') : t('Uncordon this node now?')}</span>
+        <button
+          onClick={cordon}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
+        </button>
+        <button onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+          {t('Cancel')}
+        </button>
+        {error && <span className="text-xs text-[color:var(--err)]">{error}</span>}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setConfirming(true)}
+      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {schedulable ? <Ban className="size-4" /> : <CheckCircle2 className="size-4" />}
+      {schedulable ? t('Cordon') : t('Uncordon')}
     </button>
   )
 }

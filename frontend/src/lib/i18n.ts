@@ -147,8 +147,12 @@ const pt: Dict = {
   'No results.': 'Nenhum resultado.',
   Navigate: 'Navegar',
   'Switch cluster': 'Trocar cluster',
+  Resources: 'Recursos',
 
-  // --- ResourceView ---
+  // --- ResourceView / CreateResourceDialog ---
+  New: 'Novo',
+  'New resource': 'Novo recurso',
+  Create: 'Criar',
   'Could not load': 'Não foi possível carregar',
   'The connection to the Kubernetes API failed — expired credential or no permission. Renew the cluster login (e.g. AWS credentials) and try again.':
     'A conexão com a API do Kubernetes falhou — credencial expirada ou sem permissão. Renove o login do cluster (ex.: credenciais AWS) e tente de novo.',
@@ -194,6 +198,12 @@ const pt: Dict = {
   'Restart this rollout now?': 'Reiniciar este rollout agora?',
   'Restart triggered': 'Reinício disparado',
   History: 'Histórico',
+  Cordon: 'Impedir agendamento',
+  Uncordon: 'Permitir agendamento',
+  'Cordon this node now?': 'Impedir agendamento neste node agora?',
+  'Uncordon this node now?': 'Permitir agendamento neste node agora?',
+  'Node cordoned': 'Node impedido de agendar',
+  'Node uncordoned': 'Node liberado para agendar',
 
   // --- RolloutHistory ---
   'Rollout history': 'Histórico de rollout',

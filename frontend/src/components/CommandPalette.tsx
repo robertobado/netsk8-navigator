@@ -1,9 +1,12 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
-import { Boxes, LayoutDashboard, Server, Share2, type LucideIcon } from 'lucide-react'
-import type { ContextInfo } from '@/lib/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Boxes, LayoutDashboard, Search, Server, Share2, type LucideIcon } from 'lucide-react'
+import { api, type ContextInfo, type ManifestKind } from '@/lib/api'
 import { shortContext } from '@/lib/utils'
 import { RESOURCES } from '@/lib/resources'
 import { useT } from '@/lib/i18n'
+import type { DrawerTarget } from './ResourceDrawer'
 
 // Navigable views: the special ones plus every catalogued resource.
 function useViewItems(): { view: string; label: string; icon: LucideIcon }[] {
@@ -16,21 +19,90 @@ function useViewItems(): { view: string; label: string; icon: LucideIcon }[] {
   ]
 }
 
+interface ResourceMatch {
+  kind: ManifestKind
+  namespace: string
+  name: string
+  resourceLabel: string
+}
+
+const MIN_SEARCH_LEN = 2
+const MAX_MATCHES = 20
+
+// Instance search across every resource kind: rather than a dedicated backend
+// endpoint, this reuses whatever resource lists react-query has already
+// fetched this session (any view the user visited) plus an on-demand,
+// cluster-wide pods fetch (pods aren't otherwise cached — the Pods view
+// streams them live over SSE instead of through react-query).
+function useResourceMatches(ctx: string | undefined, search: string, enabled: boolean): ResourceMatch[] {
+  const qc = useQueryClient()
+  const podsQ = useQuery({
+    queryKey: ['palette-pods', ctx],
+    queryFn: () => api.pods(ctx!),
+    enabled: enabled && !!ctx,
+    staleTime: 30_000,
+  })
+
+  return useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!ctx || needle.length < MIN_SEARCH_LEN) return []
+    const results: ResourceMatch[] = []
+    const seen = new Set<string>()
+    const add = (kind: ManifestKind, namespace: string, name: string, resourceLabel: string) => {
+      const key = `${kind}/${namespace}/${name}`
+      if (seen.has(key)) return
+      seen.add(key)
+      results.push({ kind, namespace, name, resourceLabel })
+    }
+
+    for (const entry of qc.getQueryCache().findAll({ queryKey: ['resources'] })) {
+      const [, resource, entryCtx] = entry.queryKey as [string, string, string | undefined]
+      if (entryCtx !== ctx) continue
+      const def = RESOURCES.find((r) => r.resource === resource)
+      if (!def) continue
+      const items = (entry.state.data as { name: string; namespace?: string }[] | undefined) ?? []
+      for (const item of items) {
+        if (results.length >= MAX_MATCHES) return results
+        if (item.name?.toLowerCase().includes(needle)) add(def.manifest, item.namespace ?? '', item.name, def.label)
+      }
+    }
+
+    for (const pod of podsQ.data ?? []) {
+      if (results.length >= MAX_MATCHES) return results
+      if (pod.name.toLowerCase().includes(needle)) add('pod', pod.namespace, pod.name, 'Pods')
+    }
+
+    return results
+  }, [qc, ctx, search, podsQ.data])
+}
+
 export function CommandPalette({
   open,
   onOpenChange,
   contexts,
+  selectedCtx,
   onNavigate,
   onSelectContext,
+  onOpenResource,
 }: Readonly<{
   open: boolean
   onOpenChange: (v: boolean) => void
   contexts: ContextInfo[]
+  selectedCtx?: string
   onNavigate: (v: string) => void
   onSelectContext: (name: string) => void
+  onOpenResource: (target: DrawerTarget) => void
 }>) {
   const t = useT()
   const viewItems = useViewItems()
+  const [search, setSearch] = useState('')
+  const matches = useResourceMatches(selectedCtx, search, open)
+
+  // Drop any typed search once the palette closes, so reopening starts fresh.
+  useEffect(() => {
+    if (!open) setSearch('')
+  }, [open])
+
   return (
     <Command.Dialog
       open={open}
@@ -40,11 +112,38 @@ export function CommandPalette({
       overlayClassName="fixed inset-0 z-[99] bg-black/50 backdrop-blur-sm"
     >
       <Command.Input
+        value={search}
+        onValueChange={setSearch}
         placeholder={t('Type a command or search...')}
         className="w-full border-b bg-transparent px-4 py-3.5 text-sm outline-none placeholder:text-muted-foreground"
       />
       <Command.List className="max-h-80 overflow-y-auto p-2">
         <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">{t('No results.')}</Command.Empty>
+
+        {matches.length > 0 && (
+          <Command.Group
+            heading={t('Resources')}
+            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground"
+          >
+            {matches.map((m) => (
+              <Command.Item
+                key={`${m.kind}/${m.namespace}/${m.name}`}
+                value={`resource ${m.name} ${m.namespace} ${m.resourceLabel}`}
+                onSelect={() => {
+                  onOpenResource({ kind: m.kind, namespace: m.namespace, name: m.name })
+                  onOpenChange(false)
+                }}
+                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm aria-selected:bg-accent"
+              >
+                <Search className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {m.resourceLabel} {m.namespace && `· ${m.namespace}`}
+                </span>
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
 
         <Command.Group
           heading={t('Navigate')}

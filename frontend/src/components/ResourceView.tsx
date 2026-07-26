@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
-import { RefreshCw, ServerCrash } from 'lucide-react'
-import { api, type ManifestKind, type PodUsageEntry } from '@/lib/api'
+import { Plus, RefreshCw, ServerCrash } from 'lucide-react'
+import { api, kindToSlug, CREATABLE_KINDS, type CreatedResource, type ManifestKind, type PodUsageEntry } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 import type { ResourceDef, ResourceExpand } from '@/lib/resources'
@@ -11,6 +11,7 @@ import { useMetricsRefresh } from '@/lib/metrics'
 import { MiniGauge, UsageBasisToggle } from './UsageGauge'
 import { usageSortValue, readBasis, writeBasis, type UsageBasis } from '@/lib/usage'
 import { ResourceDrawer, type DrawerTarget } from './ResourceDrawer'
+import { CreateResourceDialogLazy } from './CreateResourceDialogLazy'
 import { NodeExpansion, NamespaceExpansion, WorkloadPodsExpansion, ServiceAccountExpansion, ConsumersExpansion } from './ResourceExpansions'
 
 type Row = { name: string; namespace: string }
@@ -50,6 +51,7 @@ function countColumn(expand: ResourceExpand, group: Map<string, Row[]>) {
 export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx: string; ns: string }>) {
   const t = useT()
   const [target, setTarget] = useState<DrawerTarget | null>(null)
+  const [creating, setCreating] = useState(false)
   const q = useQuery({
     queryKey: ['resources', def.resource, ctx, ns],
     queryFn: () => api.list(ctx, def.resource, ns || undefined),
@@ -192,6 +194,8 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
     )
   }
 
+  const creatable = CREATABLE_KINDS.has(def.manifest)
+
   return (
     <>
       <DataTable
@@ -204,8 +208,34 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
         expandable={expandable as ((row: never) => ReactNode | null) | undefined}
         onRowClick={(row) => open(row as Row)}
         virtualize={!expandable}
+        headerExtra={
+          creatable ? (
+            <button
+              onClick={() => setCreating(true)}
+              className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Plus className="size-3.5" /> {t('New')}
+            </button>
+          ) : undefined
+        }
       />
       <ResourceDrawer target={target} ctx={ctx} onClose={() => setTarget(null)} />
+      {creatable && (
+        <CreateResourceDialogLazy
+          ctx={ctx}
+          kind={def.manifest}
+          namespace={ns}
+          clusterScoped={!!def.clusterScoped}
+          open={creating}
+          onClose={() => setCreating(false)}
+          onCreated={(result: CreatedResource) => {
+            setCreating(false)
+            q.refetch()
+            const slug = kindToSlug(result.kind)
+            if (slug) setTarget({ kind: slug, namespace: result.namespace, name: result.name })
+          }}
+        />
+      )}
     </>
   )
 }
