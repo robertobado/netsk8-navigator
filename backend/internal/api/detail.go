@@ -171,7 +171,24 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 // detailEnrichers augment a built detail with data that isn't on the object
 // itself — e.g. which pods mount a PVC (needs a pod list). Keyed by slug.
 var detailEnrichers = map[string]func(ctx context.Context, s *Server, contextName, ns, name string, d *resourceDetail){
-	"pvc": enrichPVCConsumers,
+	"pvc":            enrichPVCConsumers,
+	"serviceaccount": enrichServiceAccountPermissions,
+}
+
+// enrichServiceAccountPermissions adds an "Effective permissions" section —
+// the union of every Role/ClusterRole bound to this SA — directly to its
+// detail drawer. The same data already exists in the SA row's inline
+// expansion (see ResourceExpansions.tsx / bindingsForSA), but the detail
+// drawer is the more obvious place to look for "what can this SA do".
+func enrichServiceAccountPermissions(ctx context.Context, s *Server, contextName, ns, name string, d *resourceDetail) {
+	client, err := s.mgr.ClientFor(contextName)
+	if err != nil {
+		return
+	}
+	_, rules := bindingsForSA(ctx, client, ns, name)
+	if items := formatRules(dedupeRules(rules)); len(items) > 0 {
+		d.Sections = append(d.Sections, section{Title: "Effective permissions (verbs → resources)", Items: items})
+	}
 }
 
 // enrichPVCConsumers adds, for a Bound PVC, a "Mounted" chip and a link to each

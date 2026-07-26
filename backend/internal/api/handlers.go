@@ -6,12 +6,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -33,6 +35,7 @@ type clusterManager interface {
 	ResolveResource(contextName, resource string) (kube.Resource, error)
 	ResolveGVK(contextName string, gvk schema.GroupVersionKind) (kube.Resource, error)
 	RESTConfigFor(contextName string) (*rest.Config, error)
+	RESTMapperFor(contextName string) (apimeta.RESTMapper, error)
 	PodWatcherFor(contextName string) (*kube.PodWatcher, error)
 }
 
@@ -42,6 +45,11 @@ type Server struct {
 	cfg        *config.Store
 	corsOrigin string
 	upgrader   websocket.Upgrader
+
+	// DemoMode disables pod exec and port-forward (no real kubelet to attach
+	// to when the backend points at a simulated cluster, e.g. kwok) and is
+	// reported via /api/health so the frontend can hide those affordances.
+	DemoMode bool
 
 	monMu   sync.Mutex
 	mon     map[string]monResult // context -> discovered Prometheus source (cached)
@@ -105,6 +113,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/contexts/{ctx}/nodeusage", s.handleNodesUsage)
 	mux.HandleFunc("GET /api/contexts/{ctx}/deploymentusage", s.handleDeploymentsUsage)
 	mux.HandleFunc("GET /api/contexts/{ctx}/pods-of/{kind}/{namespace}/{name}", s.handleWorkloadPods)
+	mux.HandleFunc("GET /api/contexts/{ctx}/pods-of/{kind}/{namespace}/{name}/logs", s.handleWorkloadLogs)
 	mux.HandleFunc("GET /api/contexts/{ctx}/node-workloads/{node}", s.handleNodeWorkloads)
 	mux.HandleFunc("GET /api/contexts/{ctx}/namespace-summary/{namespace}", s.handleNamespaceSummary)
 	mux.HandleFunc("GET /api/contexts/{ctx}/serviceaccount-usage/{namespace}/{name}", s.handleServiceAccountUsage)
@@ -115,13 +124,39 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}", s.handleCRDList)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/manifest", s.handleCRDManifest)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/detail", s.handleCRDDetail)
+	mux.HandleFunc("GET /api/contexts/{ctx}/helm/releases", s.handleHelmReleases)
+	mux.HandleFunc("POST /api/contexts/{ctx}/helm/releases", s.handleHelmReleaseInstall)
+	mux.HandleFunc("GET /api/contexts/{ctx}/helm/releases/{namespace}/{name}", s.handleHelmReleaseStatus)
+	mux.HandleFunc("PUT /api/contexts/{ctx}/helm/releases/{namespace}/{name}", s.handleHelmReleaseUpgrade)
+	mux.HandleFunc("DELETE /api/contexts/{ctx}/helm/releases/{namespace}/{name}", s.handleHelmReleaseUninstall)
+	mux.HandleFunc("GET /api/contexts/{ctx}/helm/releases/{namespace}/{name}/manifest", s.handleHelmReleaseManifest)
+	mux.HandleFunc("GET /api/contexts/{ctx}/helm/releases/{namespace}/{name}/history", s.handleHelmReleaseHistory)
+	mux.HandleFunc("POST /api/contexts/{ctx}/helm/releases/{namespace}/{name}/rollback", s.handleHelmReleaseRollback)
+	mux.HandleFunc("GET /api/helm/repos", s.handleHelmRepos)
+	mux.HandleFunc("POST /api/helm/repos", s.handleAddHelmRepo)
+	mux.HandleFunc("DELETE /api/helm/repos/{name}", s.handleRemoveHelmRepo)
+	mux.HandleFunc("POST /api/helm/repos/{name}/refresh", s.handleRefreshHelmRepo)
+	mux.HandleFunc("GET /api/helm/search", s.handleHelmSearch)
+	mux.HandleFunc("GET /api/helm/charts/{repo}/{chart}", s.handleHelmChartDetail)
 	return withCORS(s.corsOrigin, withLogging(mux))
+}
+
+// demoModeBlocked writes a 403 and returns true when DemoMode is on — used to
+// gate pod exec and port-forward, which have no real kubelet to attach to
+// when the backend points at a simulated cluster.
+func (s *Server) demoModeBlocked(w http.ResponseWriter) bool {
+	if !s.DemoMode {
+		return false
+	}
+	writeError(w, http.StatusForbidden, fmt.Errorf("not available in demo mode"))
+	return true
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":     "ok",
 		"kubeconfig": s.mgr.ConfigPath(),
+		"demo":       s.DemoMode,
 	})
 }
 

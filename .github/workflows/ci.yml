@@ -110,6 +110,61 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
+  demo-cluster-smoke:
+    name: Demo cluster smoke test (kwok)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            demo/seed/go.sum
+
+      - name: Install kwokctl
+        run: go install sigs.k8s.io/kwok/cmd/kwokctl@v0.8.0
+
+      - name: Create kwok cluster
+        run: |
+          kwokctl create cluster --name ci-demo --runtime binary \
+            --config demo/kwok/stages.yaml \
+            --enable-crds=Logs --enable-crds=ClusterLogs \
+            --timeout 3m
+          kwokctl get kubeconfig --name ci-demo > /tmp/ci-demo-kubeconfig.yaml
+
+      - name: Seed the cluster
+        working-directory: demo/seed
+        run: go run . --kubeconfig=/tmp/ci-demo-kubeconfig.yaml --daemon=false
+
+      - name: Build and run the backend against the demo cluster
+        working-directory: backend
+        run: |
+          go build -o /tmp/netsk8-navigator .
+          KUBECONFIG=/tmp/ci-demo-kubeconfig.yaml DEMO_MODE=true ADDR=127.0.0.1:8099 /tmp/netsk8-navigator &
+          echo $! > /tmp/netsk8-navigator.pid
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8099/api/health && break
+            sleep 1
+          done
+
+      - name: Verify basic endpoints see the seeded data
+        run: |
+          set -euo pipefail
+          curl -sf http://127.0.0.1:8099/api/health | tee /tmp/health.json | grep -q '"demo":true'
+          ctx=$(curl -sf http://127.0.0.1:8099/api/contexts | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["name"])')
+          pods=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/pods?namespace=production")
+          echo "$pods" | grep -q "web-frontend"
+          issues=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/issues")
+          echo "$issues" | grep -q "containerFailed"
+
+      - name: Stop the backend
+        if: always()
+        run: kill "$(cat /tmp/netsk8-navigator.pid)" 2>/dev/null || true
+
   docker-build-check:
     name: Docker build (sanity check, no push)
     runs-on: ubuntu-latest

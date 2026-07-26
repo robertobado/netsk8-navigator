@@ -31,14 +31,24 @@ func (s *Server) handleWorkloadPods(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := reqCtx(r)
 	defer cancel()
 
-	kind := r.PathValue("kind")
-	ns := r.PathValue("namespace")
-	name := r.PathValue("name")
-
-	pods, err := client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	pods, err := resolveWorkloadPods(ctx, client, r.PathValue("kind"), r.PathValue("namespace"), r.PathValue("name"))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
+	}
+	out := make([]kube.PodView, 0, len(pods))
+	for i := range pods {
+		out = append(out, kube.ToPodView(&pods[i]))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// resolveWorkloadPods lists every pod belonging to a workload — shared by
+// handleWorkloadPods and the aggregated multi-pod log streamer.
+func resolveWorkloadPods(ctx context.Context, client kubernetes.Interface, kind, ns, name string) ([]corev1.Pod, error) {
+	pods, err := client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
 	}
 
 	// For deployments, gather the ReplicaSets it owns; pods are matched via those.
@@ -53,14 +63,14 @@ func (s *Server) handleWorkloadPods(w http.ResponseWriter, r *http.Request) {
 	}
 	targetKind := slugToK8sKind[kind]
 
-	out := make([]kube.PodView, 0)
+	out := make([]corev1.Pod, 0, len(pods.Items))
 	for i := range pods.Items {
 		p := &pods.Items[i]
 		if workloadPodMatches(p, kind, name, targetKind, rsOwned, svcSelector) {
-			out = append(out, kube.ToPodView(p))
+			out = append(out, *p)
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 // workloadPodMatches applies the right matching rule for the workload kind:

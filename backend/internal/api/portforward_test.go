@@ -64,3 +64,29 @@ func TestHandleStopPortForward_UnknownID(t *testing.T) {
 		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }
+
+// In DemoMode there's no real kubelet to attach a tunnel to (e.g. behind a
+// kwok-simulated cluster), so every port-forward endpoint short-circuits
+// with 403 before touching s.pf or the cluster at all.
+func TestPortForward_BlockedInDemoMode(t *testing.T) {
+	s := newTestServer(t)
+	s.DemoMode = true
+	s.pf["abc"] = &pfSession{namespace: "prod", pod: "web-1", port: 8080, localPort: 54321, stopCh: make(chan struct{})}
+
+	cases := []struct {
+		method, path, body string
+	}{
+		{"POST", "/api/contexts/test/portforward/ns/web", `{"port":8080}`},
+		{"GET", "/api/contexts/test/portforward", ""},
+		{"DELETE", "/api/contexts/test/portforward/abc", ""},
+	}
+	for _, c := range cases {
+		rec := doRequest(t, s, c.method, c.path, c.body)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s: status = %d, want 403", c.method, c.path, rec.Code)
+		}
+	}
+	if _, ok := s.pf["abc"]; !ok {
+		t.Error("existing session should be untouched when blocked in demo mode")
+	}
+}

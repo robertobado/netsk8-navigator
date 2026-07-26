@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Bell, ChevronLeft, FileCode2, LayoutList, X } from 'lucide-react'
-import { KINDS_WITH_DETAIL, SLUG_TO_KIND, type ManifestKind, type Pod } from '@/lib/api'
+import { Bell, ChevronLeft, FileCode2, LayoutList, ScrollText, X } from 'lucide-react'
+import { KINDS_WITH_DETAIL, MULTI_LOG_KINDS, SLUG_TO_KIND, type ManifestKind, type Pod } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { ManifestPanelLazy as ManifestPanel } from './ManifestPanelLazy'
 import { DetailView } from './DetailView'
 import { EventsPanel } from './EventsPanel'
+import { MultiPodLogsPanel } from './MultiPodLogsPanel'
 import { PodDrawer } from './PodDrawer'
 import { ResourceActions } from './ResourceActions'
 import { useT } from '@/lib/i18n'
@@ -16,7 +17,7 @@ export interface DrawerTarget {
   editable?: boolean // defaults to true; owner/node detail views pass false
 }
 
-type Tab = 'detail' | 'events' | 'yaml'
+type Tab = 'detail' | 'events' | 'logs' | 'yaml'
 
 // Slide-over showing a resource: a structured detail view + the raw YAML.
 export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: DrawerTarget | null; ctx: string; onClose: () => void }>) {
@@ -100,6 +101,7 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
             <div className="flex gap-1 overflow-x-auto border-b px-5 py-2.5">
               {hasDetail && <TabButton active={tab === 'detail'} onClick={() => setTab('detail')} icon={LayoutList} label={t('Details')} />}
               <TabButton active={tab === 'events'} onClick={() => setTab('events')} icon={Bell} label={t('nav.events')} />
+              {MULTI_LOG_KINDS.has(cur.kind) && <TabButton active={tab === 'logs'} onClick={() => setTab('logs')} icon={ScrollText} label={t('Logs')} />}
               <TabButton active={tab === 'yaml'} onClick={() => setTab('yaml')} icon={FileCode2} label="YAML" />
             </div>
 
@@ -117,6 +119,9 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
               )}
               {tab === 'events' && (
                 <EventsPanel key={`e-${cur.kind}-${cur.name}`} ctx={ctx} namespace={cur.namespace} name={cur.name} kind={SLUG_TO_KIND[cur.kind]} />
+              )}
+              {tab === 'logs' && MULTI_LOG_KINDS.has(cur.kind) && (
+                <MultiPodLogsPanel key={`l-${cur.kind}-${cur.namespace}-${cur.name}`} ctx={ctx} kind={cur.kind} namespace={cur.namespace} name={cur.name} />
               )}
               {tab === 'yaml' && (
                 <ManifestPanel

@@ -481,6 +481,74 @@ func TestServiceAccountDetail(t *testing.T) {
 	}
 }
 
+func TestEnrichServiceAccountPermissions(t *testing.T) {
+	t.Run("no bindings — nothing added", func(t *testing.T) {
+		s := newTestServer(t)
+		d := &resourceDetail{}
+		enrichServiceAccountPermissions(t.Context(), s, "test", "prod", "web", d)
+		if len(d.Sections) != 0 {
+			t.Errorf("Sections = %+v, want none for an SA with no bindings", d.Sections)
+		}
+	})
+
+	t.Run("bound role's rules are added", func(t *testing.T) {
+		s := newTestServer(t,
+			&rbacv1.Role{
+				ObjectMeta: meta("pod-reader", "prod"),
+				Rules:      []rbacv1.PolicyRule{{Verbs: []string{"get", "list"}, APIGroups: []string{""}, Resources: []string{"pods"}}},
+			},
+			&rbacv1.RoleBinding{
+				ObjectMeta: meta("web-pod-reader", "prod"),
+				RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: "pod-reader", APIGroup: "rbac.authorization.k8s.io"},
+				Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "web", Namespace: "prod"}},
+			},
+		)
+		d := &resourceDetail{}
+		enrichServiceAccountPermissions(t.Context(), s, "test", "prod", "web", d)
+		if len(d.Sections) != 1 || d.Sections[0].Title != "Effective permissions (verbs → resources)" {
+			t.Fatalf("Sections = %+v", d.Sections)
+		}
+		items := d.Sections[0].Items
+		if len(items) != 1 || items[0].Label != "get,list" || items[0].Value != "core/pods" {
+			t.Errorf("Items = %+v", items)
+		}
+	})
+}
+
+// TestHandleDetail_ServiceAccountIncludesPermissions confirms the enricher is
+// actually wired into GET /detail/serviceaccount/... — not just callable directly.
+func TestHandleDetail_ServiceAccountIncludesPermissions(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.ServiceAccount{ObjectMeta: meta("web", "prod")},
+		&rbacv1.Role{
+			ObjectMeta: meta("pod-reader", "prod"),
+			Rules:      []rbacv1.PolicyRule{{Verbs: []string{"get"}, APIGroups: []string{""}, Resources: []string{"pods"}}},
+		},
+		&rbacv1.RoleBinding{
+			ObjectMeta: meta("web-pod-reader", "prod"),
+			RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: "pod-reader", APIGroup: "rbac.authorization.k8s.io"},
+			Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "web", Namespace: "prod"}},
+		},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/detail/serviceaccount/prod/web", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var d resourceDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, sec := range d.Sections {
+		if sec.Title == "Effective permissions (verbs → resources)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Sections = %+v, want an effective-permissions section", d.Sections)
+	}
+}
+
 func TestResourceQuotaDetail(t *testing.T) {
 	d := resourceQuotaDetail(&corev1.ResourceQuota{
 		ObjectMeta: meta("quota", "prod"),

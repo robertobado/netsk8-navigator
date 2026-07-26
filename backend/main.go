@@ -29,6 +29,10 @@ func main() {
 
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, os.Getenv("CORS_ORIGIN"))
+	if os.Getenv("DEMO_MODE") == "true" {
+		srv.DemoMode = true
+		log.Print("DEMO_MODE enabled — pod exec and port-forward are disabled")
+	}
 	handler := wrapWithAuth(buildMux(srv))
 
 	addr := os.Getenv("ADDR")

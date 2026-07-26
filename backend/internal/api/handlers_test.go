@@ -7,6 +7,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
@@ -20,12 +21,28 @@ func TestHandleHealth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var body map[string]string
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
 	if body["status"] != "ok" {
-		t.Errorf("status field = %q, want ok", body["status"])
+		t.Errorf("status field = %v, want ok", body["status"])
+	}
+	if body["demo"] != false {
+		t.Errorf("demo field = %v, want false when DemoMode is unset", body["demo"])
+	}
+}
+
+func TestHandleHealth_DemoMode(t *testing.T) {
+	s := newTestServer(t)
+	s.DemoMode = true
+	rec := doRequest(t, s, "GET", "/api/health", "")
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["demo"] != true {
+		t.Errorf("demo field = %v, want true when DemoMode is set", body["demo"])
 	}
 }
 
@@ -234,6 +251,53 @@ func TestHandleServiceAccountUsage(t *testing.T) {
 	}
 	if len(out.Pods) != 1 || out.Pods[0].Name != "web-0" {
 		t.Errorf("got %+v", out)
+	}
+}
+
+// TestHandleServiceAccountUsage_EffectivePermissions seeds a Role bound via a
+// RoleBinding and a ClusterRole bound via a ClusterRoleBinding, both naming
+// the SA, and checks the response unions both sets of rules (deduped, in the
+// same "verbs → resources" shape Role/ClusterRole detail already renders).
+func TestHandleServiceAccountUsage_EffectivePermissions(t *testing.T) {
+	s := newTestServer(t,
+		&rbacv1.Role{
+			ObjectMeta: metav1.ObjectMeta{Name: "pod-reader", Namespace: "prod"},
+			Rules:      []rbacv1.PolicyRule{{Verbs: []string{"get", "list"}, APIGroups: []string{""}, Resources: []string{"pods"}}},
+		},
+		&rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: "web-pod-reader", Namespace: "prod"},
+			RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: "pod-reader", APIGroup: "rbac.authorization.k8s.io"},
+			Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "web", Namespace: "prod"}},
+		},
+		&rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{Name: "node-viewer"},
+			Rules:      []rbacv1.PolicyRule{{Verbs: []string{"get"}, APIGroups: []string{""}, Resources: []string{"nodes"}}},
+		},
+		&rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: "web-node-viewer"},
+			RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "node-viewer", APIGroup: "rbac.authorization.k8s.io"},
+			Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "web", Namespace: "prod"}},
+		},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/serviceaccount-usage/prod/web", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out saUsage
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Bindings) != 2 {
+		t.Errorf("expected 2 bindings, got %+v", out.Bindings)
+	}
+	want := map[string]string{"get,list": "core/pods", "get": "core/nodes"}
+	if len(out.Permissions) != len(want) {
+		t.Fatalf("expected %d permission rows, got %+v", len(want), out.Permissions)
+	}
+	for _, p := range out.Permissions {
+		if want[p.Label] != p.Value {
+			t.Errorf("permission %q = %q, want %q", p.Label, p.Value, want[p.Label])
+		}
 	}
 }
 

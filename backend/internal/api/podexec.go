@@ -17,6 +17,9 @@ import (
 // Protocol client->server (JSON text): {"type":"stdin","data":".."} |
 // {"type":"resize","cols":N,"rows":M}. Server->client: raw terminal bytes.
 func (s *Server) handlePodExec(w http.ResponseWriter, r *http.Request) {
+	if s.demoModeBlocked(w) {
+		return
+	}
 	client, err := s.mgr.ClientFor(r.PathValue("ctx"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)

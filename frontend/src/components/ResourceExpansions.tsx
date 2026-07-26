@@ -158,6 +158,7 @@ export function ServiceAccountExpansion({ ctx, namespace, name, onOpen }: Readon
   if (q.isLoading) return <Loading />
   const bindings = q.data?.bindings ?? []
   const pods = q.data?.pods ?? []
+  const permissions = q.data?.permissions ?? []
   return (
     <ExpansionShell>
       <DetailLink label={t('View service account details')} onClick={() => onOpen('serviceaccount', namespace, name)} />
@@ -192,6 +193,21 @@ export function ServiceAccountExpansion({ ctx, namespace, name, onOpen }: Readon
         </div>
       )}
       {pods.length > 0 && <PodListBody title={t('Pods using this SA')} pods={pods} empty="" onOpen={onOpen} />}
+      {permissions.length > 0 && (
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            {t('Effective permissions')} <span className="tabular-nums text-muted-foreground/50">({permissions.length})</span>
+          </div>
+          <div className="space-y-0.5">
+            {permissions.map((p) => (
+              <div key={`${p.label}/${p.value}`} className="flex items-baseline gap-2 px-2 py-0.5 text-xs">
+                <span className="shrink-0 font-mono text-[color:var(--brand)]">{p.label}</span>
+                <span className="min-w-0 truncate text-muted-foreground">{p.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </ExpansionShell>
   )
 }

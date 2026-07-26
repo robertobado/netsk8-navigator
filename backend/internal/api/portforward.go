@@ -28,6 +28,9 @@ type pfSession struct {
 // {"port": N}. Responds with the id (to stop it later) and the assigned
 // local port.
 func (s *Server) handleStartPortForward(w http.ResponseWriter, r *http.Request) {
+	if s.demoModeBlocked(w) {
+		return
+	}
 	namespace := r.PathValue("namespace")
 	name := r.PathValue("name")
 
@@ -118,6 +121,9 @@ func (s *Server) handleStartPortForward(w http.ResponseWriter, r *http.Request) 
 
 // handleStopPortForward closes an active tunnel. DELETE /api/contexts/{ctx}/portforward/{id}
 func (s *Server) handleStopPortForward(w http.ResponseWriter, r *http.Request) {
+	if s.demoModeBlocked(w) {
+		return
+	}
 	id := r.PathValue("id")
 	s.pfMu.Lock()
 	sess, ok := s.pf[id]
@@ -146,6 +152,9 @@ type portForwardView struct {
 // process (across all contexts — there's only ever one navigator instance
 // per machine). GET /api/contexts/{ctx}/portforward
 func (s *Server) handleListPortForwards(w http.ResponseWriter, r *http.Request) {
+	if s.demoModeBlocked(w) {
+		return
+	}
 	s.pfMu.Lock()
 	defer s.pfMu.Unlock()
 	out := make([]portForwardView, 0, len(s.pf))

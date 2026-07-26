@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -242,12 +243,18 @@ type bindingRef struct {
 	Name      string `json:"name"`
 }
 type saUsage struct {
-	Bindings []bindingRef   `json:"bindings"`
-	Pods     []kube.PodView `json:"pods"`
+	Bindings    []bindingRef   `json:"bindings"`
+	Pods        []kube.PodView `json:"pods"`
+	Permissions []kv           `json:"permissions"` // effective, deduped, from every bound Role/ClusterRole
 }
 
 // handleServiceAccountUsage: GET /api/contexts/{ctx}/serviceaccount-usage/{namespace}/{name}
-// The (Cluster)RoleBindings that grant this SA and the pods running as it.
+// The (Cluster)RoleBindings that grant this SA, the pods running as it, and its
+// effective permissions — the union of every bound Role/ClusterRole's rules.
+// This is the app's "can this SA do X" answer: a static union of granted
+// rules rather than a live SelfSubjectAccessReview/SubjectAccessReview
+// simulation, so it works without the backend's own credentials needing
+// cluster-admin-level access to the SubjectAccessReview API.
 func (s *Server) handleServiceAccountUsage(w http.ResponseWriter, r *http.Request) {
 	client, err := s.mgr.ClientFor(r.PathValue("ctx"))
 	if err != nil {
@@ -258,9 +265,11 @@ func (s *Server) handleServiceAccountUsage(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	ns, name := r.PathValue("namespace"), r.PathValue("name")
 
+	bindings, rules := bindingsForSA(ctx, client, ns, name)
 	writeJSON(w, http.StatusOK, saUsage{
-		Bindings: bindingsForSA(ctx, client, ns, name),
-		Pods:     podsUsingSA(ctx, client, ns, name),
+		Bindings:    bindings,
+		Pods:        podsUsingSA(ctx, client, ns, name),
+		Permissions: formatRules(dedupeRules(rules)),
 	})
 }
 
@@ -282,21 +291,63 @@ func podsUsingSA(ctx context.Context, client kubernetes.Interface, ns, name stri
 	return out
 }
 
-func bindingsForSA(ctx context.Context, client kubernetes.Interface, ns, name string) []bindingRef {
+// bindingsForSA returns every (Cluster)RoleBinding naming the SA, plus the
+// combined PolicyRules of every Role/ClusterRole those bindings reference.
+func bindingsForSA(ctx context.Context, client kubernetes.Interface, ns, name string) ([]bindingRef, []rbacv1.PolicyRule) {
 	out := []bindingRef{}
+	var rules []rbacv1.PolicyRule
 	if rbs, err := client.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{}); err == nil {
 		for i := range rbs.Items {
-			if subjectsIncludeSA(rbs.Items[i].Subjects, ns, name) {
-				out = append(out, bindingRef{Kind: "RoleBinding", Slug: "rolebinding", Namespace: ns, Name: rbs.Items[i].Name})
+			rb := &rbs.Items[i]
+			if !subjectsIncludeSA(rb.Subjects, ns, name) {
+				continue
 			}
+			out = append(out, bindingRef{Kind: "RoleBinding", Slug: "rolebinding", Namespace: ns, Name: rb.Name})
+			rules = append(rules, roleRefRules(ctx, client, ns, rb.RoleRef)...)
 		}
 	}
 	if crbs, err := client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{}); err == nil {
 		for i := range crbs.Items {
-			if subjectsIncludeSA(crbs.Items[i].Subjects, ns, name) {
-				out = append(out, bindingRef{Kind: "ClusterRoleBinding", Slug: "clusterrolebinding", Name: crbs.Items[i].Name})
+			crb := &crbs.Items[i]
+			if !subjectsIncludeSA(crb.Subjects, ns, name) {
+				continue
 			}
+			out = append(out, bindingRef{Kind: "ClusterRoleBinding", Slug: "clusterrolebinding", Name: crb.Name})
+			rules = append(rules, roleRefRules(ctx, client, "", crb.RoleRef)...)
 		}
+	}
+	return out, rules
+}
+
+// roleRefRules resolves a RoleRef (Role or ClusterRole) to its PolicyRules.
+// ns only applies to a "Role" ref — a ClusterRole is cluster-scoped.
+func roleRefRules(ctx context.Context, client kubernetes.Interface, ns string, ref rbacv1.RoleRef) []rbacv1.PolicyRule {
+	switch ref.Kind {
+	case "Role":
+		if role, err := client.RbacV1().Roles(ns).Get(ctx, ref.Name, metav1.GetOptions{}); err == nil {
+			return role.Rules
+		}
+	case "ClusterRole":
+		if role, err := client.RbacV1().ClusterRoles().Get(ctx, ref.Name, metav1.GetOptions{}); err == nil {
+			return role.Rules
+		}
+	}
+	return nil
+}
+
+// dedupeRules drops rules identical in every field — two bindings can
+// reference the same role, which would otherwise duplicate every one of its
+// rules in the effective-permissions view.
+func dedupeRules(rules []rbacv1.PolicyRule) []rbacv1.PolicyRule {
+	seen := map[string]bool{}
+	out := make([]rbacv1.PolicyRule, 0, len(rules))
+	for _, r := range rules {
+		key := strings.Join(r.Verbs, ",") + "|" + strings.Join(r.APIGroups, ",") + "|" + strings.Join(r.Resources, ",") + "|" + strings.Join(r.NonResourceURLs, ",")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, r)
 	}
 	return out
 }

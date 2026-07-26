@@ -25,6 +25,8 @@ const pt: Dict = {
   'nav.pods': 'Pods',
   'nav.topology': 'Topologia',
   'nav.events': 'Eventos',
+  'nav.helm': 'Helm',
+  'demo.banner': 'Isso é uma demo com dados fictícios — veja o projeto no GitHub',
   'group.workloads': 'Workloads',
   'group.rede': 'Rede',
   'group.config': 'Config',
@@ -261,6 +263,7 @@ const pt: Dict = {
 
   // --- backend-sourced resource detail labels/titles/values (detail.go, crd.go) ---
   'Rules (verbs → resources)': 'Regras (verbos → recursos)',
+  'Effective permissions (verbs → resources)': 'Permissões efetivas (verbos → recursos)',
   'Metrics (current / target)': 'Métricas (atual / alvo)',
   'Egress (outbound)': 'Egress (saída)',
   'Ingress (inbound)': 'Ingress (entrada)',
@@ -330,6 +333,35 @@ const pt: Dict = {
   Types: 'Tipos',
   Target: 'Alvo',
   'PersistentVolumes in this class': 'PersistentVolumes desta classe',
+
+  // --- ResourceDrawer / ResourceExpansions / MultiPodLogsPanel: multi-pod logs, RBAC ---
+  Logs: 'Logs',
+  'Effective permissions': 'Permissões efetivas',
+  'No pods for this workload.': 'Nenhum pod para este workload.',
+
+  // --- HelmView / HelmReposPanel / HelmReleaseDrawer / HelmInstallDialog ---
+  Releases: 'Releases',
+  Repositories: 'Repositórios',
+  'Could not load Helm releases.': 'Não foi possível carregar os releases do Helm.',
+  'Helm repositories': 'Repositórios Helm',
+  'Install chart': 'Instalar chart',
+  Install: 'Instalar',
+  'No charts found. Add a repository first.': 'Nenhum chart encontrado. Adicione um repositório primeiro.',
+  'No repositories added yet.': 'Nenhum repositório adicionado ainda.',
+  'Repo name': 'Nome do repositório',
+  Add: 'Adicionar',
+  Refresh: 'Atualizar',
+  Remove: 'Remover',
+  'Search charts...': 'Buscar charts...',
+  'Release name': 'Nome do release',
+  Upgrade: 'Upgrade',
+  'Upgrade release': 'Upgrade do release',
+  Uninstall: 'Desinstalar',
+  'Uninstall this release?': 'Desinstalar este release?',
+  Values: 'Values',
+  Notes: 'Notas',
+  'This release has no custom values.': 'Este release não tem values customizados.',
+  'This release has no notes.': 'Este release não tem notas.',
 }
 
 const en: Dict = {
@@ -347,6 +379,8 @@ const en: Dict = {
   'nav.pods': 'Pods',
   'nav.topology': 'Topology',
   'nav.events': 'Events',
+  'nav.helm': 'Helm',
+  'demo.banner': 'This is a demo with fake data — check out the project on GitHub',
   'group.workloads': 'Workloads',
   'group.rede': 'Network',
   'group.config': 'Config',

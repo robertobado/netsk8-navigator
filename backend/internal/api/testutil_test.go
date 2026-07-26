@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -175,6 +176,9 @@ func (f *fakeManager) ResolveGVK(_ string, gvk schema.GroupVersionKind) (kube.Re
 }
 func (f *fakeManager) RESTConfigFor(string) (*rest.Config, error) {
 	return nil, fmt.Errorf("fakeManager: RESTConfigFor not supported in tests")
+}
+func (f *fakeManager) RESTMapperFor(string) (apimeta.RESTMapper, error) {
+	return nil, fmt.Errorf("fakeManager: RESTMapperFor not supported in tests")
 }
 func (f *fakeManager) PodWatcherFor(string) (*kube.PodWatcher, error) {
 	return nil, fmt.Errorf("fakeManager: PodWatcherFor not supported in tests")

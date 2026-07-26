@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { Boxes, LayoutDashboard, Search, Server, Share2, type LucideIcon } from 'lucide-react'
+import { Boxes, LayoutDashboard, Search, Server, Share2, Ship, type LucideIcon } from 'lucide-react'
 import { api, type ContextInfo, type ManifestKind } from '@/lib/api'
 import { shortContext } from '@/lib/utils'
 import { RESOURCES } from '@/lib/resources'
@@ -16,6 +16,7 @@ function useViewItems(): { view: string; label: string; icon: LucideIcon }[] {
     { view: 'pods', label: t('nav.pods'), icon: Boxes },
     ...RESOURCES.map((r) => ({ view: r.key, label: r.label, icon: r.icon })),
     { view: 'topology', label: t('nav.topology'), icon: Share2 },
+    { view: 'helm', label: t('nav.helm'), icon: Ship },
   ]
 }
 

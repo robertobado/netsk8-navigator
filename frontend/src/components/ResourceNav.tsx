@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Bell, Boxes, LayoutDashboard, Share2, Waypoints } from 'lucide-react'
+import { Bell, Boxes, LayoutDashboard, Share2, Ship, Waypoints } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { RouteKind } from '@/lib/api'
 import { RESOURCES, type ResourceDef } from '@/lib/resources'
@@ -29,7 +29,12 @@ export function ResourceNav({ active, onSelect, routes = [] }: Readonly<{ active
     { title: t('group.governanca'), items: inGroup('Governance') },
     {
       title: t('group.cluster'),
-      items: [...inGroup('Cluster'), { view: 'events', label: t('nav.events'), icon: Bell }, { view: 'topology', label: t('nav.topology'), icon: Share2 }],
+      items: [
+        ...inGroup('Cluster'),
+        { view: 'events', label: t('nav.events'), icon: Bell },
+        { view: 'topology', label: t('nav.topology'), icon: Share2 },
+        { view: 'helm', label: t('nav.helm'), icon: Ship },
+      ],
     },
   ]
   return (

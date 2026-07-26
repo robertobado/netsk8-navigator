@@ -1,6 +1,12 @@
 // Typed client for the netsk8s-navigator Go backend. All calls go through the
 // Vite dev proxy (/api -> :8080), so relative URLs work in dev and prod.
 
+export interface Health {
+  status: string
+  kubeconfig: string
+  demo: boolean
+}
+
 export interface ContextInfo {
   name: string
   cluster: string
@@ -346,6 +352,7 @@ export interface BindingRef {
 export interface SAUsage {
   bindings: BindingRef[]
   pods: Pod[]
+  permissions: DetailKV[] // effective, deduped, from every bound Role/ClusterRole
 }
 
 export interface Monitoring {
@@ -436,6 +443,7 @@ const enc = (s: string) => encodeURIComponent(s)
 const nsQuery = (namespace?: string) => (namespace ? `?namespace=${enc(namespace)}` : '')
 
 export const api = {
+  health: () => get<Health>('/health'),
   contexts: () => get<ContextInfo[]>('/contexts'),
   overview: (ctx: string) => get<Overview>(`/contexts/${enc(ctx)}/overview`),
   namespaces: (ctx: string) => get<NamespaceInfo[]>(`/contexts/${enc(ctx)}/namespaces`),
@@ -883,9 +891,132 @@ export function logsURL(ctx: string, namespace: string, pod: string, container?:
   return `/api/contexts/${enc(ctx)}/pods/${enc(namespace)}/${enc(pod)}/logs${c}`
 }
 
+/** Kinds whose "Logs" tab aggregates every owned pod's log stream into one view. */
+export const MULTI_LOG_KINDS = new Set<ManifestKind>(['deployment', 'statefulset', 'daemonset', 'replicaset', 'job'])
+
+/** SSE URL for streaming every pod of a workload's logs, tagged with the source pod. */
+export function workloadLogsURL(ctx: string, kind: ManifestKind, namespace: string, name: string, container?: string) {
+  const c = container ? `?container=${enc(container)}` : ''
+  return `/api/contexts/${enc(ctx)}/pods-of/${kind}/${enc(namespace)}/${enc(name)}/logs${c}`
+}
+
 /** WebSocket URL for an interactive exec session into a pod container. */
 export function execURL(ctx: string, namespace: string, pod: string, container?: string) {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const c = container ? `?container=${enc(container)}` : ''
   return `${proto}://${window.location.host}/api/contexts/${enc(ctx)}/pods/${enc(namespace)}/${enc(pod)}/exec${c}`
+}
+
+// --- Helm --------------------------------------------------------------
+// Releases are per-cluster (under /contexts/{ctx}/helm/...); repos and chart
+// search are local to this machine (~/.config/helm), so those endpoints carry
+// no context.
+
+export interface HelmRelease {
+  name: string
+  namespace: string
+  chart: string // "nginx-1.2.3"
+  appVersion: string
+  revision: number
+  status: string
+  updated: string
+}
+export interface HelmReleaseDetail extends HelmRelease {
+  notes: string
+  values: string // YAML
+}
+export interface HelmRepo {
+  name: string
+  url: string
+}
+export interface HelmChartSummary {
+  repo: string
+  name: string
+  version: string
+  appVersion: string
+  description: string
+}
+export interface HelmChartDetail {
+  versions: string[]
+  defaultValues: string // YAML
+  readme: string
+}
+export interface HelmInstallRequest {
+  repo: string
+  chart: string
+  version: string
+  releaseName: string
+  namespace: string
+  values: string // YAML
+}
+
+export function helmReleases(ctx: string, ns?: string) {
+  return get<HelmRelease[]>(`/contexts/${enc(ctx)}/helm/releases${nsQuery(ns)}`)
+}
+export function helmReleaseStatus(ctx: string, ns: string, name: string) {
+  return get<HelmReleaseDetail>(`/contexts/${enc(ctx)}/helm/releases/${enc(ns)}/${enc(name)}`)
+}
+export async function helmReleaseManifest(ctx: string, ns: string, name: string) {
+  const r = await get<{ yaml: string }>(`/contexts/${enc(ctx)}/helm/releases/${enc(ns)}/${enc(name)}/manifest`)
+  return r.yaml
+}
+export function helmReleaseHistory(ctx: string, ns: string, name: string) {
+  return get<HelmRelease[]>(`/contexts/${enc(ctx)}/helm/releases/${enc(ns)}/${enc(name)}/history`)
+}
+export async function helmReleaseRollback(ctx: string, ns: string, name: string, revision: number) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/helm/releases/${enc(ns)}/${enc(name)}/rollback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision }),
+  })
+  await throwIfError(res)
+}
+export async function helmReleaseUninstall(ctx: string, ns: string, name: string) {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/helm/releases/${enc(ns)}/${enc(name)}`, { method: 'DELETE' })
+  await throwIfError(res)
+}
+export async function installHelmRelease(ctx: string, req: HelmInstallRequest): Promise<HelmRelease> {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/helm/releases`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  await throwIfError(res)
+  return res.json()
+}
+export async function upgradeHelmRelease(ctx: string, ns: string, name: string, req: HelmInstallRequest): Promise<HelmRelease> {
+  const res = await fetch(`/api/contexts/${enc(ctx)}/helm/releases/${enc(ns)}/${enc(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  await throwIfError(res)
+  return res.json()
+}
+
+export function helmRepos() {
+  return get<HelmRepo[]>('/helm/repos')
+}
+export async function addHelmRepo(name: string, url: string): Promise<HelmRepo> {
+  const res = await fetch('/api/helm/repos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, url }),
+  })
+  await throwIfError(res)
+  return res.json()
+}
+export async function removeHelmRepo(name: string) {
+  const res = await fetch(`/api/helm/repos/${enc(name)}`, { method: 'DELETE' })
+  await throwIfError(res)
+}
+export async function refreshHelmRepo(name: string) {
+  const res = await fetch(`/api/helm/repos/${enc(name)}/refresh`, { method: 'POST' })
+  await throwIfError(res)
+}
+export function helmSearch(q: string) {
+  return get<HelmChartSummary[]>(`/helm/search${q ? `?q=${enc(q)}` : ''}`)
+}
+export function helmChartDetail(repo: string, chart: string, version?: string) {
+  return get<HelmChartDetail>(`/helm/charts/${enc(repo)}/${enc(chart)}${version ? `?version=${enc(version)}` : ''}`)
 }

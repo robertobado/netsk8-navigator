@@ -17,6 +17,8 @@ import { resourceByKey } from '@/lib/resources'
 import { ResourceDrawer, type DrawerTarget } from '@/components/ResourceDrawer'
 import { TopologyView } from '@/components/TopologyView'
 import { EventsView } from '@/components/EventsView'
+import { HelmView } from '@/components/HelmView'
+import { FloatingBubble } from '@/components/FloatingBubble'
 import { CommandPalette } from '@/components/CommandPalette'
 import { NavigatorLoader, LoaderPreview } from '@/components/Loader'
 import { MetricsSection } from '@/components/MetricsSection'
@@ -37,6 +39,7 @@ function viewTitles(t: TFunc): Record<View, string> {
     pods: 'Pods',
     topology: t('Cluster topology'),
     events: t('Cluster events'),
+    helm: t('nav.helm'),
   }
 }
 
@@ -96,6 +99,7 @@ function AppMain() {
   }, [])
 
   const contextsQ = useQuery({ queryKey: ['contexts'], queryFn: api.contexts, refetchInterval: false })
+  const healthQ = useQuery({ queryKey: ['health'], queryFn: api.health, staleTime: Infinity, refetchInterval: false })
 
   // Once contexts load, fall back to the kubeconfig's current context only if
   // there's no valid persisted selection (e.g. first visit or a stale one).
@@ -221,6 +225,7 @@ function AppMain() {
             {view === 'pods' && ctx && <LivePods ctx={ctx} ns={ns} />}
             {view === 'events' && ctx && <EventsPage ctx={ctx} ns={ns} />}
             {view === 'topology' && ctx && <TopologyView ctx={ctx} ns={ns} />}
+            {view === 'helm' && ctx && <HelmView ctx={ctx} ns={ns} />}
             {ctx && resDef && <ResourceView key={resDef.key} def={resDef} ctx={ctx} ns={ns} />}
             {ctx && activeRoute && <CustomResourceView key={view} ctx={ctx} ns={ns} rk={activeRoute} />}
           </div>
@@ -237,6 +242,7 @@ function AppMain() {
         />
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
       </div>
+      {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}
     </>
   )
 }
