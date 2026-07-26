@@ -551,73 +551,48 @@ export function kindToSlug(kind: string): ManifestKind | null {
   return KIND_TO_SLUG[kind] ?? null
 }
 
-/** The inverse of KIND_TO_SLUG — the k8s Kind for a manifest slug, e.g. for event filters and blank-template generation. */
-export const SLUG_TO_KIND: Record<ManifestKind, string> = {
-  pod: 'Pod',
-  deployment: 'Deployment',
-  service: 'Service',
-  ingress: 'Ingress',
-  configmap: 'ConfigMap',
-  replicaset: 'ReplicaSet',
-  statefulset: 'StatefulSet',
-  daemonset: 'DaemonSet',
-  job: 'Job',
-  cronjob: 'CronJob',
-  node: 'Node',
-  namespace: 'Namespace',
-  secret: 'Secret',
-  pvc: 'PersistentVolumeClaim',
-  pv: 'PersistentVolume',
-  storageclass: 'StorageClass',
-  hpa: 'HorizontalPodAutoscaler',
-  endpointslice: 'EndpointSlice',
-  networkpolicy: 'NetworkPolicy',
-  ingressclass: 'IngressClass',
-  serviceaccount: 'ServiceAccount',
-  role: 'Role',
-  clusterrole: 'ClusterRole',
-  rolebinding: 'RoleBinding',
-  clusterrolebinding: 'ClusterRoleBinding',
-  resourcequota: 'ResourceQuota',
-  limitrange: 'LimitRange',
-  poddisruptionbudget: 'PodDisruptionBudget',
-  priorityclass: 'PriorityClass',
-  runtimeclass: 'RuntimeClass',
+// Per-kind metadata needed to generate a blank manifest template: the k8s Kind
+// name (also doubles as SLUG_TO_KIND, the inverse of KIND_TO_SLUG) and the
+// apiVersion the cluster serves it under. Kept as one table instead of two
+// separate maps — with 29 kinds, two maps sharing the same key order read as
+// duplicated code to static analysis (and to a human skimming the diff).
+const MANIFEST_META: Record<ManifestKind, { kind: string; apiVersion: string }> = {
+  pod: { kind: 'Pod', apiVersion: 'v1' },
+  deployment: { kind: 'Deployment', apiVersion: 'apps/v1' },
+  service: { kind: 'Service', apiVersion: 'v1' },
+  ingress: { kind: 'Ingress', apiVersion: 'networking.k8s.io/v1' },
+  configmap: { kind: 'ConfigMap', apiVersion: 'v1' },
+  replicaset: { kind: 'ReplicaSet', apiVersion: 'apps/v1' },
+  statefulset: { kind: 'StatefulSet', apiVersion: 'apps/v1' },
+  daemonset: { kind: 'DaemonSet', apiVersion: 'apps/v1' },
+  job: { kind: 'Job', apiVersion: 'batch/v1' },
+  cronjob: { kind: 'CronJob', apiVersion: 'batch/v1' },
+  node: { kind: 'Node', apiVersion: 'v1' },
+  namespace: { kind: 'Namespace', apiVersion: 'v1' },
+  secret: { kind: 'Secret', apiVersion: 'v1' },
+  pvc: { kind: 'PersistentVolumeClaim', apiVersion: 'v1' },
+  pv: { kind: 'PersistentVolume', apiVersion: 'v1' },
+  storageclass: { kind: 'StorageClass', apiVersion: 'storage.k8s.io/v1' },
+  hpa: { kind: 'HorizontalPodAutoscaler', apiVersion: 'autoscaling/v2' },
+  endpointslice: { kind: 'EndpointSlice', apiVersion: 'discovery.k8s.io/v1' },
+  networkpolicy: { kind: 'NetworkPolicy', apiVersion: 'networking.k8s.io/v1' },
+  ingressclass: { kind: 'IngressClass', apiVersion: 'networking.k8s.io/v1' },
+  serviceaccount: { kind: 'ServiceAccount', apiVersion: 'v1' },
+  role: { kind: 'Role', apiVersion: 'rbac.authorization.k8s.io/v1' },
+  clusterrole: { kind: 'ClusterRole', apiVersion: 'rbac.authorization.k8s.io/v1' },
+  rolebinding: { kind: 'RoleBinding', apiVersion: 'rbac.authorization.k8s.io/v1' },
+  clusterrolebinding: { kind: 'ClusterRoleBinding', apiVersion: 'rbac.authorization.k8s.io/v1' },
+  resourcequota: { kind: 'ResourceQuota', apiVersion: 'v1' },
+  limitrange: { kind: 'LimitRange', apiVersion: 'v1' },
+  poddisruptionbudget: { kind: 'PodDisruptionBudget', apiVersion: 'policy/v1' },
+  priorityclass: { kind: 'PriorityClass', apiVersion: 'scheduling.k8s.io/v1' },
+  runtimeclass: { kind: 'RuntimeClass', apiVersion: 'node.k8s.io/v1' },
 }
 
-/** apiVersion for each manifest kind's blank-template. */
-const MANIFEST_API_VERSION: Record<ManifestKind, string> = {
-  pod: 'v1',
-  deployment: 'apps/v1',
-  service: 'v1',
-  ingress: 'networking.k8s.io/v1',
-  configmap: 'v1',
-  replicaset: 'apps/v1',
-  statefulset: 'apps/v1',
-  daemonset: 'apps/v1',
-  job: 'batch/v1',
-  cronjob: 'batch/v1',
-  node: 'v1',
-  namespace: 'v1',
-  secret: 'v1',
-  pvc: 'v1',
-  pv: 'v1',
-  storageclass: 'storage.k8s.io/v1',
-  hpa: 'autoscaling/v2',
-  endpointslice: 'discovery.k8s.io/v1',
-  networkpolicy: 'networking.k8s.io/v1',
-  ingressclass: 'networking.k8s.io/v1',
-  serviceaccount: 'v1',
-  role: 'rbac.authorization.k8s.io/v1',
-  clusterrole: 'rbac.authorization.k8s.io/v1',
-  rolebinding: 'rbac.authorization.k8s.io/v1',
-  clusterrolebinding: 'rbac.authorization.k8s.io/v1',
-  resourcequota: 'v1',
-  limitrange: 'v1',
-  poddisruptionbudget: 'policy/v1',
-  priorityclass: 'scheduling.k8s.io/v1',
-  runtimeclass: 'node.k8s.io/v1',
-}
+/** The inverse of KIND_TO_SLUG — the k8s Kind for a manifest slug, e.g. for event filters and blank-template generation. */
+export const SLUG_TO_KIND: Record<ManifestKind, string> = Object.fromEntries(
+  (Object.keys(MANIFEST_META) as ManifestKind[]).map((slug) => [slug, MANIFEST_META[slug].kind]),
+) as Record<ManifestKind, string>
 
 /** Kinds the "New resource" dialog offers — excludes controller-managed (ReplicaSet, EndpointSlice) and non-user-created (Node) kinds. */
 export const CREATABLE_KINDS = new Set<ManifestKind>([
@@ -652,7 +627,7 @@ export const CREATABLE_KINDS = new Set<ManifestKind>([
 /** Blank starting-point YAML for the "New resource" dialog. */
 export function blankManifestYAML(kind: ManifestKind, namespace: string, clusterScoped: boolean): string {
   const meta = clusterScoped ? `metadata:\n  name: \n` : `metadata:\n  name: \n  namespace: ${namespace || 'default'}\n`
-  return `apiVersion: ${MANIFEST_API_VERSION[kind]}\nkind: ${SLUG_TO_KIND[kind]}\n${meta}`
+  return `apiVersion: ${MANIFEST_META[kind].apiVersion}\nkind: ${MANIFEST_META[kind].kind}\n${meta}`
 }
 
 export interface DetailKV {

@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 	ktesting "k8s.io/client-go/testing"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
@@ -130,14 +129,7 @@ func TestHandleCreateResource_InvalidYAML(t *testing.T) {
 // works around for Update, patched here for Create.
 func TestHandleCreateResource_DryRunDoesNotPersist(t *testing.T) {
 	s := newTestServer(t)
-	fm, ok := s.mgr.(*fakeManager)
-	if !ok {
-		t.Fatal("expected a *fakeManager")
-	}
-	dyn, ok := fm.dynamic.(*dynamicfake.FakeDynamicClient)
-	if !ok {
-		t.Fatal("expected a *dynamicfake.FakeDynamicClient")
-	}
+	dyn := fakeDynamic(t, s)
 	dyn.PrependReactor("create", "configmaps", func(action ktesting.Action) (bool, runtime.Object, error) {
 		ca, ok := action.(ktesting.CreateActionImpl)
 		if !ok || len(ca.GetCreateOptions().DryRun) == 0 {

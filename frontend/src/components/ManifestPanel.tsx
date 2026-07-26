@@ -7,6 +7,7 @@ import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
 import { applyManifest, getManifest, type ManifestKind } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { checkYamlSyntax } from '@/lib/yaml'
+import { useYamlMarkers } from '@/lib/useYamlMarkers'
 import { useT } from '@/lib/i18n'
 
 type State = 'loading' | 'ready' | 'error'
@@ -50,29 +51,7 @@ export function ManifestPanel({
   // immutable field change, not just malformed YAML).
   const yamlError = useMemo(() => (editable ? checkYamlSyntax(value) : null), [value, editable])
 
-  // Underline the exact spot in the editor, same as Monaco's own diagnostics.
-  useEffect(() => {
-    const ed = editorRef.current
-    const monacoNs = monacoRef.current
-    const model = ed?.getModel()
-    if (!monacoNs || !model) return
-    monacoNs.editor.setModelMarkers(
-      model,
-      'yaml-syntax',
-      yamlError
-        ? [
-            {
-              severity: monacoNs.MarkerSeverity.Error,
-              message: yamlError.message,
-              startLineNumber: yamlError.line,
-              startColumn: yamlError.column,
-              endLineNumber: yamlError.line,
-              endColumn: yamlError.column + 1,
-            },
-          ]
-        : [],
-    )
-  }, [yamlError])
+  useYamlMarkers(editorRef, monacoRef, yamlError)
 
   const copy = async () => {
     try {

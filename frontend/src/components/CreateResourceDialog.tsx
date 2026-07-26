@@ -6,6 +6,7 @@ import '@/lib/monaco'
 import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
 import { blankManifestYAML, createResource, type CreatedResource, type ManifestKind } from '@/lib/api'
 import { checkYamlSyntax } from '@/lib/yaml'
+import { useYamlMarkers } from '@/lib/useYamlMarkers'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 
@@ -38,29 +39,7 @@ export function CreateResourceDialog({
   const monacoRef = useRef<Monaco | null>(null)
 
   const yamlError = useMemo(() => checkYamlSyntax(value), [value])
-
-  useEffect(() => {
-    const ed = editorRef.current
-    const monacoNs = monacoRef.current
-    const model = ed?.getModel()
-    if (!monacoNs || !model) return
-    monacoNs.editor.setModelMarkers(
-      model,
-      'yaml-syntax',
-      yamlError
-        ? [
-            {
-              severity: monacoNs.MarkerSeverity.Error,
-              message: yamlError.message,
-              startLineNumber: yamlError.line,
-              startColumn: yamlError.column,
-              endLineNumber: yamlError.line,
-              endColumn: yamlError.column + 1,
-            },
-          ]
-        : [],
-    )
-  }, [yamlError])
+  useYamlMarkers(editorRef, monacoRef, yamlError)
 
   // Reset to a fresh template each time the dialog is (re)opened, possibly for
   // a different kind/namespace than last time.

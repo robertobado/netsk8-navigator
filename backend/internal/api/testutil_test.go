@@ -177,6 +177,22 @@ func newTestServer(t *testing.T, objs ...runtime.Object) *Server {
 	return NewServer(newFakeManager(objs...), cfg, "")
 }
 
+// fakeDynamic extracts the underlying *dynamicfake.FakeDynamicClient from a
+// server built by newTestServer, for tests that need to patch in a reactor —
+// e.g. to simulate DryRun, which the fake tracker otherwise ignores.
+func fakeDynamic(t *testing.T, s *Server) *dynamicfake.FakeDynamicClient {
+	t.Helper()
+	fm, ok := s.mgr.(*fakeManager)
+	if !ok {
+		t.Fatal("expected a *fakeManager")
+	}
+	dyn, ok := fm.dynamic.(*dynamicfake.FakeDynamicClient)
+	if !ok {
+		t.Fatal("expected a *dynamicfake.FakeDynamicClient")
+	}
+	return dyn
+}
+
 // doRequest sends method+path through the real routing/middleware stack
 // (Server.Routes()) and returns the recorder.
 func doRequest(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {

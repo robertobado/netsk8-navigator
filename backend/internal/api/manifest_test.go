@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 	ktesting "k8s.io/client-go/testing"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
@@ -72,14 +71,7 @@ func TestHandleApplyManifest_DryRunDoesNotPersist(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
 		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
 	})
-	fm, ok := s.mgr.(*fakeManager)
-	if !ok {
-		t.Fatal("expected a *fakeManager")
-	}
-	dyn, ok := fm.dynamic.(*dynamicfake.FakeDynamicClient)
-	if !ok {
-		t.Fatal("expected a *dynamicfake.FakeDynamicClient")
-	}
+	dyn := fakeDynamic(t, s)
 	dyn.PrependReactor("update", "deployments", func(action ktesting.Action) (bool, runtime.Object, error) {
 		ua, ok := action.(ktesting.UpdateActionImpl)
 		if !ok || len(ua.GetUpdateOptions().DryRun) == 0 {
