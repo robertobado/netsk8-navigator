@@ -39,7 +39,7 @@ func loadHelmRepoFile() (*repo.File, error) {
 }
 
 func writeHelmRepoFile(f *repo.File) error {
-	if err := os.MkdirAll(filepath.Dir(helmSettings.RepositoryConfig), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(helmSettings.RepositoryConfig), 0o750); err != nil {
 		return err
 	}
 	return f.WriteFile(helmSettings.RepositoryConfig, 0o644)

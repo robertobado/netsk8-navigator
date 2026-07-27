@@ -77,6 +77,19 @@ func collectPodIssues(ctx context.Context, client kubernetes.Interface) (pending
 				Since: rfc3339(since), Reason: reason, Message: msg,
 				Containers: containerNames(p),
 			})
+		case corev1.PodRunning:
+			// A crash-looping container (by far the most common real-world
+			// failure) never changes the pod's Phase away from Running —
+			// that only reflects whether the pod was *ever* successfully
+			// started, not whether it's healthy now. Surface it here too,
+			// or it silently never appears as an issue at all.
+			if reason, msg, ok := runningContainerIssue(p); ok {
+				failed = append(failed, issueItem{
+					Kind: "pod", Namespace: p.Namespace, Name: p.Name,
+					Since: rfc3339(unreadySince(p)), Reason: reason, Message: msg,
+					Containers: containerNames(p),
+				})
+			}
 		}
 	}
 	return pending, failed
@@ -191,6 +204,29 @@ func firstTerminationReason(p *corev1.Pod, message string) (reason, msg string) 
 		return t.Reason, message
 	}
 	return "", message
+}
+
+// runningContainerIssue reports the first not-ready container's waiting
+// reason for a Running pod — e.g. CrashLoopBackOff, ImagePullBackOff — which
+// a healthy Running pod never has (all its containers are Ready).
+func runningContainerIssue(p *corev1.Pod) (reason, message string, ok bool) {
+	for _, cs := range p.Status.ContainerStatuses {
+		if !cs.Ready && cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			return cs.State.Waiting.Reason, cs.State.Waiting.Message, true
+		}
+	}
+	return "", "", false
+}
+
+// unreadySince returns when the pod's Ready condition last turned False,
+// falling back to its creation time when that condition isn't present.
+func unreadySince(p *corev1.Pod) time.Time {
+	for _, c := range p.Status.Conditions {
+		if c.Type == corev1.PodReady && c.Status != corev1.ConditionTrue {
+			return c.LastTransitionTime.Time
+		}
+	}
+	return p.CreationTimestamp.Time
 }
 
 // latestTerminationTime returns the FinishedAt of whichever container

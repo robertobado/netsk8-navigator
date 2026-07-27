@@ -93,6 +93,37 @@ func TestFailedDetail(t *testing.T) {
 	})
 }
 
+func TestRunningContainerIssue(t *testing.T) {
+	t.Run("not-ready waiting container reported", func(t *testing.T) {
+		p := &corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Ready: false,
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff", Message: "back-off"}},
+			}},
+		}}
+		reason, msg, ok := runningContainerIssue(p)
+		if !ok || reason != "CrashLoopBackOff" || msg != "back-off" {
+			t.Errorf("got reason=%q msg=%q ok=%v", reason, msg, ok)
+		}
+	})
+	t.Run("all containers ready is not an issue", func(t *testing.T) {
+		p := &corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{Ready: true}},
+		}}
+		if _, _, ok := runningContainerIssue(p); ok {
+			t.Error("expected ok=false for a fully ready pod")
+		}
+	})
+	t.Run("not-ready but not waiting (e.g. still starting) is not an issue", func(t *testing.T) {
+		p := &corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{Ready: false, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}},
+		}}
+		if _, _, ok := runningContainerIssue(p); ok {
+			t.Error("expected ok=false when not waiting")
+		}
+	})
+}
+
 func TestHandleIssues(t *testing.T) {
 	s := newTestServer(t,
 		&corev1.Pod{
@@ -102,6 +133,29 @@ func TestHandleIssues(t *testing.T) {
 		&corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: "failed-1", Namespace: "prod"},
 			Status:     corev1.PodStatus{Phase: corev1.PodFailed, Reason: "Evicted"},
+		},
+		&corev1.Pod{
+			// Running pods with a crash-looping container never leave
+			// Phase Running — this is the most common real-world failure,
+			// and it must still surface as an issue.
+			ObjectMeta: metav1.ObjectMeta{Name: "crashlooping-1", Namespace: "prod"},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				ContainerStatuses: []corev1.ContainerStatus{{
+					Ready: false,
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+						Reason: "CrashLoopBackOff", Message: "back-off restarting failed container",
+					}},
+				}},
+			},
+		},
+		&corev1.Pod{
+			// A genuinely healthy Running pod (all containers Ready) is not an issue.
+			ObjectMeta: metav1.ObjectMeta{Name: "healthy-1", Namespace: "prod"},
+			Status: corev1.PodStatus{
+				Phase:             corev1.PodRunning,
+				ContainerStatuses: []corev1.ContainerStatus{{Ready: true}},
+			},
 		},
 		&corev1.Pod{
 			// Terminating pods are neither pending nor failed — should be skipped.
@@ -130,8 +184,18 @@ func TestHandleIssues(t *testing.T) {
 	if len(out.Pending) != 1 || out.Pending[0].Name != "pending-1" {
 		t.Errorf("pending = %+v", out.Pending)
 	}
-	if len(out.Failed) != 1 || out.Failed[0].Name != "failed-1" || out.Failed[0].Reason != "Evicted" {
-		t.Errorf("failed = %+v", out.Failed)
+	if len(out.Failed) != 2 {
+		t.Fatalf("failed = %+v", out.Failed)
+	}
+	byName := map[string]issueItem{}
+	for _, i := range out.Failed {
+		byName[i.Name] = i
+	}
+	if byName["failed-1"].Reason != "Evicted" {
+		t.Errorf("failed-1 reason = %+v", byName["failed-1"])
+	}
+	if byName["crashlooping-1"].Reason != "CrashLoopBackOff" {
+		t.Errorf("crashlooping-1 = %+v", byName["crashlooping-1"])
 	}
 	if len(out.NodesNotReady) != 1 || out.NodesNotReady[0].Name != "node-1" || out.NodesNotReady[0].Reason != "KubeletNotReady" {
 		t.Errorf("nodesNotReady = %+v", out.NodesNotReady)

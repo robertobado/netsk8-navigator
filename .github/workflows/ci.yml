@@ -159,7 +159,7 @@ jobs:
           pods=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/pods?namespace=production")
           echo "$pods" | grep -q "web-frontend"
           issues=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/issues")
-          echo "$issues" | grep -q "containerFailed"
+          echo "$issues" | grep -q "CrashLoopBackOff"
 
       - name: Stop the backend
         if: always()
