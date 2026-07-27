@@ -4,13 +4,15 @@
 set -euo pipefail
 
 VERSION="${1:?usage: deploy-demo-run.sh <version, e.g. 0.0.3>}"
-REPO_DIR=/opt/netsk8-demo/repo
 BIN_DIR=/opt/netsk8-demo/bin
-GOTMPDIR=/opt/netsk8-demo/gotmp
 
-sudo -u netsk8 -H env GOTMPDIR="$GOTMPDIR" TMPDIR="$GOTMPDIR" PATH="/usr/local/go/bin:$PATH" \
-  bash -c "cd '$REPO_DIR/demo/seed' && go build -o '$BIN_DIR/demo-seed' ."
-
+# Deliberately does NOT rebuild demo/seed here: `go build` on kwok's
+# dependency tree is heavy enough to swap-thrash this VPS's 956Mi of RAM
+# into unresponsiveness (observed firsthand — it once ran long enough to
+# push /api/health latency past the front proxy's timeout, taking the live
+# site down with 502s). demo/seed changes rarely; rebuild it by hand
+# (see docs/DEMO_CLUSTER.md) when its source actually changes, not on
+# every release.
 asset="netsk8-navigator_${VERSION}_linux_amd64.tar.gz"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
