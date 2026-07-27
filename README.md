@@ -1,4 +1,8 @@
 <p align="center">
+  <a href="https://netsk8.io"><strong>🌐 Try the live demo — netsk8.io →</strong></a>
+</p>
+
+<p align="center">
   <img src="docs/logo-animated.svg" width="190" alt="Netsk8 Navigator" />
 </p>
 
@@ -36,7 +40,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Made%20in-S%C3%A3o%20Paulo%20%F0%9F%87%A7%F0%9F%87%B7-009c3b" alt="Made in São Paulo" />
+  <img src="https://img.shields.io/badge/Made%20in-S%C3%A3o%20Paulo%20%F0%9F%87%A7%F0%9F%87%B7-002776" alt="Made in São Paulo" />
 </p>
 
 <p align="center">
