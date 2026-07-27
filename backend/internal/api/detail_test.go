@@ -612,6 +612,23 @@ func TestPodDetail(t *testing.T) {
 	}
 }
 
+func TestPodDetail_CrashLoopingContainerOverridesPhase(t *testing.T) {
+	d := podDetail(&corev1.Pod{
+		ObjectMeta: meta("web-1", "prod"),
+		Spec:       corev1.PodSpec{NodeName: "node-1", Containers: []corev1.Container{{Name: "web", Image: "web:1.0"}}},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning, // kubelet keeps a crash-looping pod's Phase Running
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "web", Ready: false,
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}},
+			}},
+		},
+	})
+	if d.Status[0].Value != "CrashLoopBackOff" || d.Status[0].Tone != "err" {
+		t.Errorf("status chip = %+v, want CrashLoopBackOff/err", d.Status[0])
+	}
+}
+
 func TestNodeDetail(t *testing.T) {
 	d := nodeDetail(&corev1.Node{
 		ObjectMeta: meta("node-1", ""),

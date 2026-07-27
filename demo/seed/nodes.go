@@ -33,15 +33,21 @@ func seedNodes(ctx context.Context, client kubernetes.Interface) error {
 			"topology.kubernetes.io/zone":      n.zone,
 			"node.kubernetes.io/instance-type": "kwok",
 		}
-		if n.chaos {
-			labels["node-not-ready.stage.kwok.x-k8s.io"] = "true"
-		}
 		// Tells a real metrics-server (v0.7.0+) to scrape this node's
 		// resource usage at kwok's custom path instead of the standard
 		// /metrics/resource — see ../kwok/metrics.yaml's Metric resource,
 		// which is what actually answers requests at this path.
 		annotations := map[string]string{
 			"metrics.k8s.io/resource-metrics-path": fmt.Sprintf("/metrics/nodes/%s/metrics/resource", n.name),
+		}
+		if n.chaos {
+			labels["node-not-ready.stage.kwok.x-k8s.io"] = "true"
+			// ../kwok/stages.yaml's node-not-ready Stage falls back to a
+			// generic "nodeFailed"/"node failed" unless these annotations
+			// override it — a real kubelet-heartbeat-loss node reports
+			// exactly this reason/message via the node lifecycle controller.
+			annotations["node-not-ready.stage.kwok.x-k8s.io/reason"] = "KubeletNotReady"
+			annotations["node-not-ready.stage.kwok.x-k8s.io/message"] = "Kubelet stopped posting node status."
 		}
 		node := &corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{Name: n.name, Labels: labels, Annotations: annotations},

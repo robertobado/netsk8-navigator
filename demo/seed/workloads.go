@@ -126,6 +126,33 @@ func seedWorkloads(ctx context.Context, client kubernetes.Interface) error {
 	if _, err := client.CoreV1().PersistentVolumes().Create(ctx, pv, metav1.CreateOptions{}); err != nil && !isAlreadyExists(err) {
 		return fmt.Errorf("creating pv postgres-data-pv: %w", err)
 	}
+	// A statically-provisioned PV pre-bound via ClaimRef still needs its
+	// PVC-side counterpart (spec.volumeName + status.phase=Bound) to
+	// complete the two-way bind — kwok's cluster doesn't reliably run that
+	// reconcile itself, which otherwise leaves the PVC (and so the pod
+	// that mounts it) stuck Pending forever with no scheduler event at all.
+	return bindPVC(ctx, client, "production", "postgres-data", "postgres-data-pv")
+}
+
+// bindPVC completes a static PV/PVC bind by hand: sets the PVC's
+// spec.volumeName and patches status.phase to Bound. A no-op if already bound.
+func bindPVC(ctx context.Context, client kubernetes.Interface, namespace, pvcName, volumeName string) error {
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("getting pvc %s/%s to bind: %w", namespace, pvcName, err)
+	}
+	if pvc.Spec.VolumeName != volumeName {
+		pvc.Spec.VolumeName = volumeName
+		if pvc, err = client.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, pvc, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("binding pvc %s/%s to volume %s: %w", namespace, pvcName, volumeName, err)
+		}
+	}
+	if pvc.Status.Phase != corev1.ClaimBound {
+		pvc.Status.Phase = corev1.ClaimBound
+		if _, err := client.CoreV1().PersistentVolumeClaims(namespace).UpdateStatus(ctx, pvc, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("marking pvc %s/%s bound: %w", namespace, pvcName, err)
+		}
+	}
 	return nil
 }
 

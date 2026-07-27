@@ -1325,8 +1325,16 @@ func podDetail(p *corev1.Pod) *resourceDetail {
 		}
 		restarts += cs.RestartCount
 	}
+	// A crash-looping (or otherwise unhealthy-but-Running) container never
+	// changes the pod's Phase — the same signal the pod list and Issues
+	// carousel use (kube.WaitingReason) has to win here too, or this chip
+	// keeps showing "Running" for a pod that's actually CrashLoopBackOff.
+	effectiveStatus := kube.PodPhase(p)
+	if r := kube.WaitingReason(p); r != "" {
+		effectiveStatus = r
+	}
 	d.Status = []chip{
-		{Label: "Status", Value: kube.PodPhase(p), Tone: phaseTone(kube.PodPhase(p))},
+		{Label: "Status", Value: effectiveStatus, Tone: phaseTone(effectiveStatus)},
 		replicaChip("Ready", int32(ready), int32(total)), //nolint:gosec // container counts, always tiny
 		countChip("Restarts", restarts, boolTone(restarts == 0)),
 		{Label: "QoS", Value: string(p.Status.QOSClass), Tone: "muted"},
