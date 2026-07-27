@@ -26,17 +26,39 @@ go install sigs.k8s.io/kwok/cmd/kwokctl@v0.8.0
 ```bash
 kwokctl create cluster --name netsk8-demo --runtime binary \
   --config demo/kwok/stages.yaml \
-  --enable-crds=Logs --enable-crds=ClusterLogs
+  --config demo/kwok/metrics.yaml \
+  --enable-crds=Logs --enable-crds=ClusterLogs \
+  --enable-crds=Metric --enable-crds=ClusterResourceUsage \
+  --enable metrics-server
 ```
 
 - `--config demo/kwok/stages.yaml`: **substitui** por completo os `Stage`
   padrão do kwok (não soma) — por isso esse arquivo carrega o conjunto
-  básico completo (ciclo de vida de pod/node) mais dois estágios de "caos"
-  usados pelo `demo/seed` (ver `demo/kwok/stages.yaml` para os detalhes e a
-  proveniência de cada trecho).
+  básico completo (ciclo de vida de pod/node) mais o estágio `node-not-ready`
+  usado pelo `demo/seed` (ver `demo/kwok/stages.yaml` para os detalhes e a
+  proveniência de cada trecho; o caos de pod é aplicado pelo próprio
+  `demo/seed`, não por um `Stage` — ver a seção de dados falsos abaixo).
 - `--enable-crds=Logs,ClusterLogs`: sem isso, `kubectl logs`/nosso
   `GetLogs` respondem sempre "no logs found" — são CRDs do próprio kwok
   (`kwok.x-k8s.io/v1alpha1`), desligadas por padrão.
+- `--config demo/kwok/metrics.yaml` e `--enable-crds=Metric,ClusterResourceUsage`
+  e `--enable metrics-server`: sobe um metrics-server real (v0.8.1) e ensina
+  o `kwok-controller` a servir `/metrics/nodes/{node}/metrics/resource` com
+  números derivados das anotações `kwok.x-k8s.io/usage-cpu`/`usage-memory`
+  que `demo/seed` põe em cada pod. **Armadilha**: `--config` só aplica
+  recursos `Stage` na criação do cluster — os CRs `Metric`/
+  `ClusterResourceUsage` do `metrics.yaml` **não** são criados
+  automaticamente, apesar de aparecerem no log de criação do `kwokctl`
+  (esse log só confirma que os *tipos* de CRD foram habilitados). É preciso
+  aplicá-los à parte, uma vez por cluster:
+
+  ```bash
+  kubectl apply -f demo/kwok/metrics.yaml
+  ```
+
+  Sem esse passo, `kubectl top nodes`/`nodeusage`/`podusage` ficam
+  silenciosamente zerados (o metrics-server sobe, escuta, mas nunca tem o
+  que reportar).
 
 Depois, crie alguns nodes (o kwok não vem com nenhum por padrão):
 
@@ -68,9 +90,15 @@ Isso cria (via `k8s.io/client-go`, contra a API real do cluster kwok):
   roda expandem isso em ReplicaSets e Pods sozinhos, e os `Stage` do kwok
   levam os Pods a `Running` como um kubelet de verdade levaria.
 - Duas Deployments propositalmente quebradas (`billing-worker` em
-  `production`, `flaky-service` em `staging`, ambas com o label de caos
-  `pod-container-running-failed.stage.kwok.x-k8s.io`) — alimentam o
-  carrossel de Issues com pods `Failed`/`containerFailed` reais.
+  `production`, `flaky-service` em `staging`, marcadas com o label
+  `netsk8-navigator.dev/demo-chaos`) — o próprio `demo/seed` (não um
+  `Stage` do kwok) as detecta assim que ficam `Running` e faz um patch
+  direto no status de um dos containers pra `CrashLoopBackOff`, mantendo o
+  pod em `Running` (ver `breakPod` em `demo/seed/logs.go`). Alimentam o
+  carrossel de Issues com pods de verdade travados em crash loop, sem o
+  ReplicaSet ficar recriando pods indefinidamente (o que acontecia com a
+  abordagem antiga, baseada no `Stage` `pod-container-running-failed` do
+  próprio kwok, que derrubava a fase inteira do pod pra `Failed`).
 - ServiceAccounts/Role/RoleBinding/ClusterRole/ClusterRoleBinding, pra
   "Effective permissions" ter conteúdo de verdade.
 - Services/ConfigMap/Secret/PVC+PV correspondentes.
