@@ -137,8 +137,15 @@ jobs:
           kwokctl get kubeconfig --name ci-demo > /tmp/ci-demo-kubeconfig.yaml
 
       - name: Seed the cluster
+        # --daemon=true, same as production (see the netsk8-demo-seed systemd
+        # unit): demo-seed's own watch loop is what patches a labeled pod
+        # into CrashLoopBackOff once kwok advances it to Running (breakPod in
+        # logs.go) — a one-shot --daemon=false run seeds the objects but
+        # never starts that loop, so no pod ever actually breaks.
         working-directory: demo/seed
-        run: go run . --kubeconfig=/tmp/ci-demo-kubeconfig.yaml --daemon=false
+        run: |
+          go run . --kubeconfig=/tmp/ci-demo-kubeconfig.yaml --daemon=true &
+          echo $! > /tmp/demo-seed.pid
 
       - name: Build and run the backend against the demo cluster
         working-directory: backend
@@ -158,12 +165,21 @@ jobs:
           ctx=$(curl -sf http://127.0.0.1:8099/api/contexts | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["name"])')
           pods=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/pods?namespace=production")
           echo "$pods" | grep -q "web-frontend"
-          issues=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/issues")
+          # The crash-looping pod only appears once kwok advances it to
+          # Running and demo-seed's watch loop reacts (see breakPod in
+          # logs.go) — both async, so poll instead of checking once.
+          for i in $(seq 1 30); do
+            issues=$(curl -sf "http://127.0.0.1:8099/api/contexts/$ctx/issues")
+            echo "$issues" | grep -q "CrashLoopBackOff" && break
+            sleep 1
+          done
           echo "$issues" | grep -q "CrashLoopBackOff"
 
-      - name: Stop the backend
+      - name: Stop the backend and seed daemon
         if: always()
-        run: kill "$(cat /tmp/netsk8-navigator.pid)" 2>/dev/null || true
+        run: |
+          kill "$(cat /tmp/netsk8-navigator.pid)" 2>/dev/null || true
+          kill "$(cat /tmp/demo-seed.pid)" 2>/dev/null || true
 
   docker-build-check:
     name: Docker build (sanity check, no push)
