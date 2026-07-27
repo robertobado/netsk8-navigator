@@ -206,14 +206,24 @@ jobs:
       contents: read
     # Skip pre-releases (tags like v0.0.3-rc1) — same "auto" rule GoReleaser
     # uses (.goreleaser.yaml's `prerelease: auto`) to decide what's a real
-    # release. A clean no-op until DEMO_DEPLOY_SSH_KEY is configured.
-    if: ${{ !contains(github.ref_name, '-') && secrets.DEMO_DEPLOY_SSH_KEY != '' }}
+    # release. `secrets` isn't a valid context in a job-level `if:` (see the
+    # macos-app-bundle job above), so the "no-op until DEMO_DEPLOY_SSH_KEY is
+    # configured" gate lives in a step instead.
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
+      - name: Check whether demo deploy is configured
+        id: gate
+        env:
+          DEMO_DEPLOY_SSH_KEY: ${{ secrets.DEMO_DEPLOY_SSH_KEY }}
+        run: echo "enabled=${DEMO_DEPLOY_SSH_KEY:+true}" >> "$GITHUB_OUTPUT"
+
       - name: Compute version
         id: version
+        if: steps.gate.outputs.enabled == 'true'
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy over SSH
+        if: steps.gate.outputs.enabled == 'true'
         env:
           DEMO_DEPLOY_SSH_KEY: ${{ secrets.DEMO_DEPLOY_SSH_KEY }}
         run: |
