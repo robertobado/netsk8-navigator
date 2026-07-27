@@ -102,6 +102,13 @@ tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # or linux_amd64, windows_amd64
 ./netsk8-navigator
 ```
 
+Once it's ready, a release binary opens your default browser to the UI on
+its own (Linux needs a desktop session — X11/Wayland — for this; a headless
+server just skips it and logs the URL instead). Set `OPEN_BROWSER=false` to
+turn this off, or `OPEN_BROWSER=true` to force it even for a `go run .`/
+source build (which otherwise never auto-opens, so restarting during
+development doesn't keep popping a new tab).
+
 **On Debian/Ubuntu/Fedora/RHEL**, grab the `.deb`/`.rpm` from the release page
 instead — installs `netsk8-navigator` onto your `PATH`:
 

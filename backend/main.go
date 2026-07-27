@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/api"
@@ -53,6 +54,10 @@ func main() {
 	}
 
 	log.Printf("netsk8-navigator %s backend listening on %s", version, addr)
+	tlsEnabled := os.Getenv("TLS_CERT") != "" && os.Getenv("TLS_KEY") != ""
+	if shouldOpenBrowser(version, runtime.GOOS, os.Getenv("DISPLAY"), os.Getenv("WAYLAND_DISPLAY"), os.Getenv("OPEN_BROWSER")) {
+		maybeOpenBrowser(addr, browserURL(addr, tlsEnabled))
+	}
 	if err := serve(httpSrv); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
