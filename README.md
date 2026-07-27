@@ -102,6 +102,14 @@ tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # or linux_amd64, windows_amd64
 ./netsk8-navigator
 ```
 
+**On Debian/Ubuntu/Fedora/RHEL**, grab the `.deb`/`.rpm` from the release page
+instead — installs `netsk8-navigator` onto your `PATH`:
+
+```bash
+sudo dpkg -i netsk8-navigator_*_amd64.deb   # Debian, Ubuntu, ...
+sudo rpm -i netsk8-navigator_*_amd64.rpm    # Fedora, RHEL, ...
+```
+
 **On macOS**, prefer the `.dmg` on the release page instead: it's a signed,
 notarized `.app` you can double-click, with its own icon — mount it, drag
 "Netsk8 Navigator" to Applications, and open it (it opens a Terminal window

@@ -34,6 +34,24 @@ archives:
       - goos: windows
         formats: [zip]
 
+nfpms:
+  - id: netsk8-navigator
+    package_name: netsk8-navigator
+    file_name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Arch }}
+    ids:
+      - netsk8-navigator
+    vendor: Roberto Badô
+    homepage: https://github.com/robertobado/netsk8-navigator
+    maintainer: Roberto Badô <1571329+robertobado@users.noreply.github.com>
+    description: >-
+      A Kubernetes cluster navigator in the browser — think Lens or k9s, but web.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+
 checksum:
   name_template: checksums.txt
 
@@ -99,7 +117,17 @@ release:
   footer: |
     ## Installation
 
-    Download the binary for your platform above, or:
+    Download the binary for your platform above, or on Debian/Ubuntu/Fedora/RHEL:
+
+    ```bash
+    # .deb (Debian, Ubuntu, ...)
+    sudo dpkg -i netsk8-navigator_{{ .Version }}_amd64.deb   # or _arm64.deb
+
+    # .rpm (Fedora, RHEL, ...)
+    sudo rpm -i netsk8-navigator_{{ .Version }}_amd64.rpm    # or _arm64.rpm
+    ```
+
+    Or via Docker:
 
     ```bash
     docker pull ghcr.io/robertobado/netsk8-navigator:{{ .Version }}
