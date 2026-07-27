@@ -100,6 +100,11 @@ function AppMain() {
 
   const contextsQ = useQuery({ queryKey: ['contexts'], queryFn: api.contexts, refetchInterval: false })
   const healthQ = useQuery({ queryKey: ['health'], queryFn: api.health, staleTime: Infinity, refetchInterval: false })
+  // The backend re-checks GitHub for a newer release once at startup and
+  // every 24h on its own (see backend/internal/api/updatecheck.go); this
+  // just polls that cached result often enough to notice within a session
+  // that's been left open a while.
+  const updateQ = useQuery({ queryKey: ['update-check'], queryFn: api.updateCheck, refetchInterval: 60 * 60 * 1000 })
 
   // Once contexts load, fall back to the kubeconfig's current context only if
   // there's no valid persisted selection (e.g. first visit or a stale one).
@@ -243,6 +248,9 @@ function AppMain() {
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
       </div>
       {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}
+      {updateQ.data?.available && (
+        <FloatingBubble key={updateQ.data.latest} message={`${t('update.available')}${updateQ.data.latest}`} href={updateQ.data.url ?? 'https://github.com/robertobado/netsk8-navigator/releases/latest'} />
+      )}
     </>
   )
 }

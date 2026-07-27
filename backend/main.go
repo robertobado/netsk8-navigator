@@ -34,6 +34,7 @@ func main() {
 		srv.DemoMode = true
 		log.Print("DEMO_MODE enabled — pod exec and port-forward are disabled")
 	}
+	srv.StartUpdateChecker(version)
 	handler := wrapWithAuth(buildMux(srv))
 
 	addr := os.Getenv("ADDR")

@@ -7,6 +7,12 @@ export interface Health {
   demo: boolean
 }
 
+export interface UpdateCheck {
+  available: boolean
+  latest?: string
+  url?: string
+}
+
 export interface ContextInfo {
   name: string
   cluster: string
@@ -444,6 +450,7 @@ const nsQuery = (namespace?: string) => (namespace ? `?namespace=${enc(namespace
 
 export const api = {
   health: () => get<Health>('/health'),
+  updateCheck: () => get<UpdateCheck>('/update-check'),
   contexts: () => get<ContextInfo[]>('/contexts'),
   overview: (ctx: string) => get<Overview>(`/contexts/${enc(ctx)}/overview`),
   namespaces: (ctx: string) => get<NamespaceInfo[]>(`/contexts/${enc(ctx)}/namespaces`),

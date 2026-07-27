@@ -57,6 +57,8 @@ type Server struct {
 
 	pfMu sync.Mutex
 	pf   map[string]*pfSession // port-forward id -> active session
+
+	updateChecker updateChecker
 }
 
 // NewServer wires a Server. corsOrigin is the one extra origin (besides the
@@ -76,6 +78,7 @@ func NewServer(mgr clusterManager, cfg *config.Store, corsOrigin string) *Server
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("GET /api/update-check", s.handleUpdateCheck)
 	mux.HandleFunc("GET /api/preferences", s.handleGetAppPrefs)
 	mux.HandleFunc("PUT /api/preferences", s.handlePutAppPrefs)
 	mux.HandleFunc("GET /api/contexts/{ctx}/preferences", s.handleGetClusterPrefs)

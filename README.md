@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://netsk8.io"><img src="https://img.shields.io/badge/demo-netsk8.io-blue" alt="Live demo" /></a>
   <a href="https://github.com/robertobado/netsk8-navigator/actions/workflows/ci.yml"><img src="https://github.com/robertobado/netsk8-navigator/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/robertobado/netsk8-navigator/releases/latest"><img src="https://img.shields.io/github/v/release/robertobado/netsk8-navigator" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/robertobado/netsk8-navigator" alt="License" /></a>
@@ -39,7 +40,7 @@
 </p>
 
 <p align="center">
-  <img src="https://forthebadge.com/badges/powered-by-electricity.svg" alt="Powered by Electricity" />
+  <img src="https://forthebadge.com/badges/powered-by-electricity.svg" alt="Powered by Electricity" height="20" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome" />
   <img src="https://img.shields.io/badge/uptime-it's_complicated-yellow" alt="Uptime: it's complicated" />
 </p>
@@ -78,6 +79,9 @@ running `kubectl` from your own machine.
   cluster actually serves.
 
 ## See it in action
+
+**[Try the live demo →](https://netsk8.io)** — a synthetic cluster with fake
+data, no install or kubeconfig needed.
 
 <table>
   <tr>
