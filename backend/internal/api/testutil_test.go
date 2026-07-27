@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,6 +64,14 @@ type fakeManager struct {
 	client  kubernetes.Interface
 	dynamic dynamic.Interface
 	gvrs    map[string]kube.Resource
+	crds    []apiextensionsv1.CustomResourceDefinition
+}
+
+// withCRDs seeds the CRDs CRDsFor returns, for tests exercising the generic
+// CRD-kind discovery endpoint without a live cluster.
+func (f *fakeManager) withCRDs(crds ...apiextensionsv1.CustomResourceDefinition) *fakeManager {
+	f.crds = crds
+	return f
 }
 
 // podsFieldSelectorReactor stands in for the fake clientset's default List
@@ -174,6 +184,9 @@ func (f *fakeManager) ResolveGVK(_ string, gvk schema.GroupVersionKind) (kube.Re
 	}
 	return r, nil
 }
+func (f *fakeManager) CRDsFor(context.Context, string) ([]apiextensionsv1.CustomResourceDefinition, error) {
+	return f.crds, nil
+}
 func (f *fakeManager) RESTConfigFor(string) (*rest.Config, error) {
 	return nil, fmt.Errorf("fakeManager: RESTConfigFor not supported in tests")
 }
@@ -194,6 +207,14 @@ func newTestServer(t *testing.T, objs ...runtime.Object) *Server {
 	// to the developer's actual ~/Library/Application Support/netsk8/config.json.
 	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
 	return NewServer(newFakeManager(objs...), cfg, "")
+}
+
+// newTestServerWithCRDs is newTestServer plus seeded CRDs, for tests of the
+// generic CRD-kind discovery endpoint.
+func newTestServerWithCRDs(t *testing.T, crds []apiextensionsv1.CustomResourceDefinition, objs ...runtime.Object) *Server {
+	t.Helper()
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	return NewServer(newFakeManager(objs...).withCRDs(crds...), cfg, "")
 }
 
 // fakeDynamic extracts the underlying *dynamicfake.FakeDynamicClient from a

@@ -1,9 +1,9 @@
 import type { LucideIcon } from 'lucide-react'
-import { Bell, Boxes, LayoutDashboard, Share2, Ship, Waypoints } from 'lucide-react'
+import { Bell, Boxes, LayoutDashboard, Puzzle, Share2, Ship, Waypoints } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { RouteKind } from '@/lib/api'
+import type { CRDKind, RouteKind } from '@/lib/api'
 import { RESOURCES, type ResourceDef } from '@/lib/resources'
-import { crdView } from '@/lib/nav'
+import { crdKindView, crdView } from '@/lib/nav'
 import { useT } from '@/lib/i18n'
 
 interface NavItem {
@@ -15,7 +15,12 @@ interface NavItem {
 const asNav = (r: ResourceDef): NavItem => ({ view: r.key, label: r.label, icon: r.icon })
 const inGroup = (g: ResourceDef['group']) => RESOURCES.filter((r) => r.group === g).map(asNav)
 
-export function ResourceNav({ active, onSelect, routes = [] }: Readonly<{ active: string; onSelect: (v: string) => void; routes?: RouteKind[] }>) {
+export function ResourceNav({
+  active,
+  onSelect,
+  routes = [],
+  crdKinds = [],
+}: Readonly<{ active: string; onSelect: (v: string) => void; routes?: RouteKind[]; crdKinds?: CRDKind[] }>) {
   const t = useT()
   // Nav is composed from the resource catalog + a few special views. Detected
   // route CRDs (HTTPRoute, IngressRoute, …) append under "Network", below Ingresses.
@@ -37,6 +42,12 @@ export function ResourceNav({ active, onSelect, routes = [] }: Readonly<{ active
       ],
     },
   ]
+  // Every CRD the cluster serves, not just the curated "Network" subset above
+  // — omitted entirely when the cluster has none, so it never shows as an
+  // empty section.
+  if (crdKinds.length > 0) {
+    groups.push({ title: t('group.customResources'), items: crdKinds.map((k) => ({ view: crdKindView(k), label: k.label, icon: Puzzle })) })
+  }
   return (
     <nav className="flex flex-col gap-4">
       {groups.map((group, gi) => (

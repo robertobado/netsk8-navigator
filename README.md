@@ -67,8 +67,11 @@ running `kubectl` from your own machine.
   Governance, Cluster) in filterable, sortable tables, with row expansion
   for relationships — Node → workloads, Namespace → resources, ConfigMap/
   Secret → consumers, ServiceAccount → bindings, and more.
-- 🧩 **Generic CRD browser** for route resources (Gateway API, Traefik
-  IngressRoute, Istio VirtualService, Contour HTTPProxy).
+- 🧩 **Custom Resources** — every CRD the cluster serves gets its own
+  browsable list/detail/YAML/edit/delete, no allowlist, under **Custom
+  Resources** in the sidebar. Common route CRDs (Gateway API, Traefik
+  IngressRoute, Istio VirtualService, Contour HTTPProxy) additionally get a
+  curated spot under **Network** when installed.
 - 📝 **Detail view + YAML manifest editor** (Monaco) for reading and
   editing any object in place.
 - 🔌 **Live logs, exec, and events** over SSE/WebSocket — pods stream in

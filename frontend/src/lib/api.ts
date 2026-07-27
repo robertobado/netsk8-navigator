@@ -91,15 +91,26 @@ export interface Issues {
   nodesNotReady: IssueItem[]
 }
 
-// A route-like CRD (Gateway API, Traefik, Istio, Contour) served by the cluster.
-export interface RouteKind {
+// The minimal addressing shape shared by every generic-CRD endpoint.
+export interface CRDRef {
   group: string
   version: string
   resource: string
+}
+
+// A route-like CRD (Gateway API, Traefik, Istio, Contour) served by the cluster.
+export interface RouteKind extends CRDRef {
   kind: string
   namespaced: boolean
   label: string
   order: number
+}
+// Any CRD the cluster serves, from the generic browser (no allowlist) — same
+// shape as RouteKind minus the curated "Network" nav ordering.
+export interface CRDKind extends CRDRef {
+  kind: string
+  namespaced: boolean
+  label: string
 }
 export interface CRDItem {
   name: string
@@ -471,7 +482,8 @@ export const api = {
   monitoring: (ctx: string) => get<Monitoring>(`/contexts/${enc(ctx)}/monitoring`),
   issues: (ctx: string) => get<Issues>(`/contexts/${enc(ctx)}/issues`),
   routeKinds: (ctx: string) => get<RouteKind[]>(`/contexts/${enc(ctx)}/routekinds`),
-  crdList: (ctx: string, rk: { group: string; version: string; resource: string }, ns?: string) =>
+  crdKinds: (ctx: string) => get<CRDKind[]>(`/contexts/${enc(ctx)}/crdkinds`),
+  crdList: (ctx: string, rk: CRDRef, ns?: string) =>
     get<CRDItem[]>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}${nsQuery(ns)}`),
   podsUsage: (ctx: string, ns?: string) => get<PodsUsage>(`/contexts/${enc(ctx)}/podusage${nsQuery(ns)}`),
   nodesUsage: (ctx: string) => get<NodesUsage>(`/contexts/${enc(ctx)}/nodeusage`),
@@ -742,15 +754,63 @@ export async function getManifest(ctx: string, kind: ManifestKind, namespace: st
   return r.yaml
 }
 
-export function crdDetail(ctx: string, rk: { group: string; version: string; resource: string }, namespace: string, name: string) {
+export function crdDetail(ctx: string, rk: CRDRef, namespace: string, name: string) {
   const ns = namespace || '-'
   return get<ResourceDetail>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}/${enc(ns)}/${enc(name)}/detail`)
 }
 
-export async function crdManifest(ctx: string, rk: { group: string; version: string; resource: string }, namespace: string, name: string) {
+export async function crdManifest(ctx: string, rk: CRDRef, namespace: string, name: string) {
   const ns = namespace || '-'
   const r = await get<{ yaml: string }>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}/${enc(ns)}/${enc(name)}/manifest`)
   return r.yaml
+}
+
+// PUT/DELETE counterparts to crdManifest — edit/delete an instance of ANY
+// CRD, addressed by GVR rather than a manifest slug. Mirrors applyManifest/
+// deleteResource exactly (same dry-run/error handling).
+export async function crdApply(
+  ctx: string,
+  rk: CRDRef,
+  namespace: string,
+  name: string,
+  yaml: string,
+  opts?: { dryRun?: boolean },
+): Promise<string | undefined> {
+  const ns = namespace || '-'
+  const qs = opts?.dryRun ? '?dryRun=true' : ''
+  const res = await fetch(`/api/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}/${enc(ns)}/${enc(name)}${qs}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yaml }),
+  })
+  await throwIfError(res)
+  if (!opts?.dryRun) return undefined
+  const body = (await res.json()) as { yaml: string }
+  return body.yaml
+}
+
+export async function crdDelete(ctx: string, rk: CRDRef, namespace: string, name: string) {
+  const ns = namespace || '-'
+  const res = await fetch(`/api/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}/${enc(ns)}/${enc(name)}`, { method: 'DELETE' })
+  await throwIfError(res)
+}
+
+// A resource is addressed either by its catalog manifest slug (typed kinds,
+// the ~30-entry closed set) or by a CRDRef (any CRD, including ones outside
+// that catalog) — ManifestPanel/ResourceActions dispatch on which one they
+// were given via the three helpers below, so both worlds share one UI.
+export type ResourceRef = ManifestKind | CRDRef
+
+export function getManifestRef(ctx: string, ref: ResourceRef, namespace: string, name: string) {
+  return typeof ref === 'string' ? getManifest(ctx, ref, namespace, name) : crdManifest(ctx, ref, namespace, name)
+}
+
+export function applyManifestRef(ctx: string, ref: ResourceRef, namespace: string, name: string, yaml: string, opts?: { dryRun?: boolean }) {
+  return typeof ref === 'string' ? applyManifest(ctx, ref, namespace, name, yaml, opts) : crdApply(ctx, ref, namespace, name, yaml, opts)
+}
+
+export function deleteResourceRef(ctx: string, ref: ResourceRef, namespace: string, name: string) {
+  return typeof ref === 'string' ? deleteResource(ctx, ref, namespace, name) : crdDelete(ctx, ref, namespace, name)
 }
 
 /** Throws with the backend's {"error": "..."} message (falling back to the status line) when a response isn't ok. */

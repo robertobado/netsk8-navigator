@@ -4,7 +4,7 @@ import type { editor as MonacoEditor } from 'monaco-editor'
 import { AlertTriangle, Check, Copy, Loader2, Lock, RotateCcw, Save } from 'lucide-react'
 import '@/lib/monaco'
 import { ensureNetsk8Theme, NETSK8_THEME } from '@/lib/monacoTheme'
-import { applyManifest, getManifest, type ManifestKind } from '@/lib/api'
+import { applyManifestRef, getManifestRef, type ResourceRef } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { checkYamlSyntax, type YamlSyntaxError } from '@/lib/yaml'
 import { useYamlMarkers } from '@/lib/useYamlMarkers'
@@ -115,7 +115,7 @@ export function ManifestPanel({
   editable,
 }: {
   ctx: string
-  kind: ManifestKind
+  kind: ResourceRef
   namespace: string
   name: string
   editable: boolean
@@ -158,7 +158,7 @@ export function ManifestPanel({
     setState('loading')
     setConfirming(false)
     setApplied(false)
-    getManifest(ctx, kind, namespace, name)
+    getManifestRef(ctx, kind, namespace, name)
       .then((yaml) => {
         if (cancelled) return
         original.current = yaml
@@ -181,7 +181,7 @@ export function ManifestPanel({
     setPreviewing(true)
     setError('')
     try {
-      const result = await applyManifest(ctx, kind, namespace, name, value, { dryRun: true })
+      const result = await applyManifestRef(ctx, kind, namespace, name, value, { dryRun: true })
       setPreviewYaml(result ?? value)
       setConfirming(true)
     } catch (e) {
@@ -195,7 +195,7 @@ export function ManifestPanel({
     setApplying(true)
     setError('')
     try {
-      await applyManifest(ctx, kind, namespace, name, value)
+      await applyManifestRef(ctx, kind, namespace, name, value)
       original.current = value
       setApplied(true)
       setConfirming(false)

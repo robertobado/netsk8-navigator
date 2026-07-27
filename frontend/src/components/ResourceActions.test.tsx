@@ -19,7 +19,7 @@ const { deleteResourceMock, scaleResourceMock, restartRolloutMock, cordonNodeMoc
 }))
 
 vi.mock('@/lib/api', () => ({
-  deleteResource: deleteResourceMock,
+  deleteResourceRef: deleteResourceMock,
   scaleResource: scaleResourceMock,
   restartRollout: restartRolloutMock,
   cordonNode: cordonNodeMock,
@@ -165,5 +165,33 @@ describe('ResourceActions', () => {
 
     expect(await screen.findByText('Cordon')).toBeInTheDocument()
     expect(cordonNodeMock).not.toHaveBeenCalled()
+  })
+
+  // A CRDRef (arbitrary CRD instance) isn't a catalog ManifestKind, so none of
+  // the typed-kind-only actions apply — only Delete makes sense generically.
+  describe('with a CRDRef kind (generic CRD instance)', () => {
+    const rk = { group: 'example.com', version: 'v1', resource: 'widgets' }
+
+    it('shows only Delete, no Scale/Restart/Cordon/History', () => {
+      renderWithClient(<ResourceActions ctx="c" kind={rk} namespace="prod" name="w1" editable={true} />)
+      expect(screen.getByText('Delete')).toBeInTheDocument()
+      expect(screen.queryByText('Scale')).not.toBeInTheDocument()
+      expect(screen.queryByText('Restart rollout')).not.toBeInTheDocument()
+      expect(screen.queryByText('Cordon')).not.toBeInTheDocument()
+      expect(screen.queryByText('History')).not.toBeInTheDocument()
+    })
+
+    it('deletes via deleteResourceRef, not the catalog deleteResource path', async () => {
+      const user = userEvent.setup()
+      const onDeleted = vi.fn()
+      renderWithClient(<ResourceActions ctx="c" kind={rk} namespace="prod" name="w1" editable={true} onDeleted={onDeleted} />)
+
+      await user.click(screen.getByText('Delete'))
+      await user.type(screen.getByPlaceholderText('w1'), 'w1')
+      await user.click(screen.getByText('Confirm'))
+
+      expect(deleteResourceMock).toHaveBeenCalledWith('c', rk, 'prod', 'w1')
+      await waitFor(() => expect(onDeleted).toHaveBeenCalled())
+    })
   })
 })

@@ -3,9 +3,14 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 )
 
 func TestValueSummary(t *testing.T) {
@@ -325,6 +330,209 @@ func TestHandleCRDDetail(t *testing.T) {
 	}
 	if out.Name != "web" || len(out.Hosts) != 1 {
 		t.Errorf("got %+v", out)
+	}
+}
+
+func TestStorageVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []apiextensionsv1.CustomResourceDefinitionVersion
+		want string
+	}{
+		{"storage version wins", []apiextensionsv1.CustomResourceDefinitionVersion{
+			{Name: "v1alpha1", Served: true, Storage: false},
+			{Name: "v1", Served: true, Storage: true},
+		}, "v1"},
+		{"falls back to served when nothing is marked storage", []apiextensionsv1.CustomResourceDefinitionVersion{
+			{Name: "v1beta1", Served: true, Storage: false},
+		}, "v1beta1"},
+		{"no versions at all", nil, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := storageVersion(c.in); got != c.want {
+				t.Errorf("storageVersion(%+v) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestHandleCRDKinds(t *testing.T) {
+	namespaced := apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "widgets.example.com"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "example.com", Scope: apiextensionsv1.NamespaceScoped,
+			Names:    apiextensionsv1.CustomResourceDefinitionNames{Kind: "Widget", Plural: "widgets"},
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{Name: "v1", Served: true, Storage: true}},
+		},
+	}
+	clusterScoped := apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "usages.kwok.x-k8s.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "kwok.x-k8s.io", Scope: apiextensionsv1.ClusterScoped,
+			Names:    apiextensionsv1.CustomResourceDefinitionNames{Kind: "ClusterResourceUsage", Plural: "clusterresourceusages"},
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{Name: "v1alpha1", Served: true, Storage: true}},
+		},
+	}
+	// AcceptedNames (post-admission) should win over Spec.Names when set.
+	acceptedNamesDiffer := apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "gadgets.acme.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "acme.io", Scope: apiextensionsv1.NamespaceScoped,
+			Names:    apiextensionsv1.CustomResourceDefinitionNames{Kind: "GadgetOld", Plural: "gadgetolds"},
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{Name: "v1", Served: true, Storage: true}},
+		},
+		Status: apiextensionsv1.CustomResourceDefinitionStatus{
+			AcceptedNames: apiextensionsv1.CustomResourceDefinitionNames{Kind: "Gadget", Plural: "gadgets"},
+		},
+	}
+
+	s := newTestServerWithCRDs(t, []apiextensionsv1.CustomResourceDefinition{namespaced, clusterScoped, acceptedNamesDiffer})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/crdkinds", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []crdKind
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 3 {
+		t.Fatalf("got %d kinds, want 3: %+v", len(out), out)
+	}
+	// Sorted by group then kind: acme.io/Gadget, example.com/Widget, kwok.x-k8s.io/ClusterResourceUsage.
+	if out[0].Group != "acme.io" || out[0].Kind != "Gadget" || out[0].Resource != "gadgets" {
+		t.Errorf("out[0] = %+v, want the acme.io Gadget (via AcceptedNames)", out[0])
+	}
+	if out[1].Group != "example.com" || !out[1].Namespaced {
+		t.Errorf("out[1] = %+v, want namespaced example.com/Widget", out[1])
+	}
+	if out[2].Group != "kwok.x-k8s.io" || out[2].Namespaced {
+		t.Errorf("out[2] = %+v, want cluster-scoped kwok.x-k8s.io/ClusterResourceUsage", out[2])
+	}
+}
+
+func TestHandleCRDKinds_SkipsCRDWithNoServedVersion(t *testing.T) {
+	dead := apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "deads.example.com"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "example.com", Scope: apiextensionsv1.NamespaceScoped,
+			Names: apiextensionsv1.CustomResourceDefinitionNames{Kind: "Dead", Plural: "deads"},
+		},
+	}
+	s := newTestServerWithCRDs(t, []apiextensionsv1.CustomResourceDefinition{dead})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/crdkinds", "")
+	var out []crdKind
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("got %+v, want none — no served version to browse", out)
+	}
+}
+
+func TestHandleCRDApply(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+		"spec":     map[string]any{"color": "blue"},
+	}})
+	body := `{"yaml":"apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  color: red\n"}`
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec2 := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "")
+	var out map[string]string
+	if err := json.Unmarshal(rec2.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out["yaml"], "color: red") {
+		t.Errorf("apply should have persisted, got:\n%s", out["yaml"])
+	}
+}
+
+func TestHandleCRDApply_ClusterScoped(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "kwok.x-k8s.io/v1alpha1", "kind": "ClusterResourceUsage",
+		"metadata": map[string]any{"name": "usage-from-annotation"},
+	}})
+	body := `{"yaml":"apiVersion: kwok.x-k8s.io/v1alpha1\nkind: ClusterResourceUsage\nmetadata:\n  name: usage-from-annotation\n  labels:\n    updated: \"true\"\n"}`
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/kwok.x-k8s.io/v1alpha1/clusterresourceusages/-/usage-from-annotation", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// The fake dynamic client's tracker doesn't understand DryRun (it persists
+// unconditionally) — same gap TestHandleApplyManifest_DryRunDoesNotPersist
+// works around, here for the generic CRD path.
+func TestHandleCRDApply_DryRunDoesNotPersist(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+		"spec":     map[string]any{"color": "blue"},
+	}})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("update", "widgets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		ua, ok := action.(ktesting.UpdateActionImpl)
+		if !ok || len(ua.GetUpdateOptions().DryRun) == 0 {
+			return false, nil, nil
+		}
+		return true, ua.GetObject(), nil
+	})
+
+	body := `{"yaml":"apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  color: red\n"}`
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1?dryRun=true", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out["yaml"], "color: red") {
+		t.Errorf("dry-run response should preview the requested change, got:\n%s", out["yaml"])
+	}
+
+	rec2 := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "")
+	var manifest map[string]string
+	if err := json.Unmarshal(rec2.Body.Bytes(), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(manifest["yaml"], "color: blue") {
+		t.Errorf("dry-run must not persist — live object should still be blue, got:\n%s", manifest["yaml"])
+	}
+}
+
+func TestHandleCRDDelete(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+	}})
+	rec := doRequest(t, s, "DELETE", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec2 := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets?namespace=prod", "")
+	var out []crdItem
+	if err := json.Unmarshal(rec2.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("after delete, got %d widgets, want 0", len(out))
+	}
+}
+
+func TestHandleCRDDelete_ClusterScoped(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "kwok.x-k8s.io/v1alpha1", "kind": "ClusterResourceUsage",
+		"metadata": map[string]any{"name": "usage-from-annotation"},
+	}})
+	rec := doRequest(t, s, "DELETE", "/api/contexts/test/crd/kwok.x-k8s.io/v1alpha1/clusterresourceusages/-/usage-from-annotation", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
 }
 

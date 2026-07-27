@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
-import type { ManifestKind } from '@/lib/api'
+import type { ResourceRef } from '@/lib/api'
 import { useT } from '@/lib/i18n'
 
 // Monaco is heavy (~3 MB), so the manifest editor is code-split and loaded on
@@ -10,7 +10,7 @@ const ManifestPanel = lazy(() => import('./ManifestPanel').then((m) => ({ defaul
 
 interface Props {
   ctx: string
-  kind: ManifestKind
+  kind: ResourceRef
   namespace: string
   name: string
   editable: boolean

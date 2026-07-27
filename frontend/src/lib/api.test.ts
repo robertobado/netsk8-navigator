@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   applyManifest,
+  applyManifestRef,
   blankManifestYAML,
   cordonNode,
   createResource,
+  crdApply,
+  crdDelete,
   deleteResource,
+  deleteResourceRef,
+  getManifestRef,
   listPortForwards,
   restartRollout,
   rolloutHistory,
@@ -12,6 +17,7 @@ import {
   scaleResource,
   startPortForward,
   stopPortForward,
+  type CRDRef,
 } from './api'
 
 function mockFetch(ok: boolean, body?: unknown, status = 200, statusText = 'OK') {
@@ -102,6 +108,80 @@ describe('applyManifest', () => {
       body: JSON.stringify({ yaml: 'yaml-here' }),
     })
     expect(result).toBe('previewed-yaml')
+  })
+})
+
+describe('crdApply', () => {
+  const rk: CRDRef = { group: 'example.com', version: 'v1', resource: 'widgets' }
+
+  it('does a plain PUT with no query string by default', async () => {
+    const fetchMock = mockFetch(true)
+    const result = await crdApply('my-ctx', rk, 'prod', 'w1', 'yaml-here')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/prod/w1', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'yaml-here' }),
+    })
+    expect(result).toBeUndefined()
+  })
+
+  it('uses "-" as the namespace segment for cluster-scoped resources', async () => {
+    const fetchMock = mockFetch(true)
+    await crdApply('my-ctx', { group: 'kwok.x-k8s.io', version: 'v1alpha1', resource: 'clusterresourceusages' }, '', 'usage-1', 'yaml-here')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/contexts/my-ctx/crd/kwok.x-k8s.io/v1alpha1/clusterresourceusages/-/usage-1',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+  })
+
+  it('adds ?dryRun=true and returns the previewed yaml when requested', async () => {
+    const fetchMock = mockFetch(true, { yaml: 'previewed-yaml' })
+    const result = await crdApply('my-ctx', rk, 'prod', 'w1', 'yaml-here', { dryRun: true })
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/prod/w1?dryRun=true', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: 'yaml-here' }),
+    })
+    expect(result).toBe('previewed-yaml')
+  })
+})
+
+describe('crdDelete', () => {
+  it('sends a DELETE to the generic crd endpoint', async () => {
+    const fetchMock = mockFetch(true)
+    await crdDelete('my-ctx', { group: 'example.com', version: 'v1', resource: 'widgets' }, 'prod', 'w1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/prod/w1', { method: 'DELETE' })
+  })
+})
+
+describe('ResourceRef dispatch helpers', () => {
+  const rk: CRDRef = { group: 'example.com', version: 'v1', resource: 'widgets' }
+
+  it('getManifestRef: a string kind hits the manifest endpoint, a CRDRef hits the generic crd endpoint', async () => {
+    const fetchMock = mockFetch(true, { yaml: 'y' })
+    await getManifestRef('my-ctx', 'deployment', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/manifest/deployment/prod/web')
+
+    await getManifestRef('my-ctx', rk, 'prod', 'w1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/prod/w1/manifest')
+  })
+
+  it('applyManifestRef dispatches the same way', async () => {
+    const fetchMock = mockFetch(true)
+    await applyManifestRef('my-ctx', 'deployment', 'prod', 'web', 'yaml')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/manifest/deployment/prod/web', expect.objectContaining({ method: 'PUT' }))
+
+    await applyManifestRef('my-ctx', rk, 'prod', 'w1', 'yaml')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/prod/w1', expect.objectContaining({ method: 'PUT' }))
+  })
+
+  it('deleteResourceRef dispatches the same way', async () => {
+    const fetchMock = mockFetch(true)
+    await deleteResourceRef('my-ctx', 'deployment', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/manifest/deployment/prod/web', { method: 'DELETE' })
+
+    await deleteResourceRef('my-ctx', rk, 'prod', 'w1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/prod/w1', { method: 'DELETE' })
   })
 })
 

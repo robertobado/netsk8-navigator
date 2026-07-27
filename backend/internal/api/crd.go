@@ -1,11 +1,14 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -88,6 +91,68 @@ func (s *Server) handleRouteKinds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+type crdKind struct {
+	Group      string `json:"group"`
+	Version    string `json:"version"`
+	Resource   string `json:"resource"`
+	Kind       string `json:"kind"`
+	Namespaced bool   `json:"namespaced"`
+	Label      string `json:"label"`
+}
+
+// handleCRDKinds: GET /api/contexts/{ctx}/crdkinds
+// Every CustomResourceDefinition the cluster has registered — no allowlist,
+// unlike handleRouteKinds (which stays as the curated "Network" subset this
+// complements). Overlap between the two is harmless.
+func (s *Server) handleCRDKinds(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := reqCtx(r)
+	defer cancel()
+
+	crds, err := s.mgr.CRDsFor(ctx, r.PathValue("ctx"))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	out := make([]crdKind, 0, len(crds))
+	for _, c := range crds {
+		version := storageVersion(c.Spec.Versions)
+		if version == "" {
+			continue // no served version — nothing to browse
+		}
+		names := c.Status.AcceptedNames // more authoritative than Spec.Names post-admission
+		if names.Kind == "" {
+			names = c.Spec.Names
+		}
+		out = append(out, crdKind{
+			Group: c.Spec.Group, Version: version, Resource: names.Plural,
+			Kind: names.Kind, Namespaced: c.Spec.Scope == apiextensionsv1.NamespaceScoped,
+			Label: names.Kind,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Group != out[j].Group {
+			return out[i].Group < out[j].Group
+		}
+		return out[i].Kind < out[j].Kind
+	})
+	writeJSON(w, http.StatusOK, out)
+}
+
+// storageVersion picks the version CRD instances are actually stored/read as.
+func storageVersion(versions []apiextensionsv1.CustomResourceDefinitionVersion) string {
+	for _, v := range versions {
+		if v.Storage {
+			return v.Name
+		}
+	}
+	for _, v := range versions {
+		if v.Served { // defensive fallback — a well-formed CRD always has a storage version
+			return v.Name
+		}
+	}
+	return ""
+}
+
 type crdItem struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
@@ -159,6 +224,91 @@ func (s *Server) handleCRDManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"yaml": string(y)})
+}
+
+// handleCRDApply: PUT /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}
+// Mirrors handleApplyManifest, but addresses the resource by GVR straight from
+// the URL (like handleCRDManifest) instead of a manifest slug — this is what
+// makes arbitrary/unmapped CRDs editable, not just the catalog/route ones.
+func (s *Server) handleCRDApply(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var payload struct {
+		YAML string `json:"yaml"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	dyn, err := s.dynFor(r.PathValue("ctx"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	jsonBytes, err := yaml.YAMLToJSON([]byte(payload.YAML))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	obj := &unstructured.Unstructured{}
+	if err := obj.UnmarshalJSON(jsonBytes); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	ctx, cancel := reqCtx(r)
+	defer cancel()
+	gvr := schema.GroupVersionResource{Group: r.PathValue("group"), Version: r.PathValue("version"), Resource: r.PathValue("resource")}
+	ns := r.PathValue("namespace")
+	if ns == "-" {
+		ns = ""
+	}
+
+	dryRun := r.URL.Query().Get("dryRun") == "true"
+	opts := metav1.UpdateOptions{}
+	if dryRun {
+		opts.DryRun = []string{metav1.DryRunAll}
+	} else {
+		audit(r, "crd-apply", "resource", gvr.String(), "namespace", ns, "name", r.PathValue("name"))
+	}
+	updated, err := dyn.Resource(gvr).Namespace(ns).Update(ctx, obj, opts)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	if dryRun {
+		writeDryRunYAML(w, updated)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "applied"})
+}
+
+// handleCRDDelete: DELETE /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}
+// Mirrors handleDeleteResource, same GVR-from-URL approach as handleCRDApply.
+func (s *Server) handleCRDDelete(w http.ResponseWriter, r *http.Request) {
+	dyn, err := s.dynFor(r.PathValue("ctx"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	ctx, cancel := reqCtx(r)
+	defer cancel()
+
+	gvr := schema.GroupVersionResource{Group: r.PathValue("group"), Version: r.PathValue("version"), Resource: r.PathValue("resource")}
+	ns := r.PathValue("namespace")
+	if ns == "-" {
+		ns = ""
+	}
+	audit(r, "crd-delete", "resource", gvr.String(), "namespace", ns, "name", r.PathValue("name"))
+	if err := dyn.Resource(gvr).Namespace(ns).Delete(ctx, r.PathValue("name"), metav1.DeleteOptions{}); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // handleCRDDetail: GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/detail

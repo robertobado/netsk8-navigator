@@ -7,8 +7,9 @@ import { cn, shortContext } from '@/lib/utils'
 import { ContextSwitcher } from '@/components/ContextSwitcher'
 import { NamespaceSelect } from '@/components/NamespaceSelect'
 import { ResourceNav } from '@/components/ResourceNav'
-import { crdView, type View } from '@/lib/nav'
+import { crdKindView, crdView, type View } from '@/lib/nav'
 import { CustomResourceView } from '@/components/CustomResourceView'
+import { CRDKindView } from '@/components/CRDKindView'
 import { StatCard } from '@/components/StatCard'
 import { PodsTable } from '@/components/PodsTable'
 import { PodDrawer } from '@/components/PodDrawer'
@@ -140,8 +141,21 @@ function AppMain() {
   const routes = routesQ.data ?? []
   // The route CRD selected by the current view, if any (#crd:group/ver/res).
   const activeRoute = view.startsWith('crd:') ? routes.find((r) => crdView(r) === view) : undefined
+
+  // Every CRD the cluster serves (no allowlist) — the generic browser this
+  // complements the curated "Network" route-CRD subset above.
+  const crdKindsQ = useQuery({
+    queryKey: ['crdkinds', ctx],
+    queryFn: () => api.crdKinds(ctx!),
+    enabled: !!ctx,
+    staleTime: 5 * 60_000,
+    refetchInterval: false,
+  })
+  const crdKinds = crdKindsQ.data ?? []
+  const activeCRDKind = view.startsWith('crdkind:') ? crdKinds.find((k) => crdKindView(k) === view) : undefined
+
   const resDef = resourceByKey(view)
-  const viewTitle = activeRoute?.label ?? resDef?.label ?? viewTitles(t)[view as View] ?? t('Resource')
+  const viewTitle = activeRoute?.label ?? activeCRDKind?.label ?? resDef?.label ?? viewTitles(t)[view as View] ?? t('Resource')
 
   return (
     <>
@@ -173,7 +187,7 @@ function AppMain() {
           {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={setNs} />}
 
           <div className="min-h-0 flex-1 overflow-y-auto pt-1">
-            <ResourceNav active={view} onSelect={setView} routes={routes} />
+            <ResourceNav active={view} onSelect={setView} routes={routes} crdKinds={crdKinds} />
           </div>
 
           <MetricsControls />
@@ -233,6 +247,7 @@ function AppMain() {
             {view === 'helm' && ctx && <HelmView ctx={ctx} ns={ns} />}
             {ctx && resDef && <ResourceView key={resDef.key} def={resDef} ctx={ctx} ns={ns} />}
             {ctx && activeRoute && <CustomResourceView key={view} ctx={ctx} ns={ns} rk={activeRoute} />}
+            {ctx && activeCRDKind && <CRDKindView key={view} ctx={ctx} ns={ns} rk={activeCRDKind} />}
           </div>
         </main>
 

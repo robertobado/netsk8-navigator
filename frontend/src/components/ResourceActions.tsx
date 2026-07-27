@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Ban, Check, CheckCircle2, History, Loader2, RefreshCw, Scaling, Trash2 } from 'lucide-react'
 import {
   cordonNode,
-  deleteResource,
+  deleteResourceRef,
   getDetail,
   restartRollout,
   scaleResource,
@@ -11,6 +11,7 @@ import {
   RESTARTABLE_KINDS,
   SCALABLE_KINDS,
   type ManifestKind,
+  type ResourceRef,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -25,9 +26,17 @@ interface ActionProps {
 
 // Mutating action bar for a resource drawer: scale (deployments/statefulsets/
 // replicasets), restart rollout (deployments/statefulsets/daemonsets), and
-// delete (any kind). Renders nothing when the drawer isn't editable — the
-// same gate ManifestPanel uses for read-only drill-downs.
-export function ResourceActions({ ctx, kind, namespace, name, editable, onDeleted }: Readonly<ActionProps & { editable: boolean; onDeleted?: () => void }>) {
+// delete (any kind, including generic CRD instances addressed by a CRDRef).
+// Renders nothing when the drawer isn't editable — the same gate ManifestPanel
+// uses for read-only drill-downs.
+export function ResourceActions({
+  ctx,
+  kind,
+  namespace,
+  name,
+  editable,
+  onDeleted,
+}: Readonly<{ ctx: string; kind: ResourceRef; namespace: string; name: string; editable: boolean; onDeleted?: () => void }>) {
   const qc = useQueryClient()
   if (!editable) return null
 
@@ -41,10 +50,12 @@ export function ResourceActions({ ctx, kind, namespace, name, editable, onDelete
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b px-5 py-2.5">
-      {SCALABLE_KINDS.has(kind) && <ScaleAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
-      {RESTARTABLE_KINDS.has(kind) && <RestartAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
-      {kind === 'node' && <CordonAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
-      {HISTORY_KINDS.has(kind) && <HistoryAction ctx={ctx} kind={kind} namespace={namespace} name={name} />}
+      {typeof kind === 'string' && SCALABLE_KINDS.has(kind) && <ScaleAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
+      {typeof kind === 'string' && RESTARTABLE_KINDS.has(kind) && (
+        <RestartAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />
+      )}
+      {typeof kind === 'string' && kind === 'node' && <CordonAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
+      {typeof kind === 'string' && HISTORY_KINDS.has(kind) && <HistoryAction ctx={ctx} kind={kind} namespace={namespace} name={name} />}
       <DeleteAction
         ctx={ctx}
         kind={kind}
@@ -59,7 +70,13 @@ export function ResourceActions({ ctx, kind, namespace, name, editable, onDelete
   )
 }
 
-function DeleteAction({ ctx, kind, namespace, name, onDeleted }: Readonly<ActionProps & { onDeleted: () => void }>) {
+function DeleteAction({
+  ctx,
+  kind,
+  namespace,
+  name,
+  onDeleted,
+}: Readonly<{ ctx: string; kind: ResourceRef; namespace: string; name: string; onDeleted: () => void }>) {
   const t = useT()
   const [confirming, setConfirming] = useState(false)
   const [input, setInput] = useState('')
@@ -76,7 +93,7 @@ function DeleteAction({ ctx, kind, namespace, name, onDeleted }: Readonly<Action
     setBusy(true)
     setError('')
     try {
-      await deleteResource(ctx, kind, namespace, name)
+      await deleteResourceRef(ctx, kind, namespace, name)
       onDeleted()
     } catch (e) {
       setError((e as Error).message)

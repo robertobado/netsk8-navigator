@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createColumnHelper } from '@tanstack/react-table'
+import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from './DataTable'
 
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string) => key }))
@@ -11,7 +11,7 @@ interface Row {
   status: string
 }
 const col = createColumnHelper<Row>()
-const columns = [col.accessor('name', { header: 'Name' }), col.accessor('status', { header: 'Status' })]
+const columns = [col.accessor('name', { header: 'Name' }), col.accessor('status', { header: 'Status' })] as ColumnDef<Row, unknown>[]
 const data: Row[] = [
   { name: 'web-1', status: 'Running' },
   { name: 'web-2', status: 'Pending' },

@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -33,11 +34,12 @@ type Manager struct {
 	mu          sync.RWMutex
 	rawConfig   clientcmdapi.Config
 	configPath  string
-	clients     map[string]*kubernetes.Clientset
-	restConfigs map[string]*rest.Config
-	dynamics    map[string]dynamic.Interface
-	mappers     map[string]meta.RESTMapper
-	watchers    map[string]*PodWatcher
+	clients       map[string]*kubernetes.Clientset
+	restConfigs   map[string]*rest.Config
+	dynamics      map[string]dynamic.Interface
+	mappers       map[string]meta.RESTMapper
+	watchers      map[string]*PodWatcher
+	apiextClients map[string]apiextensionsclientset.Interface
 }
 
 // ContextInfo is a UI-friendly view of a single kubeconfig context.
@@ -66,12 +68,13 @@ func NewManager() (*Manager, error) {
 		return nil, fmt.Errorf("loading kubeconfig from %s: %w", rules.ExplicitPath, err)
 	case err == nil && len(raw.Contexts) > 0:
 		return &Manager{
-			rawConfig:   *raw,
-			configPath:  rules.GetDefaultFilename(),
-			clients:     make(map[string]*kubernetes.Clientset),
-			restConfigs: make(map[string]*rest.Config),
-			dynamics:    make(map[string]dynamic.Interface),
-			mappers:     make(map[string]meta.RESTMapper),
+			rawConfig:     *raw,
+			configPath:    rules.GetDefaultFilename(),
+			clients:       make(map[string]*kubernetes.Clientset),
+			restConfigs:   make(map[string]*rest.Config),
+			dynamics:      make(map[string]dynamic.Interface),
+			mappers:       make(map[string]meta.RESTMapper),
+			apiextClients: make(map[string]apiextensionsclientset.Interface),
 		}, nil
 	}
 
@@ -110,11 +113,12 @@ func newInClusterManager(cfg *rest.Config) (*Manager, error) {
 				inClusterContext: {Server: cfg.Host},
 			},
 		},
-		configPath:  "in-cluster (service account)",
-		clients:     map[string]*kubernetes.Clientset{inClusterContext: clientset},
-		restConfigs: map[string]*rest.Config{inClusterContext: cfg},
-		dynamics:    make(map[string]dynamic.Interface),
-		mappers:     make(map[string]meta.RESTMapper),
+		configPath:    "in-cluster (service account)",
+		clients:       map[string]*kubernetes.Clientset{inClusterContext: clientset},
+		restConfigs:   map[string]*rest.Config{inClusterContext: cfg},
+		dynamics:      make(map[string]dynamic.Interface),
+		mappers:       make(map[string]meta.RESTMapper),
+		apiextClients: make(map[string]apiextensionsclientset.Interface),
 	}, nil
 }
 

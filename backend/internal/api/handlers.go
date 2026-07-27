@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -34,6 +35,7 @@ type clusterManager interface {
 	DynamicFor(contextName string) (dynamic.Interface, error)
 	ResolveResource(contextName, resource string) (kube.Resource, error)
 	ResolveGVK(contextName string, gvk schema.GroupVersionKind) (kube.Resource, error)
+	CRDsFor(ctx context.Context, contextName string) ([]apiextensionsv1.CustomResourceDefinition, error)
 	RESTConfigFor(contextName string) (*rest.Config, error)
 	RESTMapperFor(contextName string) (apimeta.RESTMapper, error)
 	PodWatcherFor(contextName string) (*kube.PodWatcher, error)
@@ -124,7 +126,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/contexts/{ctx}/overview", s.handleOverview)
 	mux.HandleFunc("GET /api/contexts/{ctx}/issues", s.handleIssues)
 	mux.HandleFunc("GET /api/contexts/{ctx}/routekinds", s.handleRouteKinds)
+	mux.HandleFunc("GET /api/contexts/{ctx}/crdkinds", s.handleCRDKinds)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}", s.handleCRDList)
+	mux.HandleFunc("PUT /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}", s.handleCRDApply)
+	mux.HandleFunc("DELETE /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}", s.handleCRDDelete)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/manifest", s.handleCRDManifest)
 	mux.HandleFunc("GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/detail", s.handleCRDDetail)
 	mux.HandleFunc("GET /api/contexts/{ctx}/helm/releases", s.handleHelmReleases)
