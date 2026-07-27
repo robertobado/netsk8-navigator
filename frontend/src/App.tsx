@@ -249,7 +249,11 @@ function AppMain() {
       </div>
       {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}
       {updateQ.data?.available && (
-        <FloatingBubble key={updateQ.data.latest} message={`${t('update.available')}${updateQ.data.latest}`} href={updateQ.data.url ?? 'https://github.com/robertobado/netsk8-navigator/releases/latest'} />
+        <FloatingBubble
+          key={updateQ.data.latest}
+          message={`${t('update.available')}${updateQ.data.latest}`}
+          href={updateQ.data.url ?? 'https://github.com/robertobado/netsk8-navigator/releases/latest'}
+        />
       )}
     </>
   )
