@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 )
 
 type demoDeployment struct {
@@ -135,23 +136,32 @@ func seedWorkloads(ctx context.Context, client kubernetes.Interface) error {
 }
 
 // bindPVC completes a static PV/PVC bind by hand: sets the PVC's
-// spec.volumeName and patches status.phase to Bound. A no-op if already bound.
+// spec.volumeName and patches status.phase to Bound. A no-op if already
+// bound. Kwok's cluster runs a real kube-controller-manager, which also
+// races to reconcile the same claimRef-based bind on its own — so this
+// retries on a resourceVersion conflict instead of failing outright,
+// re-checking "already bound" fresh each attempt.
 func bindPVC(ctx context.Context, client kubernetes.Interface, namespace, pvcName, volumeName string) error {
-	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("getting pvc %s/%s to bind: %w", namespace, pvcName, err)
-	}
-	if pvc.Spec.VolumeName != volumeName {
-		pvc.Spec.VolumeName = volumeName
-		if pvc, err = client.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, pvc, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("binding pvc %s/%s to volume %s: %w", namespace, pvcName, volumeName, err)
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvcName, metav1.GetOptions{})
+		if err != nil {
+			return err
 		}
-	}
-	if pvc.Status.Phase != corev1.ClaimBound {
+		if pvc.Spec.VolumeName != volumeName {
+			pvc.Spec.VolumeName = volumeName
+			if pvc, err = client.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, pvc, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+		if pvc.Status.Phase == corev1.ClaimBound {
+			return nil
+		}
 		pvc.Status.Phase = corev1.ClaimBound
-		if _, err := client.CoreV1().PersistentVolumeClaims(namespace).UpdateStatus(ctx, pvc, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("marking pvc %s/%s bound: %w", namespace, pvcName, err)
-		}
+		_, err = client.CoreV1().PersistentVolumeClaims(namespace).UpdateStatus(ctx, pvc, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("binding pvc %s/%s to volume %s: %w", namespace, pvcName, volumeName, err)
 	}
 	return nil
 }
