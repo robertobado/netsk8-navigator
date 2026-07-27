@@ -483,8 +483,7 @@ export const api = {
   issues: (ctx: string) => get<Issues>(`/contexts/${enc(ctx)}/issues`),
   routeKinds: (ctx: string) => get<RouteKind[]>(`/contexts/${enc(ctx)}/routekinds`),
   crdKinds: (ctx: string) => get<CRDKind[]>(`/contexts/${enc(ctx)}/crdkinds`),
-  crdList: (ctx: string, rk: CRDRef, ns?: string) =>
-    get<CRDItem[]>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}${nsQuery(ns)}`),
+  crdList: (ctx: string, rk: CRDRef, ns?: string) => get<CRDItem[]>(`/contexts/${enc(ctx)}/crd/${rk.group}/${rk.version}/${rk.resource}${nsQuery(ns)}`),
   podsUsage: (ctx: string, ns?: string) => get<PodsUsage>(`/contexts/${enc(ctx)}/podusage${nsQuery(ns)}`),
   nodesUsage: (ctx: string) => get<NodesUsage>(`/contexts/${enc(ctx)}/nodeusage`),
   deploymentsUsage: (ctx: string, ns?: string) => get<PodsUsage>(`/contexts/${enc(ctx)}/deploymentusage${nsQuery(ns)}`),

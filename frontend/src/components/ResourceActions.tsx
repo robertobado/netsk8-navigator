@@ -51,9 +51,7 @@ export function ResourceActions({
   return (
     <div className="flex flex-wrap items-center gap-3 border-b px-5 py-2.5">
       {typeof kind === 'string' && SCALABLE_KINDS.has(kind) && <ScaleAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
-      {typeof kind === 'string' && RESTARTABLE_KINDS.has(kind) && (
-        <RestartAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />
-      )}
+      {typeof kind === 'string' && RESTARTABLE_KINDS.has(kind) && <RestartAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
       {typeof kind === 'string' && kind === 'node' && <CordonAction ctx={ctx} kind={kind} namespace={namespace} name={name} onDone={invalidate} />}
       {typeof kind === 'string' && HISTORY_KINDS.has(kind) && <HistoryAction ctx={ctx} kind={kind} namespace={namespace} name={name} />}
       <DeleteAction

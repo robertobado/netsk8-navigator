@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -31,9 +31,9 @@ const inClusterContext = "in-cluster"
 // the typed clientset it holds a dynamic client and a discovery-backed RESTMapper,
 // which let the API layer work with any resource — core, CRDs, any served version.
 type Manager struct {
-	mu          sync.RWMutex
-	rawConfig   clientcmdapi.Config
-	configPath  string
+	mu            sync.RWMutex
+	rawConfig     clientcmdapi.Config
+	configPath    string
 	clients       map[string]*kubernetes.Clientset
 	restConfigs   map[string]*rest.Config
 	dynamics      map[string]dynamic.Interface
