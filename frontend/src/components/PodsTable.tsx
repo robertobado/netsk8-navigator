@@ -69,7 +69,7 @@ const TERM_PROBLEM_REASONS = /(kill|prestop|delete|terminat|graceful|unmount|det
 //  (a) the pod has a Warning event about the termination itself, or
 //  (b) it has finalizers and has been Terminating > 5min.
 // The bubble shows whichever detail drove the warning. Otherwise: a grey ellipsis.
-function TerminatingStatus({
+export function TerminatingStatus({
   ctx,
   namespace,
   name,
@@ -89,9 +89,10 @@ function TerminatingStatus({
   })
 
   const sinceMs = deletedAt ? new Date(deletedAt).getTime() : 0
-  const problemEvents = (eventsQ.data ?? []).filter(
-    (e) => e.type === 'Warning' && (TERM_PROBLEM_REASONS.test(e.reason) || (sinceMs > 0 && new Date(e.last).getTime() >= sinceMs - 5_000)),
-  )
+  // Reason match only — a Warning event merely overlapping the termination
+  // window in time (e.g. a recurring FailedToRetrieveImagePullSecret from
+  // an unrelated container) isn't itself evidence of a termination problem.
+  const problemEvents = (eventsQ.data ?? []).filter((e) => e.type === 'Warning' && TERM_PROBLEM_REASONS.test(e.reason))
   const elapsedMs = deletedAt ? Date.now() - sinceMs : 0
   const stuckFinalizers = problemEvents.length === 0 && finalizers.length > 0 && elapsedMs > 5 * 60_000
   const warn = problemEvents.length > 0 || stuckFinalizers
