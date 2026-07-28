@@ -30,6 +30,13 @@ import (
 type kv struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+	// Chips, Grid, and Code are populated only for generic CRD fields whose
+	// value can't be shown as a single scalar (see fieldRow in crd.go) — a
+	// simple array renders as Chips, an object with only simple fields as a
+	// nested Grid, anything nested deeper as a read-only Code (YAML) block.
+	Chips []string `json:"chips,omitempty"`
+	Grid  []kv     `json:"grid,omitempty"`
+	Code  string   `json:"code,omitempty"`
 }
 type chip struct {
 	Label string `json:"label"`

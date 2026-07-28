@@ -277,6 +277,75 @@ func TestGenericSpecSection(t *testing.T) {
 	})
 }
 
+func TestFieldRow(t *testing.T) {
+	t.Run("scalar stays flat", func(t *testing.T) {
+		got := fieldRow("statusCode", int64(503))
+		if got.Value != "503" || len(got.Grid) != 0 || got.Code != "" || len(got.Chips) != 0 {
+			t.Errorf("got %+v", got)
+		}
+	})
+
+	t.Run("simple array becomes chips", func(t *testing.T) {
+		got := fieldRow("dnsNames", []any{"example.com", "www.example.com"})
+		if len(got.Chips) != 2 || got.Chips[0] != "example.com" || got.Value != "" {
+			t.Errorf("got %+v", got)
+		}
+	})
+
+	t.Run("object with only simple fields becomes a grid", func(t *testing.T) {
+		got := fieldRow("privateKey", map[string]any{"algorithm": "ECDSA", "size": int64(256)})
+		if len(got.Grid) != 2 || got.Code != "" || got.Value != "" {
+			t.Fatalf("got %+v", got)
+		}
+		// Sorted alphabetically: algorithm before size.
+		if got.Grid[0].Label != "algorithm" || got.Grid[0].Value != "ECDSA" {
+			t.Errorf("grid[0] = %+v", got.Grid[0])
+		}
+	})
+
+	t.Run("object nested one level deeper falls back to YAML code", func(t *testing.T) {
+		// Reproduces the reported bug: directResponse: {statusCode, body: {inline}}.
+		got := fieldRow("directResponse", map[string]any{
+			"statusCode": int64(503),
+			"body":       map[string]any{"inline": "unavailable"},
+		})
+		if got.Code == "" || len(got.Grid) != 0 || got.Value != "" {
+			t.Fatalf("got %+v, want a YAML code fallback", got)
+		}
+		if !strings.Contains(got.Code, "statusCode") || !strings.Contains(got.Code, "inline") {
+			t.Errorf("code = %q, want it to contain the nested fields", got.Code)
+		}
+	})
+
+	t.Run("array of objects falls back to YAML code", func(t *testing.T) {
+		got := fieldRow("rules", []any{map[string]any{"path": "/api"}})
+		if got.Code == "" || len(got.Grid) != 0 || len(got.Chips) != 0 {
+			t.Fatalf("got %+v, want a YAML code fallback", got)
+		}
+	})
+
+	t.Run("empty object and empty array render as placeholders, not empty grid/chips", func(t *testing.T) {
+		if got := fieldRow("empty", map[string]any{}); got.Value != "{}" || got.Grid != nil {
+			t.Errorf("empty object: got %+v", got)
+		}
+		if got := fieldRow("empty", []any{}); got.Value != "[]" || got.Chips != nil {
+			t.Errorf("empty array: got %+v", got)
+		}
+	})
+}
+
+func TestAllSimple(t *testing.T) {
+	if !allSimple(map[string]any{"a": "x", "b": []any{"y", "z"}}) {
+		t.Error("scalars + simple array should be allSimple")
+	}
+	if allSimple(map[string]any{"a": map[string]any{"b": "c"}}) {
+		t.Error("nested object should not be allSimple")
+	}
+	if allSimple(map[string]any{"a": []any{map[string]any{"b": "c"}}}) {
+		t.Error("array of objects should not be allSimple")
+	}
+}
+
 func TestHandleCRDList(t *testing.T) {
 	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "gateway.networking.k8s.io/v1", "kind": "HTTPRoute",

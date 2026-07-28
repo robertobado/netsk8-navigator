@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Eye, EyeOff, ExternalLink, Loader2, Plug } from 'lucide-react'
-import { api, getDetail, kindToSlug, type DetailChip, type ManifestKind, type Pod, type ResourceDetail } from '@/lib/api'
+import { api, getDetail, kindToSlug, type DetailChip, type DetailKV, type ManifestKind, type Pod, type ResourceDetail } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 import { MetricsSection } from './MetricsSection'
@@ -215,14 +215,11 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
       <div className="grid gap-3 sm:grid-cols-2">
         {sections.map((s) => (
           <Card key={s.title} title={t(s.title)}>
-            <dl className="space-y-1.5">
+            <div className="space-y-1.5">
               {s.items.map((it) => (
-                <div key={it.label} className="flex items-baseline justify-between gap-4">
-                  <dt className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{t(it.label)}</dt>
-                  <dd className="min-w-0 flex-1 break-words text-right text-sm">{it.value || '—'}</dd>
-                </div>
+                <KVRow key={it.label} item={it} />
               ))}
-            </dl>
+            </div>
           </Card>
         ))}
       </div>
@@ -430,6 +427,58 @@ function Card({ title, children }: Readonly<{ title: string; children: React.Rea
 
 function Chip({ text }: Readonly<{ text: string }>) {
   return <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">{text}</span>
+}
+
+// One section field: a flat label/value row, a simple array as chips, a
+// nested mini-grid (object whose own fields are all simple), or a read-only
+// YAML code block for anything nested deeper — see DetailKV in lib/api.ts.
+function KVRow({ item }: Readonly<{ item: DetailKV }>) {
+  const t = useT()
+
+  if (item.grid && item.grid.length > 0) {
+    return (
+      <div className="py-0.5">
+        <div className="mb-1 text-xs font-medium">{t(item.label)}</div>
+        <div className="space-y-1 rounded-lg border bg-background/40 p-2.5">
+          {item.grid.map((g) => (
+            <KVRow key={g.label} item={g} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (item.code) {
+    return (
+      <div className="py-0.5">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-xs font-medium">{t(item.label)}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">yaml</span>
+        </div>
+        <pre className="overflow-x-auto rounded-lg border bg-background/60 p-2.5 font-mono text-xs leading-relaxed text-foreground/90">{item.code}</pre>
+      </div>
+    )
+  }
+
+  if (item.chips && item.chips.length > 0) {
+    return (
+      <div className="flex items-baseline justify-between gap-4 py-0.5">
+        <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{t(item.label)}</span>
+        <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-1">
+          {item.chips.map((c) => (
+            <Chip key={c} text={c} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-0.5">
+      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{t(item.label)}</span>
+      <span className="min-w-0 flex-1 break-words text-right text-sm">{item.value || '—'}</span>
+    </div>
+  )
 }
 
 function ConditionPill({ chip }: Readonly<{ chip: DetailChip }>) {

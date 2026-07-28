@@ -659,6 +659,13 @@ export function blankManifestYAML(kind: ManifestKind, namespace: string, cluster
 export interface DetailKV {
   label: string
   value: string
+  // Populated only for generic CRD fields the backend can't show as a single
+  // scalar: a simple array becomes chips, an object with only simple fields
+  // becomes a nested grid, anything nested deeper becomes a read-only YAML
+  // code block — see fieldRow in backend/internal/api/crd.go.
+  chips?: string[]
+  grid?: DetailKV[]
+  code?: string
 }
 export interface DetailChip {
   label: string

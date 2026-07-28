@@ -431,24 +431,113 @@ func gatewayAddresses(obj map[string]any) []string {
 	return av
 }
 
-// genericSpecSection lists top-level spec fields as a readable overview.
+// genericSpecSection lists top-level spec fields as a readable overview, with
+// no prior knowledge of the CRD's schema. Scalars and simple arrays render
+// flat; an object whose own fields are all simple gets a nested mini-grid;
+// anything nested deeper (nested objects, arrays of objects) falls back to a
+// read-only YAML block — so nothing ever collapses into a bare "{N fields}"
+// or "N items" placeholder with no way to see what's inside.
 func genericSpecSection(d *resourceDetail, obj map[string]any) {
 	spec, ok, _ := unstructured.NestedMap(obj, "spec")
 	if !ok {
 		return
 	}
-	keys := make([]string, 0, len(spec))
-	for k := range spec {
+	if items := fieldRows(spec); len(items) > 0 {
+		d.Sections = append(d.Sections, section{Title: "Spec", Items: items})
+	}
+}
+
+// fieldRows builds one row per key of m, sorted alphabetically.
+func fieldRows(m map[string]any) []kv {
+	keys := make([]string, 0, len(m))
+	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	items := []kv{}
+	items := make([]kv, 0, len(keys))
 	for _, k := range keys {
-		items = append(items, kv{Label: k, Value: valueSummary(spec[k])})
+		items = append(items, fieldRow(k, m[k]))
 	}
-	if len(items) > 0 {
-		d.Sections = append(d.Sections, section{Title: "Spec", Items: items})
+	return items
+}
+
+// fieldRow classifies a single field's value: a scalar/simple-array stays a
+// flat row; an object whose own fields are all simple becomes a nested
+// mini-grid; anything nested deeper falls back to a YAML code block.
+func fieldRow(label string, v any) kv {
+	switch t := v.(type) {
+	case map[string]any:
+		if len(t) == 0 {
+			return kv{Label: label, Value: "{}"}
+		}
+		if allSimple(t) {
+			return kv{Label: label, Grid: fieldRows(t)}
+		}
+		return kv{Label: label, Code: toYAML(t)}
+	case []any:
+		if len(t) == 0 {
+			return kv{Label: label, Value: "[]"}
+		}
+		if isSimpleArray(t) {
+			return kv{Label: label, Chips: chipsOf(t)}
+		}
+		return kv{Label: label, Code: toYAML(t)}
+	default:
+		return kv{Label: label, Value: valueSummary(v)}
 	}
+}
+
+// isScalar reports whether v is a leaf JSON value (string/bool/number/nil).
+func isScalar(v any) bool {
+	switch v.(type) {
+	case nil, string, bool, int64, float64:
+		return true
+	default:
+		return false
+	}
+}
+
+func isSimpleArray(v []any) bool {
+	for _, e := range v {
+		if !isScalar(e) {
+			return false
+		}
+	}
+	return true
+}
+
+// allSimple reports whether every value in m is itself simple (a scalar or a
+// simple array) — i.e. m is safe to render as a flat mini-grid with no
+// further nesting.
+func allSimple(m map[string]any) bool {
+	for _, v := range m {
+		switch t := v.(type) {
+		case map[string]any:
+			return false
+		case []any:
+			if !isSimpleArray(t) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func chipsOf(v []any) []string {
+	chips := make([]string, 0, len(v))
+	for _, e := range v {
+		chips = append(chips, valueSummary(e))
+	}
+	return chips
+}
+
+// toYAML renders v as compact, read-only YAML for display in the UI.
+func toYAML(v any) string {
+	b, err := yaml.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return strings.TrimRight(string(b), "\n")
 }
 
 func crdConditions(d *resourceDetail, obj map[string]any) {
