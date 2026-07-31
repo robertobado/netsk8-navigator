@@ -25,7 +25,7 @@ const BLUE = 0x326ce5
 const OPTIONS: Record<VantaEffect, Record<string, unknown>> = {
   net: { color: TEAL, backgroundColor: BG, points: 11, maxDistance: 22, spacing: 16, showDots: true },
   globe: { color: TEAL, color2: BLUE, backgroundColor: BG, size: 1.1 },
-  waves: { color: 0x123047, backgroundColor: BG, shininess: 35, waveHeight: 14, waveSpeed: 0.75, zoom: 0.92 },
+  waves: { color: BLUE, backgroundColor: BG, shininess: 35, waveHeight: 14, waveSpeed: 0.75, zoom: 0.92 },
   rings: { color: TEAL, backgroundColor: BG },
   halo: { baseColor: 0x11314d, backgroundColor: BG, amplitudeFactor: 1.4, size: 1.4 },
   fog: { baseColor: BG, highlightColor: TEAL, midtoneColor: BLUE, lowlightColor: 0x081019, blurFactor: 0.6, speed: 1.2, zoom: 0.8 },
