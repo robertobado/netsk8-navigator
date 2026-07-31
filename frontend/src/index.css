@@ -54,6 +54,59 @@
   --err: oklch(0.65 0.2 25);
   /* Brand teal, sampled from the logo emblem (~#35bec0). */
   --brand: oklch(0.75 0.1 195);
+  --ambient-1: oklch(0.68 0.17 265 / 0.14);
+  --ambient-2: oklch(0.72 0.16 195 / 0.1);
+}
+
+/* Light theme — same hue anchors as dark (primary 265, brand teal 195, ok/warn/err
+   155/75/25), lifted/desaturated for a white ground instead of inverted blindly.
+   Applies when explicitly selected (`data-theme="light"`) or, in "auto" mode (no
+   `data-theme` override at all), whenever the OS/browser prefers light. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --background: oklch(0.985 0.004 265);
+    --foreground: oklch(0.24 0.02 265);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.24 0.02 265);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.24 0.02 265);
+    --primary: oklch(0.52 0.19 265);
+    --primary-foreground: oklch(0.98 0.006 265);
+    --muted: oklch(0.94 0.008 265);
+    --muted-foreground: oklch(0.46 0.02 265);
+    --accent: oklch(0.92 0.016 265);
+    --accent-foreground: oklch(0.24 0.02 265);
+    --border: oklch(0.88 0.012 265);
+    --ring: oklch(0.52 0.19 265);
+    --ok: oklch(0.5 0.15 155);
+    --warn: oklch(0.58 0.15 75);
+    --err: oklch(0.55 0.21 25);
+    --brand: oklch(0.5 0.1 195);
+    --ambient-1: oklch(0.68 0.17 265 / 0.07);
+    --ambient-2: oklch(0.72 0.16 195 / 0.05);
+  }
+}
+:root[data-theme='light'] {
+  --background: oklch(0.985 0.004 265);
+  --foreground: oklch(0.24 0.02 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.02 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.02 265);
+  --primary: oklch(0.52 0.19 265);
+  --primary-foreground: oklch(0.98 0.006 265);
+  --muted: oklch(0.94 0.008 265);
+  --muted-foreground: oklch(0.46 0.02 265);
+  --accent: oklch(0.92 0.016 265);
+  --accent-foreground: oklch(0.24 0.02 265);
+  --border: oklch(0.88 0.012 265);
+  --ring: oklch(0.52 0.19 265);
+  --ok: oklch(0.5 0.15 155);
+  --warn: oklch(0.58 0.15 75);
+  --err: oklch(0.55 0.21 25);
+  --brand: oklch(0.5 0.1 195);
+  --ambient-1: oklch(0.68 0.17 265 / 0.07);
+  --ambient-2: oklch(0.72 0.16 195 / 0.05);
 }
 
 * {
@@ -81,8 +134,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 15% -10%, oklch(0.68 0.17 265 / 0.14), transparent 60%),
-    radial-gradient(50rem 40rem at 100% 0%, oklch(0.72 0.16 195 / 0.1), transparent 55%);
+    radial-gradient(60rem 40rem at 15% -10%, var(--ambient-1), transparent 60%), radial-gradient(50rem 40rem at 100% 0%, var(--ambient-2), transparent 55%);
   z-index: 0;
 }
 

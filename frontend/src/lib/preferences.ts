@@ -4,16 +4,38 @@ import { useSyncExternalStore } from 'react'
 // mirrored to the backend (`/api/preferences`) so they persist across browsers
 // and survive as the app moves toward native builds. Per-widget ephemeral state
 // (e.g. table sort order) stays in its own localStorage keys.
+export type ThemeMode = 'light' | 'dark' | 'auto'
+const THEME_MODES: readonly ThemeMode[] = ['light', 'dark', 'auto']
+
+/** Ordered for display: the toggle renders one button per entry, in this order. */
+export const THEME_MODE_OPTIONS: ReadonlyArray<{ mode: ThemeMode; labelKey: string }> = [
+  { mode: 'light', labelKey: 'theme.light' },
+  { mode: 'dark', labelKey: 'theme.dark' },
+  { mode: 'auto', labelKey: 'theme.auto' },
+]
+
 export interface AppPreferences {
   language: string // 'pt-BR' (future: 'en', …)
   metricsRefreshMs: number // 0 = off
   background: { enabled: boolean; effect: string; opacity: number }
+  theme: ThemeMode // 'auto' follows the OS/browser color-scheme preference
 }
 
 const DEFAULTS: AppPreferences = {
   language: 'pt-BR',
   metricsRefreshMs: 15_000,
   background: { enabled: false, effect: 'net', opacity: 0.6 },
+  theme: 'dark', // the app predates light mode — keep existing users on dark by default
+}
+
+// Reflects the theme choice onto <html data-theme> so index.css can key off
+// it: 'light'/'dark' force that palette; 'auto' clears the attribute so the
+// `@media (prefers-color-scheme)` rules (which only apply with no override)
+// take over and track OS changes live with no JS listener needed.
+function applyTheme(theme: ThemeMode) {
+  if (typeof document === 'undefined') return
+  if (theme === 'auto') delete document.documentElement.dataset.theme
+  else document.documentElement.dataset.theme = theme
 }
 
 const LS_KEY = 'netsk8.prefs'
@@ -28,6 +50,7 @@ function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
   const out: Partial<AppPreferences> = {}
   if (typeof r.language === 'string') out.language = r.language
   if (typeof r.metricsRefreshMs === 'number') out.metricsRefreshMs = r.metricsRefreshMs
+  if (typeof r.theme === 'string' && (THEME_MODES as string[]).includes(r.theme)) out.theme = r.theme as ThemeMode
   if (typeof r.background === 'object' && r.background !== null) {
     const b = r.background as Record<string, unknown>
     out.background = {
@@ -50,9 +73,11 @@ function load(): AppPreferences {
 }
 
 let state: AppPreferences = load()
+applyTheme(state.theme)
 const listeners = new Set<() => void>()
 
 function emit() {
+  applyTheme(state.theme)
   for (const l of listeners) l()
 }
 function persist() {

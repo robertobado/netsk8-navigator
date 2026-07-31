@@ -20,6 +20,25 @@ describe('setAppPrefs / useAppPrefs', () => {
       expect(JSON.parse(localStorage.getItem('netsk8.prefs')!).language).toBe('en')
     })
   })
+
+  it("defaults to the dark theme (pre-existing users keep today's look)", () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
+    return import('./preferences').then(({ useAppPrefs }) => {
+      const { result } = renderHook(() => useAppPrefs())
+      expect(result.current.theme).toBe('dark')
+    })
+  })
+
+  it('reflects an explicit theme onto <html data-theme>, and clears it for "auto"', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
+    return import('./preferences').then(({ setAppPrefs }) => {
+      act(() => setAppPrefs({ theme: 'light' }))
+      expect(document.documentElement.dataset.theme).toBe('light')
+
+      act(() => setAppPrefs({ theme: 'auto' }))
+      expect(document.documentElement.dataset.theme).toBeUndefined()
+    })
+  })
 })
 
 describe('hydrateAppPrefs', () => {
@@ -42,6 +61,7 @@ describe('hydrateAppPrefs', () => {
           metricsRefreshMs: 'not-a-number',
           evilField: '<script>alert(1)</script>',
           background: { enabled: 'yes', effect: 42, opacity: 'high' },
+          theme: 'purple',
         }),
       }),
     )
@@ -53,6 +73,7 @@ describe('hydrateAppPrefs', () => {
     expect(result.current.language).toBe('pt-BR')
     expect(result.current.metricsRefreshMs).toBe(15_000)
     expect(result.current.background).toEqual({ enabled: false, effect: 'net', opacity: 0.6 })
+    expect(result.current.theme).toBe('dark') // "purple" isn't a real mode — falls back to the default
     expect((result.current as unknown as Record<string, unknown>).evilField).toBeUndefined()
   })
 

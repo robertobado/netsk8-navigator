@@ -39,6 +39,10 @@ const pt: Dict = {
   'controls.metrics': 'Métricas',
   'controls.background': 'Fundo animado',
   'controls.language': 'Idioma',
+  'controls.theme': 'Tema',
+  'theme.light': 'Claro',
+  'theme.dark': 'Escuro',
+  'theme.auto': 'Automático',
 
   // --- generic / shared ---
   'Loading...': 'Carregando...',
@@ -395,6 +399,10 @@ const en: Dict = {
   'controls.metrics': 'Metrics',
   'controls.background': 'Animated background',
   'controls.language': 'Language',
+  'controls.theme': 'Theme',
+  'theme.light': 'Light',
+  'theme.dark': 'Dark',
+  'theme.auto': 'Auto',
 }
 
 const DICTS: Record<string, Dict> = { 'pt-BR': pt, en }

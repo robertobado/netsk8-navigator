@@ -28,6 +28,7 @@ import { VantaControls } from '@/components/VantaControls'
 import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
 import { LanguageToggle } from '@/components/LanguageToggle'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { useT, type TFunc } from '@/lib/i18n'
 import { IssueCarousel } from '@/components/IssueCarousel'
 import type { IssueItem, Pod } from '@/lib/api'
@@ -192,6 +193,7 @@ function AppMain() {
 
           <MetricsControls />
           <VantaControls {...vanta} />
+          <ThemeToggle />
           <LanguageToggle />
         </aside>
 
