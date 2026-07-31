@@ -79,7 +79,9 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
                   <span className="block truncate font-medium">{shortContext(c.name)}</span>
                   <span className="block truncate text-xs text-muted-foreground">{c.name}</span>
                 </span>
-                {c.current && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{t('current')}</span>}
+                {c.name === selected && (
+                  <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{t('current')}</span>
+                )}
               </button>
             ))}
           </div>
