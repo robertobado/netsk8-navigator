@@ -251,6 +251,211 @@ jobs:
         if: always()
         run: security delete-keychain "$KEYCHAIN_PATH" || true
 
+  linux-app:
+    name: Build native app (Wails, Linux ${{ matrix.arch }})
+    needs: binaries
+    # Same source build as macos-app, plus the GTK/WebKitGTK headers Wails'
+    # Linux backend links against. Native per-arch runners (no QEMU) — the
+    # arm64 one is free for public repos, same reasoning as docker-build.
+    # Unsigned: no installer/signing infra for Linux in this pass, same as
+    # the raw CLI binaries the `binaries` job already ships unsigned.
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install GTK/WebKitGTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend (embedded into the desktop app)
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Compute version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      # Same rationale as macos-app: `wails build` runs the compiled binary
+      # once to introspect bound Go methods, which needs a kubeconfig to
+      # parse (not a live cluster) or it fails with log.Fatalf.
+      - name: Stub kubeconfig for Wails' bindings-generation step
+        run: |
+          stub="$RUNNER_TEMP/ci-stub-kubeconfig.yaml"
+          {
+            echo "apiVersion: v1"
+            echo "kind: Config"
+            echo "clusters:"
+            echo "- cluster:"
+            echo "    server: https://127.0.0.1:6443"
+            echo "  name: ci-stub"
+            echo "contexts:"
+            echo "- context:"
+            echo "    cluster: ci-stub"
+            echo "    user: ci-stub"
+            echo "  name: ci-stub"
+            echo "current-context: ci-stub"
+            echo "users:"
+            echo "- name: ci-stub"
+            echo "  user: {}"
+          } > "$stub"
+          echo "KUBECONFIG=$stub" >> "$GITHUB_ENV"
+
+      - name: Build the binary
+        working-directory: backend/cmd/desktop
+        run: |
+          "$(go env GOPATH)/bin/wails" build -clean -platform linux/${{ matrix.arch }} \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }}"
+
+      - name: Package the binary
+        id: package
+        run: |
+          ARCHIVE="netsk8-navigator_${{ steps.version.outputs.version }}_linux_${{ matrix.arch }}_gui.tar.gz"
+          tar -czf "$ARCHIVE" -C backend/cmd/desktop/build/bin netsk8-navigator
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to the release
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "${{ steps.package.outputs.archive }}" \
+            --repo "${{ github.repository }}" --clobber
+
+  windows-app:
+    name: Build native app (Wails, Windows ${{ matrix.arch }})
+    needs: binaries
+    # windows-latest is amd64-only (GitHub has no hosted windows-arm64
+    # runner), so windows/arm64 is a cross-compile from it — Wails' Windows
+    # backend (WebView2) doesn't need a C toolchain the way Linux's
+    # WebKitGTK does, so this is expected to work the same as any other Go
+    # cross-compile; flagged here in case it needs a follow-up fix, same as
+    # the kubeconfig-stub one macos-app needed on its first real run.
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend (embedded into the desktop app)
+        working-directory: frontend
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the Wails CLI
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      - name: Stub kubeconfig for Wails' bindings-generation step
+        shell: bash
+        run: |
+          stub="$RUNNER_TEMP/ci-stub-kubeconfig.yaml"
+          {
+            echo "apiVersion: v1"
+            echo "kind: Config"
+            echo "clusters:"
+            echo "- cluster:"
+            echo "    server: https://127.0.0.1:6443"
+            echo "  name: ci-stub"
+            echo "contexts:"
+            echo "- context:"
+            echo "    cluster: ci-stub"
+            echo "    user: ci-stub"
+            echo "  name: ci-stub"
+            echo "current-context: ci-stub"
+            echo "users:"
+            echo "- name: ci-stub"
+            echo "  user: {}"
+          } > "$stub"
+          echo "KUBECONFIG=$stub" >> "$GITHUB_ENV"
+
+      - name: Build the binary
+        working-directory: backend/cmd/desktop
+        shell: bash
+        run: |
+          "$(go env GOPATH)/bin/wails" build -clean -platform windows/${{ matrix.arch }} \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }}"
+
+      - name: Package the binary
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $arch = "${{ matrix.arch }}"
+          $archive = "netsk8-navigator_${version}_windows_${arch}_gui.zip"
+          Compress-Archive -Path "backend/cmd/desktop/build/bin/netsk8-navigator.exe" -DestinationPath $archive
+          echo "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Upload to the release
+        shell: bash
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "${{ steps.package.outputs.archive }}" \
+            --repo "${{ github.repository }}" --clobber
+
   deploy-demo:
     name: Redeploy the public demo (netsk8.io)
     needs: binaries
