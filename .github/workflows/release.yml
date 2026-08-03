@@ -261,6 +261,35 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
+      - name: Stub kubeconfig for Wails' bindings-generation step
+        if: steps.gate.outputs.enabled == 'true'
+        # `wails build` runs the compiled binary once to introspect bound Go
+        # methods via reflection, which executes main() -> buildMux() ->
+        # kube.NewManager(). That call only needs a kubeconfig to parse, not
+        # a live cluster, but the runner has no kubeconfig at all, so it
+        # fails with log.Fatalf and aborts the whole build. A syntactically
+        # valid stub (never connected to) is enough to get past this step.
+        run: |
+          stub="$RUNNER_TEMP/ci-stub-kubeconfig.yaml"
+          {
+            echo "apiVersion: v1"
+            echo "kind: Config"
+            echo "clusters:"
+            echo "- cluster:"
+            echo "    server: https://127.0.0.1:6443"
+            echo "  name: ci-stub"
+            echo "contexts:"
+            echo "- context:"
+            echo "    cluster: ci-stub"
+            echo "    user: ci-stub"
+            echo "  name: ci-stub"
+            echo "current-context: ci-stub"
+            echo "users:"
+            echo "- name: ci-stub"
+            echo "  user: {}"
+          } > "$stub"
+          echo "KUBECONFIG=$stub" >> "$GITHUB_ENV"
+
       - name: Build the .app (universal binary)
         id: build
         if: steps.gate.outputs.enabled == 'true'
