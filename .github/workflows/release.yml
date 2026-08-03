@@ -447,7 +447,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Save digest as an artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.name }}-${{ matrix.platform }}
           path: /tmp/digests/*
