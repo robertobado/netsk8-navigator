@@ -3,6 +3,13 @@ import type { VantaEffect } from '@/lib/vanta'
 
 // Vanta.js animated background. Effects load lazily (three.js + the chosen effect
 // bundle) only once enabled, so the extra weight is paid for only when used.
+//
+// three is pinned below r152 (see package.json) deliberately: r152+ changed
+// WebGLRenderer's default lighting/color-management pipeline, which silently
+// breaks vanta 0.5.x's bundled shaders (no error, no thrown exception — the
+// scene/camera/renderer all construct fine and render() keeps getting called
+// every frame, it just paints nothing perceptible). Confirmed by bisecting:
+// pinning three to 0.150.1 restores the effect with zero other code changes.
 
 // Importing a Vanta effect registers its factory on window.VANTA[NAME] (the UMD's
 // side effect) — more reliable across bundler interop than the module's default export.
