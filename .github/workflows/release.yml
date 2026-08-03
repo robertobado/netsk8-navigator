@@ -279,16 +279,16 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         env:
           DEMO_DEPLOY_SSH_KEY: ${{ secrets.DEMO_DEPLOY_SSH_KEY }}
+          DEMO_DEPLOY_HOST: ${{ secrets.DEMO_DEPLOY_HOST }}
         run: |
           install -d -m 700 ~/.ssh
           echo "$DEMO_DEPLOY_SSH_KEY" > ~/.ssh/demo_deploy_key
           chmod 600 ~/.ssh/demo_deploy_key
-          # Pinned host key for the demo VPS (public info, safe to commit —
-          # see `ssh-keyscan -p 4201 51.15.184.22`).
-          cat >> ~/.ssh/known_hosts <<'EOF'
-          [51.15.184.22]:4201 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgG3d1q/dXqPW5C1BEe5BYXylNzEnWdZU4rmi7mwQWq
-          EOF
-          ssh -p 4201 -i ~/.ssh/demo_deploy_key root@51.15.184.22 "${{ steps.version.outputs.version }}"
+          # Pinned host key for the demo VPS (the key itself is public info,
+          # safe to commit — see `ssh-keyscan -p 4201 $DEMO_DEPLOY_HOST` —
+          # but the host is a secret so it does not leak in workflow logs).
+          echo "[$DEMO_DEPLOY_HOST]:4201 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgG3d1q/dXqPW5C1BEe5BYXylNzEnWdZU4rmi7mwQWq" >> ~/.ssh/known_hosts
+          ssh -p 4201 -i ~/.ssh/demo_deploy_key "root@$DEMO_DEPLOY_HOST" "${{ steps.version.outputs.version }}"
 
   docker-build:
     name: Build Docker image (${{ matrix.name }}, ${{ matrix.platform }})
