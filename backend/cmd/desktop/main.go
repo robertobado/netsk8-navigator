@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -68,8 +69,15 @@ func startServer(mux http.Handler) string {
 		log.Fatalf("failed to start local server: %v", err)
 	}
 	addr := ln.Addr().String()
+	// ReadHeaderTimeout guards against slow-header attacks; Read/WriteTimeout are
+	// deliberately left unset (0 = no limit) — mirrors backend/main.go, since
+	// logs/exec/watch are long-lived SSE and WebSocket streams.
+	httpSrv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
-		if err := http.Serve(ln, mux); err != nil {
+		if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("local server stopped: %v", err)
 		}
 	}()
