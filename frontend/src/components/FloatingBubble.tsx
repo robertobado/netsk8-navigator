@@ -12,7 +12,11 @@ const MAX_SPEED = 0.035 // px/ms — a gentle drift, not a cross-screen dash
 const TURN_RATE = 0.0012 // rad/ms — max random heading change per tick
 
 function rand(min: number, max: number) {
-  return min + Math.random() * (max - min)
+  // Non-cryptographic: only used for cosmetic balloon movement, never for
+  // anything security-sensitive. NOSONAR suppresses the generic
+  // Math.random()-is-insecure rule (typescript:S2245), which otherwise
+  // flags every PRNG use regardless of context.
+  return min + Math.random() * (max - min) // NOSONAR
 }
 
 // A random point outside the viewport, on a random side — where the balloon
