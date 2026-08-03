@@ -142,7 +142,7 @@ func bootstrapRedirect(url string) http.Handler {
 }
 
 func main() {
-	log.Printf("netsk8-navigator-desktop %s", version)
+	log.Printf("netsk8-navigator %s", version)
 	fixPathForGUILaunch()
 	addr := startServer(buildMux())
 	url := fmt.Sprintf("http://%s/", addr)

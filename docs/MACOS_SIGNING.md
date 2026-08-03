@@ -82,25 +82,24 @@ o ticket online normalmente e libera sem aviso algum.
 Os binários crus assinados/notarizados acima funcionam bem via Terminal, mas
 **não podem receber "staple"** do ticket de notarização (isso só existe para
 `.app`/`.pkg`/`.dmg`) — então dar duplo-clique neles no Finder ainda pode
-disparar o aviso do Gatekeeper. Pra resolver isso de vez, o job
-`macos-app-bundle` (`.github/workflows/release.yml`, roda em `macos-latest`
-— grátis pra repositórios públicos) empacota os binários darwin num `.app`
-de verdade:
+disparar o aviso do Gatekeeper. Pra resolver isso de vez, o job `macos-app`
+(`.github/workflows/release.yml`, roda em `macos-latest` — grátis pra
+repositórios públicos) constrói `Netsk8 Navigator.app` a partir do código-fonte
+via [Wails](https://wails.io) (`backend/cmd/desktop/`) — uma janela nativa
+real em vez de um shell script abrindo Terminal + navegador:
 
-1. Funde os binários amd64+arm64 num binário universal (`lipo`).
-2. Monta `Netsk8 Navigator.app` via `packaging/macos/build-app.sh` — ícone
-   gerado a partir do `logo.png` da raiz (`sips`+`iconutil`, nativos do
-   macOS), `Info.plist`, e um launcher (`packaging/macos/launcher.sh`) que
-   abre uma janela do Terminal com os logs + o navegador na UI.
-3. Assina o bundle inteiro com `codesign` de verdade (não o `quill` usado
+1. `wails build -platform darwin/universal` compila `backend/cmd/desktop`
+   direto para um binário universal (amd64+arm64) já embutindo a SPA (mesmo
+   `go:embed` do CLI) — sem precisar fundir binários com `lipo` à parte.
+2. Assina o bundle inteiro com `codesign` de verdade (não o `quill` usado
    acima — `quill` só assina binários soltos, não sabe gerar o selo de
    bundle `_CodeSignature/CodeResources` que cobre `Info.plist`+
    `Resources/`, e esse selo só o `codesign` real sabe gerar, daí precisar
    de um runner macOS pra esse job específico).
-4. Notariza (`notarytool submit --wait`) e dá staple (`stapler staple`) no
+3. Notariza (`notarytool submit --wait`) e dá staple (`stapler staple`) no
    `.app` — com o ticket staplado, o Gatekeeper valida offline, sem
    depender de internet no Mac do usuário.
-5. Empacota num `.dmg` (`packaging/macos/make-dmg.sh` — `.app` + atalho pra
+4. Empacota num `.dmg` (`packaging/macos/make-dmg.sh` — `.app` + atalho pra
    `/Applications`) e anexa à mesma release do GitHub.
 
 **Reaproveita os mesmos 5 secrets** já configurados acima — nenhum secret
@@ -110,19 +109,20 @@ Pra reproduzir localmente (útil pra debugar sem esperar o CI), com a
 identidade já instalada no seu Keychain:
 
 ```bash
-./packaging/macos/build-app.sh \
-  /caminho/pro/netsk8-navigator \
-  0.0.2-teste \
-  ./dist-app \
-  "Developer ID Application: Seu Nome (TEUTEUTEUTE)"
+cd backend/cmd/desktop
+wails build -platform darwin/universal -ldflags "-X main.version=0.0.2-teste"
 
-ditto -c -k --keepParent "./dist-app/Netsk8 Navigator.app" ./dist-app/app.zip
-xcrun notarytool submit ./dist-app/app.zip \
+IDENTITY="Developer ID Application: Seu Nome (TEUTEUTEUTE)"
+codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" \
+  "build/bin/Netsk8 Navigator.app"
+
+ditto -c -k --keepParent "build/bin/Netsk8 Navigator.app" ./app.zip
+xcrun notarytool submit ./app.zip \
   --key AuthKey_XXXXXXXXXX.p8 --key-id SEU_KEY_ID --issuer SEU_ISSUER_ID --wait
-xcrun stapler staple "./dist-app/Netsk8 Navigator.app"
+xcrun stapler staple "build/bin/Netsk8 Navigator.app"
 
-./packaging/macos/make-dmg.sh "./dist-app/Netsk8 Navigator.app" \
-  ./dist-app/netsk8-navigator.dmg "Netsk8 Navigator"
+../../../packaging/macos/make-dmg.sh "build/bin/Netsk8 Navigator.app" \
+  ./netsk8-navigator.dmg "Netsk8 Navigator"
 ```
 
 ## Rotação / expiração

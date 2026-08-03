@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "Netsk8 Navigator Desktop",
-  "outputfilename": "netsk8-navigator-desktop",
+  "name": "Netsk8 Navigator",
+  "outputfilename": "netsk8-navigator",
   "frontend:install": "",
   "frontend:build": "",
   "author": {

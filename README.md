@@ -129,12 +129,12 @@ sudo rpm -i netsk8-navigator_*_amd64.rpm    # Fedora, RHEL, ...
 ```
 
 **On macOS**, prefer the `.dmg` on the release page instead: it's a signed,
-notarized `.app` you can double-click, with its own icon — mount it, drag
-"Netsk8 Navigator" to Applications, and open it (it opens a Terminal window
-with the server logs and your browser to the UI; closing the Terminal quits
-it). The raw `darwin_*.tar.gz` binaries above remain notarized too (fine to
-run via Terminal), but a bare Unix binary can't have the notarization ticket
-"stapled" to it, so double-clicking it directly in Finder may still warn.
+notarized native app you can double-click, with its own icon and its own
+window — mount it, drag "Netsk8 Navigator" to Applications, and open it, no
+Terminal or browser tab involved. The raw `darwin_*.tar.gz` binaries above
+remain notarized too (fine to run via Terminal), but a bare Unix binary
+can't have the notarization ticket "stapled" to it, so double-clicking it
+directly in Finder may still warn.
 
 Prefer Docker, or building from source? Keep reading.
 

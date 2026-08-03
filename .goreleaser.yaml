@@ -70,10 +70,11 @@ checksum:
 # certificate, failing the whole release.
 #
 # For a proper double-click experience, the release workflow's separate
-# `macos-app-bundle` job (macos-latest, not goreleaser) wraps these binaries
-# into a signed+notarized+stapled .app/.dmg — quill only signs flat Mach-O
-# binaries, not bundles, so that job uses the real `codesign`/`notarytool`,
-# which only exist on macOS. See packaging/macos/ and docs/MACOS_SIGNING.md.
+# `macos-app` job (macos-latest, not goreleaser) builds and signs a real
+# native .app/.dmg via Wails — quill only signs flat Mach-O binaries, not
+# bundles, so that job uses the real `codesign`/`notarytool`, which only
+# exist on macOS. See backend/cmd/desktop/, packaging/macos/, and
+# docs/MACOS_SIGNING.md.
 notarize:
   macos:
     - enabled: '{{ ne .Env.MACOS_SIGN_P12 "" }}'

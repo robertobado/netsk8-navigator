@@ -2,8 +2,7 @@
 # Wraps a signed .app into a .dmg with a symlink to /Applications, so users
 # get the familiar "drag to Applications" install flow. No custom background
 # image or Finder icon layout — that requires driving Finder via AppleScript,
-# which (like Terminal automation, see launcher.sh) triggers a macOS
-# Automation permission prompt.
+# which triggers a macOS Automation permission prompt.
 #
 # Usage: make-dmg.sh <app-path> <output-dmg> <volume-name>
 set -euo pipefail
