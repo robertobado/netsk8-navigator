@@ -5,10 +5,16 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	goruntime "runtime"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -27,6 +33,45 @@ import (
 // same convention backend/main.go uses. No UI surface for it yet — just
 // parity with the CLI for support/debugging.
 var version = "dev"
+
+// fixPathForGUILaunch resolves the user's real login-shell PATH and adopts
+// it. An app launched from Finder/Dock/Spotlight (as opposed to a terminal)
+// inherits launchd's bare PATH (/usr/bin:/bin:/usr/sbin:/sbin), which does
+// not include Homebrew's /usr/local/bin or /opt/homebrew/bin. That breaks
+// any kubeconfig using an exec-based credential plugin (aws eks get-token,
+// aws-iam-authenticator, gke-gcloud-auth-plugin, ...), since client-go can't
+// find those binaries. A marker string guards the parse against any startup
+// noise a shell plugin (oh-my-zsh, direnv, ...) might print to stdout.
+func fixPathForGUILaunch() {
+	if goruntime.GOOS != "darwin" {
+		return
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	const marker = "__netsk8_path__"
+	out, err := exec.CommandContext(ctx, shell, "-ilc", "echo "+marker+"; echo -n \"$PATH\"").Output() //nolint:gosec // shell is the user's own $SHELL, not attacker input
+	if err != nil {
+		log.Printf("could not resolve login shell PATH (%v) - exec-credential kubeconfig plugins (aws, gke-gcloud-auth-plugin, ...) may not be found", err)
+		return
+	}
+	idx := bytes.LastIndex(out, []byte(marker))
+	if idx == -1 {
+		return
+	}
+	shellPath := strings.TrimSpace(string(out[idx+len(marker):]))
+	if shellPath == "" {
+		return
+	}
+	if err := os.Setenv("PATH", shellPath); err != nil {
+		log.Printf("could not set PATH: %v", err)
+		return
+	}
+	log.Printf("adopted login shell PATH: %s", shellPath)
+}
 
 // buildMux mirrors backend/main.go's buildMux/mustInit — duplicated rather
 // than imported, since the CLI's version lives in that binary's own
@@ -98,6 +143,7 @@ func bootstrapRedirect(url string) http.Handler {
 
 func main() {
 	log.Printf("netsk8-navigator-desktop %s", version)
+	fixPathForGUILaunch()
 	addr := startServer(buildMux())
 	url := fmt.Sprintf("http://%s/", addr)
 
