@@ -1,0 +1,10 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Netsk8 Navigator Desktop",
+  "outputfilename": "netsk8-navigator-desktop",
+  "frontend:install": "",
+  "frontend:build": "",
+  "author": {
+    "name": "Roberto Badô"
+  }
+}

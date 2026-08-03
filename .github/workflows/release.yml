@@ -199,6 +199,151 @@ jobs:
         if: always()
         run: security delete-keychain "$KEYCHAIN_PATH" || true
 
+  wails-desktop-app:
+    name: Build signed native app (Wails, macOS)
+    needs: binaries
+    # Unlike macos-app-bundle (which repackages the already-built raw
+    # binaries downloaded from the release), this is a source build —
+    # `wails build` compiles backend/cmd/desktop itself and embeds the SPA
+    # via the same internal/web go:embed the CLI uses, so it needs the
+    # frontend built first, same as the `binaries` job above.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Same "clean no-op until the 5 MACOS_* secrets exist" gate as
+      # macos-app-bundle — `secrets` isn't valid in a job-level `if:`.
+      - name: Check whether macOS signing is configured
+        id: gate
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+        run: echo "enabled=${MACOS_SIGN_P12:+true}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pnpm
+        if: steps.gate.outputs.enabled == 'true'
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend (embedded into the desktop app)
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Compute version
+        id: version
+        if: steps.gate.outputs.enabled == 'true'
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the Wails CLI
+        if: steps.gate.outputs.enabled == 'true'
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      - name: Build the .app (universal binary)
+        id: build
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: backend/cmd/desktop
+        run: |
+          "$(go env GOPATH)/bin/wails" build -clean -platform darwin/universal \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }}"
+          echo "app_path=backend/cmd/desktop/build/bin/Netsk8 Navigator Desktop.app" >> "$GITHUB_OUTPUT"
+
+      - name: Import signing certificate into a temporary keychain
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "$MACOS_SIGN_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 1200 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_SIGN_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          existing_keychains=()
+          while IFS= read -r kc; do
+            existing_keychains+=("$kc")
+          done < <(security list-keychains -d user | sed 's/^[[:space:]]*"//;s/"[[:space:]]*$//')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${existing_keychains[@]}"
+
+      # `wails build` self-signs ad-hoc (enough to run locally) — a real
+      # bundle-level seal from a Developer ID certificate is what Gatekeeper
+      # actually needs, same reason macos-app-bundle re-signs above.
+      - name: Sign the .app
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep 'Developer ID Application' | head -1 \
+            | sed -E 's/^[[:space:]]*[0-9]+\) [A-F0-9]+ "(.*)"$/\1/')
+          codesign --deep --force --options runtime --timestamp \
+            --sign "$IDENTITY" "${{ steps.build.outputs.app_path }}"
+
+      - name: Notarize + staple the .app
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          echo "$MACOS_NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+          ditto -c -k --keepParent "${{ steps.build.outputs.app_path }}" "$RUNNER_TEMP/app-submit.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/app-submit.zip" \
+            --key "$RUNNER_TEMP/notary-key.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" \
+            --issuer "$MACOS_NOTARY_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "${{ steps.build.outputs.app_path }}"
+
+      - name: Build the .dmg
+        id: dmg
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          DMG_PATH="dist-app/netsk8-navigator_${{ steps.version.outputs.version }}_macOS-desktop.dmg"
+          mkdir -p dist-app
+          ./packaging/macos/make-dmg.sh \
+            "${{ steps.build.outputs.app_path }}" \
+            "$DMG_PATH" \
+            "Netsk8 Navigator Desktop"
+          echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload .dmg to the release
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.dmg_path }}" \
+            --repo "${{ github.repository }}" --clobber
+
+      - name: Remove temporary keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
   deploy-demo:
     name: Redeploy the public demo (netsk8.io)
     needs: binaries
