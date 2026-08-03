@@ -337,10 +337,16 @@ jobs:
           } > "$stub"
           echo "KUBECONFIG=$stub" >> "$GITHUB_ENV"
 
+      # -tags webkit2_41: Ubuntu 24.04 (both runners here) ships only
+      # webkit2gtk-4.1, not the older 4.0 that Wails' Linux backend links
+      # against by default — this tag switches the pkg-config name it looks
+      # for. Without it, the build fails at the cgo/pkg-config step with
+      # "Package webkit2gtk-4.0 was not found in the pkg-config search path".
       - name: Build the binary
         working-directory: backend/cmd/desktop
         run: |
           "$(go env GOPATH)/bin/wails" build -clean -platform linux/${{ matrix.arch }} \
+            -tags webkit2_41 \
             -ldflags "-X main.version=${{ steps.version.outputs.version }}"
 
       - name: Package the binary
