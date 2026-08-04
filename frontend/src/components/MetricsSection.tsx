@@ -1,7 +1,7 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ChevronLeft, ChevronRight, Cpu, MemoryStick, Pin, Server } from 'lucide-react'
+import { Activity, ChevronLeft, ChevronRight, Cpu, ExternalLink, MemoryStick, Pin, Server } from 'lucide-react'
 import { api, type Gauge, type MetricSeries, type NodeUsageItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useMetricsRefresh } from '@/lib/metrics'
@@ -13,7 +13,11 @@ type Scope = 'cluster' | 'pod' | 'node'
 
 // Respects the global metrics refresh setting: when it's "off", nothing renders
 // (the whole metrics area disappears); otherwise the chosen interval drives refetch.
-export function MetricsSection(props: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string }>) {
+// onOpenNode (cluster scope only) makes each per-node carousel entry link to that
+// node's detail drawer.
+export function MetricsSection(
+  props: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; onOpenNode?: (name: string) => void }>,
+) {
   const { interval } = useMetricsRefresh()
   if (interval == null) return null
   return <MetricsSectionInner {...props} refreshMs={interval} />
@@ -26,12 +30,14 @@ function MetricsSectionInner({
   scope,
   namespace,
   name,
+  onOpenNode,
   refreshMs,
-}: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; refreshMs: number }>) {
+}: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; onOpenNode?: (name: string) => void; refreshMs: number }>) {
   const monQ = useQuery({ queryKey: ['monitoring', ctx], queryFn: () => api.monitoring(ctx), staleTime: 5 * 60_000, refetchInterval: false })
 
-  if (monQ.data?.available) return <TimeSeries ctx={ctx} scope={scope} namespace={namespace} name={name} source={monQ.data.kind} refreshMs={refreshMs} />
-  if (monQ.data?.metricsServer) return <Gauges ctx={ctx} scope={scope} namespace={namespace} name={name} refreshMs={refreshMs} />
+  if (monQ.data?.available)
+    return <TimeSeries ctx={ctx} scope={scope} namespace={namespace} name={name} source={monQ.data.kind} refreshMs={refreshMs} onOpenNode={onOpenNode} />
+  if (monQ.data?.metricsServer) return <Gauges ctx={ctx} scope={scope} namespace={namespace} name={name} refreshMs={refreshMs} onOpenNode={onOpenNode} />
   return null
 }
 
@@ -52,7 +58,14 @@ function SectionShell({ source, right, children }: Readonly<{ source?: string; r
 }
 
 // ---- Instantaneous gauges (metrics-server) --------------------------------
-function Gauges({ ctx, scope, namespace, name, refreshMs }: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; refreshMs: number }>) {
+function Gauges({
+  ctx,
+  scope,
+  namespace,
+  name,
+  onOpenNode,
+  refreshMs,
+}: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; onOpenNode?: (name: string) => void; refreshMs: number }>) {
   const t = useT()
   const q = useQuery({
     queryKey: ['usage', ctx, scope, namespace, name],
@@ -71,8 +84,8 @@ function Gauges({ ctx, scope, namespace, name, refreshMs }: Readonly<{ ctx: stri
   return (
     <SectionShell source={`metrics-server · ${t('instant')}`}>
       <div className="grid gap-3 md:grid-cols-2">
-        <MetricPanel title="CPU" icon={Cpu} kind="cores" g={q.data?.cpu} loading={q.isLoading} nodes={nodes} />
-        <MetricPanel title={t('Memory')} icon={MemoryStick} kind="bytes" g={q.data?.memory} loading={q.isLoading} nodes={nodes} />
+        <MetricPanel title="CPU" icon={Cpu} kind="cores" g={q.data?.cpu} loading={q.isLoading} nodes={nodes} onOpenNode={onOpenNode} />
+        <MetricPanel title={t('Memory')} icon={MemoryStick} kind="bytes" g={q.data?.memory} loading={q.isLoading} nodes={nodes} onOpenNode={onOpenNode} />
       </div>
     </SectionShell>
   )
@@ -92,7 +105,16 @@ function MetricPanel({
   g,
   loading,
   nodes,
-}: Readonly<{ title: string; icon: typeof Cpu; kind: 'cores' | 'bytes'; g?: Gauge; loading?: boolean; nodes: NodeUsageItem[] }>) {
+  onOpenNode,
+}: Readonly<{
+  title: string
+  icon: typeof Cpu
+  kind: 'cores' | 'bytes'
+  g?: Gauge
+  loading?: boolean
+  nodes: NodeUsageItem[]
+  onOpenNode?: (name: string) => void
+}>) {
   return (
     <div className="rounded-2xl border bg-card/60 p-3 backdrop-blur-xl">
       <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -102,21 +124,50 @@ function MetricPanel({
         <div className="flex shrink-0 items-center">
           <GaugeCard bare title={nodes.length > 0 ? 'cluster' : ''} icon={Icon} g={g} kind={kind} loading={loading} />
         </div>
-        {nodes.length > 0 && <NodeMetricCarousel icon={Icon} kind={kind} nodes={nodes} />}
+        {nodes.length > 0 && <NodeMetricCarousel icon={Icon} kind={kind} nodes={nodes} onOpenNode={onOpenNode} />}
       </div>
     </div>
   )
 }
 
+// The node name in a carousel cell: a link into the node's detail drawer when
+// onOpenNode is wired up (cluster scope), else plain text.
+function NodeNameLabel({ name, onOpenNode }: Readonly<{ name: string; onOpenNode?: (name: string) => void }>) {
+  if (!onOpenNode) {
+    return (
+      <span className="truncate font-mono text-[10px] text-foreground" title={name}>
+        {shortNode(name)}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpenNode(name)
+      }}
+      title={name}
+      className="group inline-flex min-w-0 items-center gap-0.5 truncate font-mono text-[10px] text-[color:var(--brand)] transition-colors hover:text-foreground"
+    >
+      <span className="truncate underline decoration-dotted underline-offset-2">{shortNode(name)}</span>
+      <ExternalLink className="size-2.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
+    </button>
+  )
+}
+
 // One per-node gauge cell (name + compact gauge) for the responsive carousel.
-function NodeGaugeCell({ n, icon: Icon, kind }: Readonly<{ n: NodeUsageItem; icon: typeof Cpu; kind: 'cores' | 'bytes' }>) {
+function NodeGaugeCell({
+  n,
+  icon: Icon,
+  kind,
+  onOpenNode,
+}: Readonly<{ n: NodeUsageItem; icon: typeof Cpu; kind: 'cores' | 'bytes'; onOpenNode?: (name: string) => void }>) {
   return (
     <div className="flex min-w-0 flex-col items-center gap-1">
       <div className="flex max-w-full items-center gap-1">
         <Server className="size-3 shrink-0 text-muted-foreground" />
-        <span className="truncate font-mono text-[10px] text-foreground" title={n.name}>
-          {shortNode(n.name)}
-        </span>
+        <NodeNameLabel name={n.name} onOpenNode={onOpenNode} />
       </div>
       <GaugeCard bare compact title="" icon={Icon} g={kind === 'cores' ? n.cpu : n.memory} kind={kind} />
     </div>
@@ -126,7 +177,12 @@ function NodeGaugeCell({ n, icon: Icon, kind }: Readonly<{ n: NodeUsageItem; ico
 // Per-node gauges for a single metric, sorted by that metric's % (desc). When the
 // gauges overflow the available width they scroll as a continuous conveyor belt
 // (paused on hover); otherwise they sit static, centered.
-function NodeMetricCarousel({ icon: Icon, kind, nodes }: Readonly<{ icon: typeof Cpu; kind: 'cores' | 'bytes'; nodes: NodeUsageItem[] }>) {
+function NodeMetricCarousel({
+  icon: Icon,
+  kind,
+  nodes,
+  onOpenNode,
+}: Readonly<{ icon: typeof Cpu; kind: 'cores' | 'bytes'; nodes: NodeUsageItem[]; onOpenNode?: (name: string) => void }>) {
   const sorted = useMemo(() => {
     const ratio = (n: NodeUsageItem) => {
       const gg = kind === 'cores' ? n.cpu : n.memory
@@ -150,7 +206,7 @@ function NodeMetricCarousel({ icon: Icon, kind, nodes }: Readonly<{ icon: typeof
     return () => ro.disconnect()
   }, [sorted.length])
 
-  const cells = sorted.map((n) => <NodeGaugeCell key={n.name} n={n} icon={Icon} kind={kind} />)
+  const cells = sorted.map((n) => <NodeGaugeCell key={n.name} n={n} icon={Icon} kind={kind} onOpenNode={onOpenNode} />)
   // ~5s per node keeps the belt's speed constant regardless of how many there are.
   const durationS = Math.max(12, sorted.length * 5)
 
@@ -164,7 +220,7 @@ function NodeMetricCarousel({ icon: Icon, kind, nodes }: Readonly<{ icon: typeof
           {/* second identical half → seamless wrap */}
           <div className="flex shrink-0 items-center gap-3 pr-3" aria-hidden>
             {sorted.map((n) => (
-              <NodeGaugeCell key={`dup-${n.name}`} n={n} icon={Icon} kind={kind} />
+              <NodeGaugeCell key={`dup-${n.name}`} n={n} icon={Icon} kind={kind} onOpenNode={onOpenNode} />
             ))}
           </div>
         </div>
@@ -329,8 +385,17 @@ function TimeSeries({
   namespace,
   name,
   source,
+  onOpenNode,
   refreshMs,
-}: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; source?: string; refreshMs: number }>) {
+}: Readonly<{
+  ctx: string
+  scope: Scope
+  namespace?: string
+  name?: string
+  source?: string
+  onOpenNode?: (name: string) => void
+  refreshMs: number
+}>) {
   const t = useT()
   const [range, setRange] = useState<string>('1h')
   const q = useQuery({
@@ -388,6 +453,7 @@ function TimeSeries({
           range={range}
           refreshMs={refreshMs}
           nodes={nodes}
+          onOpenNode={onOpenNode}
         />
         <TimeChartPanel
           title={t('Memory')}
@@ -401,6 +467,7 @@ function TimeSeries({
           range={range}
           refreshMs={refreshMs}
           nodes={nodes}
+          onOpenNode={onOpenNode}
         />
       </div>
     </SectionShell>
@@ -421,6 +488,7 @@ function TimeChartPanel({
   range,
   refreshMs,
   nodes,
+  onOpenNode,
 }: Readonly<{
   title: string
   icon: typeof Cpu
@@ -433,6 +501,7 @@ function TimeChartPanel({
   range: string
   refreshMs: number
   nodes: NodeUsageItem[]
+  onOpenNode?: (name: string) => void
 }>) {
   const fmt = kind === 'cores' ? fmtCores : fmtBytes
   const last = series?.points?.at(-1)?.v
@@ -454,7 +523,9 @@ function TimeChartPanel({
       </div>
       <div className={cn('gap-3', showNodes && 'grid grid-cols-2')}>
         <Chart title={title} series={series} ceiling={ceiling} color={color} kind={kind} loading={loading} height={140} />
-        {showNodes && <NodeChartCarousel title={title} kind={kind} color={color} ctx={ctx} range={range} refreshMs={refreshMs} nodes={nodes} />}
+        {showNodes && (
+          <NodeChartCarousel title={title} kind={kind} color={color} ctx={ctx} range={range} refreshMs={refreshMs} nodes={nodes} onOpenNode={onOpenNode} />
+        )}
       </div>
     </div>
   )
@@ -470,7 +541,17 @@ function NodeChartCarousel({
   range,
   refreshMs,
   nodes,
-}: Readonly<{ title: string; kind: 'cores' | 'bytes'; color: string; ctx: string; range: string; refreshMs: number; nodes: NodeUsageItem[] }>) {
+  onOpenNode,
+}: Readonly<{
+  title: string
+  kind: 'cores' | 'bytes'
+  color: string
+  ctx: string
+  range: string
+  refreshMs: number
+  nodes: NodeUsageItem[]
+  onOpenNode?: (name: string) => void
+}>) {
   const t = useT()
   const pickG = (n: NodeUsageItem) => (kind === 'cores' ? n.cpu : n.memory)
   const sorted = useMemo(() => {
@@ -506,9 +587,11 @@ function NodeChartCarousel({
       <div key={idx} className="nk-slide flex min-w-0 flex-1 flex-col">
         <div className="mb-1 flex items-center gap-1.5">
           <Server className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-[10px] text-foreground" title={n?.name}>
-            {n ? shortNode(n.name) : '—'}
-          </span>
+          {n ? (
+            <NodeNameLabel name={n.name} onOpenNode={onOpenNode} />
+          ) : (
+            <span className="truncate font-mono text-[10px] text-foreground">—</span>
+          )}
         </div>
         <Chart title={title} series={series} ceiling={ceiling} color={color} kind={kind} loading={nodeQ.isLoading} height={112} />
       </div>

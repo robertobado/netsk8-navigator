@@ -1,11 +1,19 @@
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MetricsSection } from './MetricsSection'
 
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string) => key }))
 vi.mock('@/lib/metrics', () => ({ useMetricsRefresh: () => ({ ms: 30000, interval: 30000 }) }))
+
+// jsdom has no ResizeObserver — NodeMetricCarousel uses one to detect overflow.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 
 const { monitoringMock, metricsMock, usageMock, nodesUsageMock } = vi.hoisted(() => ({
   monitoringMock: vi.fn(),
@@ -46,5 +54,38 @@ describe('MetricsSection', () => {
 
     expect(await screen.findByText('Metrics')).toBeInTheDocument()
     expect(await screen.findByText('CPU')).toBeInTheDocument()
+  })
+
+  it('links a node name in the instantaneous-gauge carousel to onOpenNode', async () => {
+    monitoringMock.mockResolvedValue({ available: false, metricsServer: true })
+    usageMock.mockResolvedValue({ available: true, cpu: { used: 1, total: 8, unit: 'cores' }, memory: { used: 1, total: 8, unit: 'bytes' } })
+    nodesUsageMock.mockResolvedValue({
+      available: true,
+      items: [{ name: 'ip-10-0-1-1.ec2.internal', cpu: { used: 1, total: 4, unit: 'cores' }, memory: { used: 1, total: 4, unit: 'bytes' } }],
+    })
+    const onOpenNode = vi.fn()
+
+    renderWithClient(<MetricsSection ctx="test" scope="cluster" onOpenNode={onOpenNode} />)
+
+    const link = (await screen.findAllByText('ip-10-0-1-1'))[0] // shortNode() strips the .ec2.internal suffix
+    fireEvent.click(link)
+    expect(onOpenNode).toHaveBeenCalledWith('ip-10-0-1-1.ec2.internal')
+  })
+
+  it('links a node name in the time-series carousel to onOpenNode', async () => {
+    monitoringMock.mockResolvedValue({ available: true, kind: 'prometheus', metricsServer: true })
+    metricsMock.mockResolvedValue({ available: true, source: 'prometheus', cpu: { points: [] }, memory: { points: [] } })
+    usageMock.mockResolvedValue({ available: true, cpu: { used: 1, total: 8, unit: 'cores' }, memory: { used: 1, total: 8, unit: 'bytes' } })
+    nodesUsageMock.mockResolvedValue({
+      available: true,
+      items: [{ name: 'ip-10-0-1-1.ec2.internal', cpu: { used: 1, total: 4, unit: 'cores' }, memory: { used: 1, total: 4, unit: 'bytes' } }],
+    })
+    const onOpenNode = vi.fn()
+
+    renderWithClient(<MetricsSection ctx="test" scope="cluster" onOpenNode={onOpenNode} />)
+
+    const link = (await screen.findAllByText('ip-10-0-1-1'))[0]
+    fireEvent.click(link)
+    expect(onOpenNode).toHaveBeenCalledWith('ip-10-0-1-1.ec2.internal')
   })
 })

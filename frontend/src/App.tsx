@@ -348,7 +348,13 @@ function OverviewPanel({
       {error && <ErrorBanner message={error.message} />}
 
       {/* 1) Metrics */}
-      {ctx && <MetricsSection ctx={ctx} scope="cluster" />}
+      {ctx && (
+        <MetricsSection
+          ctx={ctx}
+          scope="cluster"
+          onOpenNode={(name) => setNodeTarget({ kind: 'node', namespace: '', name, editable: false })}
+        />
+      )}
 
       {/* 2) Panels */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
