@@ -15,9 +15,7 @@ type Scope = 'cluster' | 'pod' | 'node'
 // (the whole metrics area disappears); otherwise the chosen interval drives refetch.
 // onOpenNode (cluster scope only) makes each per-node carousel entry link to that
 // node's detail drawer.
-export function MetricsSection(
-  props: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; onOpenNode?: (name: string) => void }>,
-) {
+export function MetricsSection(props: Readonly<{ ctx: string; scope: Scope; namespace?: string; name?: string; onOpenNode?: (name: string) => void }>) {
   const { interval } = useMetricsRefresh()
   if (interval == null) return null
   return <MetricsSectionInner {...props} refreshMs={interval} />
@@ -587,11 +585,7 @@ function NodeChartCarousel({
       <div key={idx} className="nk-slide flex min-w-0 flex-1 flex-col">
         <div className="mb-1 flex items-center gap-1.5">
           <Server className="size-3 shrink-0 text-muted-foreground" />
-          {n ? (
-            <NodeNameLabel name={n.name} onOpenNode={onOpenNode} />
-          ) : (
-            <span className="truncate font-mono text-[10px] text-foreground">—</span>
-          )}
+          {n ? <NodeNameLabel name={n.name} onOpenNode={onOpenNode} /> : <span className="truncate font-mono text-[10px] text-foreground">—</span>}
         </div>
         <Chart title={title} series={series} ceiling={ceiling} color={color} kind={kind} loading={nodeQ.isLoading} height={112} />
       </div>
