@@ -102,6 +102,18 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
         </div>
       )}
 
+      {/* Problem banner — same reason/message the overview's issue carousels show */}
+      {d.problem && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/60 px-3 py-2.5">
+          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset', PILL[d.problem.tone])}>
+            {t(d.problem.reason)}
+          </span>
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground" title={d.problem.message}>
+            {d.problem.message || t('no detail')}
+          </span>
+        </div>
+      )}
+
       {/* Meta line */}
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
         {d.namespace && (

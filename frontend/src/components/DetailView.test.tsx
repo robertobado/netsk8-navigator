@@ -122,3 +122,26 @@ describe('DetailBody — generic CRD field rendering', () => {
     expect(screen.getByText('Netsk8 Inc')).toBeInTheDocument()
   })
 })
+
+describe('DetailBody — pod problem banner', () => {
+  it('renders the reason and message when the pod has a problem', () => {
+    const d = detail([])
+    d.problem = { reason: 'CrashLoopBackOff', message: 'back-off restarting failed container', tone: 'err' }
+    render(<DetailBody d={d} ctx="c" kind="widget" namespace="prod" name="web-1" />)
+    expect(screen.getByText('CrashLoopBackOff')).toBeInTheDocument()
+    expect(screen.getByText('back-off restarting failed container')).toBeInTheDocument()
+  })
+
+  it('falls back to a placeholder when the reason has no message', () => {
+    const d = detail([])
+    d.problem = { reason: 'Unschedulable', message: '', tone: 'warn' }
+    render(<DetailBody d={d} ctx="c" kind="widget" namespace="prod" name="web-1" />)
+    expect(screen.getByText('Unschedulable')).toBeInTheDocument()
+    expect(screen.getByText('no detail')).toBeInTheDocument()
+  })
+
+  it('renders no banner for a healthy pod', () => {
+    render(<DetailBody d={detail([])} ctx="c" kind="widget" namespace="prod" name="web-1" />)
+    expect(screen.queryByText('no detail')).not.toBeInTheDocument()
+  })
+})

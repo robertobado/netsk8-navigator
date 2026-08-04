@@ -73,6 +73,15 @@ type portView struct {
 	Extra    string `json:"extra,omitempty"`    // e.g. "node 30080"
 }
 
+// problemInfo mirrors issueItem's reason/message — the same detail the
+// overview's issue carousels surface for a pending/failed/crash-looping pod,
+// so the drawer doesn't force a trip back to the overview to see why.
+type problemInfo struct {
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+	Tone    string `json:"tone"` // warn | err
+}
+
 type resourceDetail struct {
 	Kind        string            `json:"kind"`
 	Name        string            `json:"name"`
@@ -81,6 +90,7 @@ type resourceDetail struct {
 	OwnerKind   string            `json:"ownerKind"`
 	OwnerName   string            `json:"ownerName"`
 	Status      []chip            `json:"status"`
+	Problem     *problemInfo      `json:"problem,omitempty"`
 	Sections    []section         `json:"sections"`
 	Selector    map[string]string `json:"selector"`
 	Images      []kv              `json:"images"`
@@ -1346,6 +1356,7 @@ func podDetail(p *corev1.Pod) *resourceDetail {
 		countChip("Restarts", restarts, boolTone(restarts == 0)),
 		{Label: "QoS", Value: string(p.Status.QOSClass), Tone: "muted"},
 	}
+	d.Problem = podProblem(p)
 	d.Images = imagesOf(p.Spec)
 	for _, c := range p.Spec.Containers {
 		for _, cp := range c.Ports {
@@ -1388,6 +1399,26 @@ func phaseTone(phase string) string {
 		return "err"
 	}
 	return "muted"
+}
+
+// podProblem derives the same reason/message the overview's Pending/Failed
+// issue carousels show, using the exact detection functions from issues.go —
+// so a pod that would appear in one of those carousels shows the identical
+// detail here too, without a round trip back to the overview.
+func podProblem(p *corev1.Pod) *problemInfo {
+	switch p.Status.Phase {
+	case corev1.PodPending:
+		reason, msg := pendingDetail(p)
+		return &problemInfo{Reason: reason, Message: msg, Tone: "warn"}
+	case corev1.PodFailed:
+		reason, msg, _ := failedDetail(p)
+		return &problemInfo{Reason: reason, Message: msg, Tone: "err"}
+	case corev1.PodRunning:
+		if reason, msg, ok := runningContainerIssue(p); ok {
+			return &problemInfo{Reason: reason, Message: msg, Tone: "err"}
+		}
+	}
+	return nil
 }
 
 func containerState(cs corev1.ContainerStatus) string {

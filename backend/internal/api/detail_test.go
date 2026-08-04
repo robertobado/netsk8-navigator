@@ -610,6 +610,53 @@ func TestPodDetail(t *testing.T) {
 	if d.Status[1].Value != "1/1" {
 		t.Errorf("ready chip = %+v", d.Status[1])
 	}
+	if d.Problem != nil {
+		t.Errorf("Problem = %+v, want nil for a healthy pod", d.Problem)
+	}
+}
+
+func TestPodDetail_ProblemMatchesIssueCarouselDetection(t *testing.T) {
+	pending := podDetail(&corev1.Pod{
+		ObjectMeta: meta("web-1", "prod"),
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "web",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ImagePullBackOff", Message: "pull failed"}},
+			}},
+		},
+	})
+	if pending.Problem == nil || pending.Problem.Reason != "ImagePullBackOff" || pending.Problem.Message != "pull failed" || pending.Problem.Tone != "warn" {
+		t.Errorf("Pending Problem = %+v", pending.Problem)
+	}
+
+	crashLooping := podDetail(&corev1.Pod{
+		ObjectMeta: meta("web-1", "prod"),
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "web", Ready: false,
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff", Message: "back-off restarting"}},
+			}},
+		},
+	})
+	if crashLooping.Problem == nil || crashLooping.Problem.Reason != "CrashLoopBackOff" || crashLooping.Problem.Tone != "err" {
+		t.Errorf("Running/crash-looping Problem = %+v", crashLooping.Problem)
+	}
+
+	failed := podDetail(&corev1.Pod{
+		ObjectMeta: meta("web-1", "prod"),
+		Status: corev1.PodStatus{
+			Phase: corev1.PodFailed,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "web",
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: "OOMKilled"}},
+			}},
+		},
+	})
+	if failed.Problem == nil || failed.Problem.Reason != "OOMKilled" || failed.Problem.Tone != "err" {
+		t.Errorf("Failed Problem = %+v", failed.Problem)
+	}
 }
 
 func TestPodDetail_CrashLoopingContainerOverridesPhase(t *testing.T) {

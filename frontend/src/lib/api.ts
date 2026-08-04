@@ -694,6 +694,11 @@ export interface PortView {
   protocol?: string
   extra?: string
 }
+export interface DetailProblem {
+  reason: string
+  message: string
+  tone: 'warn' | 'err'
+}
 export interface ResourceDetail {
   kind: string
   name: string
@@ -702,6 +707,7 @@ export interface ResourceDetail {
   ownerKind: string
   ownerName: string
   status: DetailChip[]
+  problem?: DetailProblem | null
   sections: DetailSection[]
   selector: Record<string, string> | null
   images: DetailKV[]
