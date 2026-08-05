@@ -84,6 +84,10 @@ running `kubectl` from your own machine.
   restarting anything; every resource is resolved via discovery/RESTMapper
   at request time, so it works against whatever Kubernetes version the
   cluster actually serves.
+- 🤖 **MCP server built in** — flip one toggle in the sidebar and the same
+  running app also serves an [MCP](https://modelcontextprotocol.io)
+  endpoint, so Claude (or any other MCP-speaking agent) can browse and
+  manage the cluster too, no `kubectl` or terminal needed.
 
 ## See it in action
 
@@ -274,6 +278,49 @@ running `kubectl` directly.
   to (see above), so this is a trail of *what* happened and *from where*,
   not *who* — pair it with `AUTH_PASSWORD` (or your own auth) if you need
   the latter.
+
+## MCP server (agent access)
+
+Netsk8 Navigator can also speak
+[MCP](https://modelcontextprotocol.io) (Model Context Protocol), so an
+agent like Claude can browse and manage the same cluster you're looking
+at — no separate process, no `kubectl`, no terminal. It's the same running
+backend: turn it on, and it starts serving an MCP endpoint alongside the
+UI.
+
+**Enable it:** open the **MCP server** panel in the sidebar and flip the
+toggle. That's it — the endpoint is `http://<host>:<port>/mcp` (copy
+button included in the panel). Off by default; the choice is saved to
+your preferences, so it persists across restarts like every other
+setting.
+
+**Connect an agent** (Claude Code, as an example):
+
+```bash
+claude mcp add --transport http netsk8-navigator http://127.0.0.1:8080/mcp
+```
+
+Restart the agent's session afterward — MCP servers are only picked up at
+session start.
+
+**Tools:** 10 read tools (list contexts/namespaces/nodes/pods/resources,
+get resource detail/manifest/logs/overview/issues) plus 4 write tools
+(apply manifest, delete resource, scale, restart rollout). Every tool is a
+thin adapter over the same REST handlers the UI itself uses — no separate
+code path, no separate bugs.
+
+**Write access is a second, separate gate.** Turning MCP on only exposes
+the read tools — the same data the UI already shows. A write tool call is
+rejected until you also flip **Allow write** (behind its own inline
+confirm step in the panel, since it's a meaningfully more consequential
+grant than read access). Turning MCP off always clears `allowWrite` too,
+so re-enabling later never silently re-arms writes — you have to grant it
+again explicitly every time.
+
+This inherits the same trust model described in *Security model* above:
+if you've turned on `AUTH_PASSWORD`, `/mcp` requires it like everything
+else; if you haven't, anything that can reach the port can drive the
+cluster through it exactly as far as `allowWrite` permits.
 
 ## Kubernetes (Helm)
 
