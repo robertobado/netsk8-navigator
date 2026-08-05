@@ -2,8 +2,10 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
@@ -63,4 +65,41 @@ func (s *Server) handlePodLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// fetchBoundedPodLogs returns a container's most recent tailLines log lines
+// as a single string — used by the MCP get_logs tool, which (unlike the SSE
+// handler above) needs a bounded, non-streaming read: replaying a
+// Follow:true request through an in-process httptest.ResponseRecorder would
+// simply hang forever, since a recorder has no way to signal "stop
+// following" the way a real client disconnect does. tailLines is clamped to
+// a sane range, and the read itself is capped so a chatty container can't
+// blow up a tool result.
+func (s *Server) fetchBoundedPodLogs(ctx context.Context, clusterCtx, namespace, name, container string, tailLines int64) (string, error) {
+	client, err := s.mgr.ClientFor(clusterCtx)
+	if err != nil {
+		return "", err
+	}
+	if tailLines <= 0 || tailLines > 2000 {
+		tailLines = 200
+	}
+	opts := &corev1.PodLogOptions{
+		Follow:     false,
+		Container:  container,
+		TailLines:  &tailLines,
+		Timestamps: true,
+	}
+	req := client.CoreV1().Pods(namespace).GetLogs(name, opts)
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = stream.Close() }()
+
+	const maxBytes = 512 * 1024
+	b, err := io.ReadAll(io.LimitReader(stream, maxBytes))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

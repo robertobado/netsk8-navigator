@@ -61,6 +61,10 @@ type Server struct {
 	pf   map[string]*pfSession // port-forward id -> active session
 
 	updateChecker updateChecker
+
+	// mcpFlags gates the /mcp endpoint (enabled) and its mutating tools
+	// (allowWrite) — see mcpflags.go and mcp.go.
+	mcpFlags *MCPFlags
 }
 
 // NewServer wires a Server. corsOrigin is the one extra origin (besides the
@@ -68,12 +72,17 @@ type Server struct {
 // open the exec terminal's WebSocket — see CORS_ORIGIN in the README's
 // Security model section. Pass "" for the default same-origin-only posture.
 func NewServer(mgr clusterManager, cfg *config.Store, corsOrigin string) *Server {
-	return &Server{
+	s := &Server{
 		mgr: mgr, cfg: cfg, corsOrigin: corsOrigin,
 		upgrader: websocket.Upgrader{CheckOrigin: wsOriginAllowed(corsOrigin)},
 		mon:      make(map[string]monResult), msCache: make(map[string]bool),
-		pf: make(map[string]*pfSession),
+		pf:       make(map[string]*pfSession),
+		mcpFlags: &MCPFlags{},
 	}
+	// Hydrate from whatever was already persisted, so a previously-enabled
+	// MCP toggle survives a process restart like every other preference.
+	s.mcpFlags.applyFromAppPrefs(cfg.App())
+	return s
 }
 
 // Routes builds the mux. Go 1.22+ pattern routing means no external router dep.

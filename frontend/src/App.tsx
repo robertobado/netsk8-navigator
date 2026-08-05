@@ -27,6 +27,7 @@ import { VantaBackground } from '@/components/VantaBackground'
 import { VantaControls } from '@/components/VantaControls'
 import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
+import { MCPControls } from '@/components/MCPControls'
 import { LanguageToggle } from '@/components/LanguageToggle'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useT, type TFunc } from '@/lib/i18n'
@@ -193,6 +194,7 @@ function AppMain() {
 
           <MetricsControls />
           <VantaControls {...vanta} />
+          <MCPControls />
           <ThemeToggle />
           <LanguageToggle />
         </aside>

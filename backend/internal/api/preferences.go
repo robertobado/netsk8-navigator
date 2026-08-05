@@ -22,6 +22,7 @@ func (s *Server) handlePutAppPrefs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.mcpFlags.applyFromAppPrefs(raw)
 	writeRaw(w, raw)
 }
 

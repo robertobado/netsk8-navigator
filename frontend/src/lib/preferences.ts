@@ -19,6 +19,10 @@ export interface AppPreferences {
   metricsRefreshMs: number // 0 = off
   background: { enabled: boolean; effect: string; opacity: number }
   theme: ThemeMode // 'auto' follows the OS/browser color-scheme preference
+  // Toggles the /mcp endpoint (an MCP server sharing this same backend
+  // process) so agents can manage the cluster too. allowWrite is a second,
+  // more sensitive gate on top: enabled alone only exposes read tools.
+  mcp: { enabled: boolean; allowWrite: boolean }
 }
 
 const DEFAULTS: AppPreferences = {
@@ -26,6 +30,7 @@ const DEFAULTS: AppPreferences = {
   metricsRefreshMs: 15_000,
   background: { enabled: false, effect: 'net', opacity: 0.6 },
   theme: 'dark', // the app predates light mode — keep existing users on dark by default
+  mcp: { enabled: false, allowWrite: false }, // off by default — opt-in
 }
 
 // Reflects the theme choice onto <html data-theme> so index.css can key off
@@ -59,6 +64,13 @@ function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
       opacity: typeof b.opacity === 'number' ? b.opacity : DEFAULTS.background.opacity,
     }
   }
+  if (typeof r.mcp === 'object' && r.mcp !== null) {
+    const m = r.mcp as Record<string, unknown>
+    out.mcp = {
+      enabled: typeof m.enabled === 'boolean' ? m.enabled : DEFAULTS.mcp.enabled,
+      allowWrite: typeof m.allowWrite === 'boolean' ? m.allowWrite : DEFAULTS.mcp.allowWrite,
+    }
+  }
   return out
 }
 
@@ -66,7 +78,7 @@ function load(): AppPreferences {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}')
     const safe = sanitizePrefs(raw)
-    return { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background } }
+    return { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background }, mcp: { ...DEFAULTS.mcp, ...safe.mcp } }
   } catch {
     return DEFAULTS
   }
@@ -106,7 +118,7 @@ export function hydrateAppPrefs() {
     .then((remote) => {
       if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
         const safe = sanitizePrefs(remote)
-        state = { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background } }
+        state = { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background }, mcp: { ...DEFAULTS.mcp, ...safe.mcp } }
         localStorage.setItem(LS_KEY, JSON.stringify(state))
         emit()
       } else {

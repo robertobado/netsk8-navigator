@@ -92,6 +92,7 @@ func buildMux() http.Handler {
 	srv := api.NewServer(mgr, cfg, "")
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
+	mux.Handle("/mcp", srv.MCPHandler()) // see backend/main.go's buildMux for the rationale
 	if h := web.Handler(); h != nil {
 		mux.Handle("/", h)
 	} else {

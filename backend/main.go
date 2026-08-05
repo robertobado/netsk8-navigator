@@ -86,6 +86,12 @@ func mustInit() (*kube.Manager, *config.Store) {
 func buildMux(srv *api.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
+	// Sibling of /api/, not routed through srv.Routes()'s CORS/logging
+	// middleware: MCP HTTP clients aren't browsers (no CORS involved), and
+	// withLogging only logs after a handler returns, which is the wrong
+	// shape for a long-lived Streamable HTTP session. Still inherits
+	// wrapWithAuth below, same as everything else buildMux returns.
+	mux.Handle("/mcp", srv.MCPHandler())
 	if h := web.Handler(); h != nil {
 		mux.Handle("/", h)
 		log.Print("serving embedded frontend build")
