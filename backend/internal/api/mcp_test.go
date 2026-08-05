@@ -50,7 +50,7 @@ func TestMCPHandler_DisabledReturns404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 404 {
 		t.Errorf("status = %d, want 404 while MCP is disabled", resp.StatusCode)
 	}
