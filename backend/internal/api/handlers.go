@@ -39,6 +39,7 @@ type clusterManager interface {
 	RESTConfigFor(contextName string) (*rest.Config, error)
 	RESTMapperFor(contextName string) (apimeta.RESTMapper, error)
 	PodWatcherFor(contextName string) (*kube.PodWatcher, error)
+	ExecInfoFor(contextName string) (command, profile string, ok bool)
 }
 
 // Server wires the kube manager and preferences store into an http.Handler.
@@ -85,6 +86,13 @@ func NewServer(mgr clusterManager, cfg *config.Store, corsOrigin string) *Server
 	return s
 }
 
+// SetMCPFlags overrides the flags gating /mcp and the stdio transport,
+// installed by --mcp-stdio in place of the preferences-derived default
+// NewServer already set up — see newStdioMCPFlags.
+func (s *Server) SetMCPFlags(f *MCPFlags) {
+	s.mcpFlags = f
+}
+
 // Routes builds the mux. Go 1.22+ pattern routing means no external router dep.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -94,6 +102,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/preferences", s.handlePutAppPrefs)
 	mux.HandleFunc("GET /api/contexts/{ctx}/preferences", s.handleGetClusterPrefs)
 	mux.HandleFunc("PUT /api/contexts/{ctx}/preferences", s.handlePutClusterPrefs)
+	mux.HandleFunc("GET /api/mcp/token", s.handleGetMCPToken)
+	mux.HandleFunc("POST /api/mcp/token/regenerate", s.handleRegenerateMCPToken)
 	mux.HandleFunc("GET /api/contexts", s.handleContexts)
 	mux.HandleFunc("GET /api/contexts/{ctx}/namespaces", s.handleNamespaces)
 	mux.HandleFunc("GET /api/contexts/{ctx}/nodes", s.handleNodes)

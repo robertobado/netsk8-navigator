@@ -284,30 +284,62 @@ running `kubectl` directly.
 Netsk8 Navigator can also speak
 [MCP](https://modelcontextprotocol.io) (Model Context Protocol), so an
 agent like Claude can browse and manage the same cluster you're looking
-at — no separate process, no `kubectl`, no terminal. It's the same running
-backend: turn it on, and it starts serving an MCP endpoint alongside the
-UI.
+at — no `kubectl`, no terminal session of its own. Two ways to connect,
+pick whichever fits:
 
-**Enable it:** open the **MCP server** panel in the sidebar and flip the
-toggle. That's it — the endpoint is `http://<host>:<port>/mcp` (copy
-button included in the panel). Off by default; the choice is saved to
-your preferences, so it persists across restarts like every other
-setting.
-
-**Connect an agent** (Claude Code, as an example):
+**stdio (recommended)** — the agent spawns the binary itself, on demand,
+talking JSON-RPC over stdin/stdout. No server to keep running, no port to
+discover:
 
 ```bash
-claude mcp add --transport http netsk8-navigator http://127.0.0.1:8080/mcp
+netsk8-navigator mcp install
 ```
 
-Restart the agent's session afterward — MCP servers are only picked up at
-session start.
+Detects installed MCP clients (Claude Code, Claude Desktop, Cursor) and
+registers itself in each — merging into their config rather than
+overwriting it, and preserving the file's existing permissions. Add
+`--allow-write` to also register write access (off by default — read-only
+until you opt in). Re-running it is safe; it updates the existing entry
+rather than duplicating it. Restart the agent's session afterward — MCP
+servers are only picked up at session start.
+
+Prefer to do it by hand, or install failed to detect your client? Any
+stdio-capable client can be pointed at the binary directly:
+
+```json
+{ "netsk8": { "command": "/path/to/netsk8-navigator", "args": ["--mcp-stdio"] } }
+```
+
+**HTTP** — talks to the same already-running backend the browser UI uses
+(so it shares its cache), instead of spawning its own process. Turn it on
+in the sidebar's **MCP server** panel; the endpoint is
+`http://<host>:<port>/mcp`, and every call must carry the token shown in
+that same panel as an `X-Netsk8-MCP-Token` header (rotate it any time with
+the panel's regenerate button — no cost besides re-registering any client
+that had the old one):
+
+```bash
+claude mcp add --transport http netsk8-navigator http://127.0.0.1:8080/mcp \
+  --header "X-Netsk8-MCP-Token: <token from the panel>"
+```
+
+The trade-off between the two: stdio has no shared cache with the GUI
+(each client spawns its own process), HTTP depends on the app already
+running. Both stay available — use whichever fits.
 
 **Tools:** 10 read tools (list contexts/namespaces/nodes/pods/resources,
 get resource detail/manifest/logs/overview/issues) plus 4 write tools
-(apply manifest, delete resource, scale, restart rollout). Every tool is a
-thin adapter over the same REST handlers the UI itself uses — no separate
-code path, no separate bugs.
+(apply manifest, delete resource, scale, restart rollout), every one a
+thin adapter over the same REST handlers the UI itself uses. Each is
+tagged with MCP annotations (`readOnlyHint`/`destructiveHint`/
+`idempotentHint`) so a client can tell read from write without guessing,
+and `context` arguments are constrained to your kubeconfig's actual
+context names — a typo is rejected immediately as a schema-validation
+error instead of round-tripping through a failed API call. `list_pods`,
+`list_resources`, and `get_issues` accept an optional `limit` (and
+`since` on the two that have a meaningful timestamp to filter on) to keep
+responses small on a busy cluster; `get_issues` always includes a
+`summary` grouping every issue by cause, computed before any truncation.
 
 **Write access is a second, separate gate.** Turning MCP on only exposes
 the read tools — the same data the UI already shows. A write tool call is
@@ -315,12 +347,15 @@ rejected until you also flip **Allow write** (behind its own inline
 confirm step in the panel, since it's a meaningfully more consequential
 grant than read access). Turning MCP off always clears `allowWrite` too,
 so re-enabling later never silently re-arms writes — you have to grant it
-again explicitly every time.
+again explicitly every time. On top of that, specific contexts (e.g. a
+production cluster) can be pinned permanently read-only from the same
+panel, regardless of the global toggle.
 
 This inherits the same trust model described in *Security model* above:
-if you've turned on `AUTH_PASSWORD`, `/mcp` requires it like everything
-else; if you haven't, anything that can reach the port can drive the
-cluster through it exactly as far as `allowWrite` permits.
+if you've turned on `AUTH_PASSWORD`, HTTP `/mcp` requires it like
+everything else, on top of its own token; stdio mode has no separate
+credential at all — the trust boundary is simply whoever can spawn the
+process, the same as running `kubectl` directly.
 
 ## Kubernetes (Helm)
 

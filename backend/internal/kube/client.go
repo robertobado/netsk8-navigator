@@ -7,6 +7,7 @@ package kube
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -255,3 +256,35 @@ func (m *Manager) RESTMapperFor(contextName string) (meta.RESTMapper, error) {
 
 // ConfigPath exposes the resolved kubeconfig path (handy for the UI header).
 func (m *Manager) ConfigPath() string { return m.configPath }
+
+// ExecInfoFor returns the exec-credential plugin command and a best-effort
+// profile name configured for contextName, if its AuthInfo uses one (aws eks
+// get-token, aws-iam-authenticator, etc.). Used to turn a bare "exec plugin
+// failed" error into an actionable one (see internal/api/mcp.go) — the
+// profile isn't reliably present in the plugin's own error text, but the
+// kubeconfig already has it.
+func (m *Manager) ExecInfoFor(contextName string) (command, profile string, ok bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	c, exists := m.rawConfig.Contexts[contextName]
+	if !exists {
+		return "", "", false
+	}
+	ai, exists := m.rawConfig.AuthInfos[c.AuthInfo]
+	if !exists || ai.Exec == nil {
+		return "", "", false
+	}
+	command = filepath.Base(ai.Exec.Command)
+	for _, e := range ai.Exec.Env {
+		if e.Name == "AWS_PROFILE" || e.Name == "AWS_DEFAULT_PROFILE" {
+			return command, e.Value, true
+		}
+	}
+	for i, a := range ai.Exec.Args {
+		if a == "--profile" && i+1 < len(ai.Exec.Args) {
+			return command, ai.Exec.Args[i+1], true
+		}
+	}
+	return command, "", true
+}

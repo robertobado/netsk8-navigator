@@ -73,10 +73,10 @@ func fixPathForGUILaunch() {
 	log.Printf("adopted login shell PATH: %s", shellPath)
 }
 
-// buildMux mirrors backend/main.go's buildMux/mustInit — duplicated rather
-// than imported, since the CLI's version lives in that binary's own
-// (unexported) package main and can't be imported from here.
-func buildMux() http.Handler {
+// mustInit mirrors backend/main.go's mustInit — duplicated rather than
+// imported, since the CLI's version lives in that binary's own (unexported)
+// package main and can't be imported from here.
+func mustInit() (*kube.Manager, *config.Store) {
 	mgr, err := kube.NewManager()
 	if err != nil {
 		log.Fatalf("failed to load kubeconfig: %v", err)
@@ -88,7 +88,12 @@ func buildMux() http.Handler {
 		log.Fatalf("failed to init preferences store: %v", err)
 	}
 	log.Printf("preferences at %s", cfg.Path())
+	return mgr, cfg
+}
 
+// buildMux mirrors backend/main.go's buildMux.
+func buildMux() http.Handler {
+	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, "")
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
@@ -143,6 +148,17 @@ func bootstrapRedirect(url string) http.Handler {
 }
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--mcp-stdio":
+			runMCPStdio(os.Args[2:])
+			return
+		case "mcp":
+			runMCPCLI(os.Args[2:])
+			return
+		}
+	}
+
 	log.Printf("netsk8-navigator %s", version)
 	fixPathForGUILaunch()
 	addr := startServer(buildMux())

@@ -23,9 +23,18 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
-		fmt.Println("netsk8-navigator " + version)
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-version":
+			fmt.Println("netsk8-navigator " + version)
+			return
+		case "--mcp-stdio":
+			runMCPStdio(os.Args[2:])
+			return
+		case "mcp":
+			runMCPCLI(os.Args[2:])
+			return
+		}
 	}
 
 	mgr, cfg := mustInit()

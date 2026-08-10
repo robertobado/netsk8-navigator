@@ -463,6 +463,7 @@ export const api = {
   health: () => get<Health>('/health'),
   updateCheck: () => get<UpdateCheck>('/update-check'),
   contexts: () => get<ContextInfo[]>('/contexts'),
+  mcpToken: () => get<{ token: string }>('/mcp/token'),
   overview: (ctx: string) => get<Overview>(`/contexts/${enc(ctx)}/overview`),
   namespaces: (ctx: string) => get<NamespaceInfo[]>(`/contexts/${enc(ctx)}/namespaces`),
   pods: (ctx: string, ns?: string) => get<Pod[]>(`/contexts/${enc(ctx)}/pods${nsQuery(ns)}`),
@@ -878,6 +879,13 @@ export async function scaleResource(ctx: string, kind: ManifestKind, namespace: 
     body: JSON.stringify({ replicas }),
   })
   await throwIfError(res)
+}
+
+/** Invalidates the current /mcp auth token and returns the newly generated one. */
+export async function regenerateMCPToken(): Promise<{ token: string }> {
+  const res = await fetch('/api/mcp/token/regenerate', { method: 'POST' })
+  await throwIfError(res)
+  return res.json()
 }
 
 export async function restartRollout(ctx: string, kind: ManifestKind, namespace: string, name: string) {

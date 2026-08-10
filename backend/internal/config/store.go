@@ -5,6 +5,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,6 +16,11 @@ import (
 type fileData struct {
 	App      json.RawMessage            `json:"app,omitempty"`
 	Clusters map[string]json.RawMessage `json:"clusters,omitempty"`
+	// MCPToken gates the /mcp HTTP endpoint (see internal/api/mcp.go). A
+	// top-level sibling of App/Clusters, not nested inside App's opaque
+	// frontend-owned blob — SetApp replaces that whole blob wholesale on
+	// every preferences write, which would otherwise silently drop it.
+	MCPToken string `json:"mcpToken,omitempty"`
 }
 
 // Store is a concurrency-safe preferences store backed by a JSON file.
@@ -84,6 +91,53 @@ func (s *Store) SetCluster(ctx string, raw json.RawMessage) error {
 	defer s.mu.Unlock()
 	s.data.Clusters[ctx] = raw
 	return s.save()
+}
+
+// MCPToken returns the persisted /mcp auth token, lazily generating and
+// persisting a new random one on first use. Not rotated on every call —
+// callers wanting a fresh one use RegenerateMCPToken explicitly.
+func (s *Store) MCPToken() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.MCPToken != "" {
+		return s.data.MCPToken, nil
+	}
+	tok, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	s.data.MCPToken = tok
+	if err := s.save(); err != nil {
+		return "", err
+	}
+	return s.data.MCPToken, nil
+}
+
+// RegenerateMCPToken discards the current /mcp auth token and persists a
+// new one — the escape hatch for a leaked token. Normal operation never
+// rotates it automatically: doing so on every boot would break any MCP
+// client config set up via `mcp install`/a manual copy, which bakes the
+// token into a static file.
+func (s *Store) RegenerateMCPToken() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tok, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	s.data.MCPToken = tok
+	if err := s.save(); err != nil {
+		return "", err
+	}
+	return s.data.MCPToken, nil
+}
+
+func randomToken() (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // save writes the store atomically (temp file + rename).

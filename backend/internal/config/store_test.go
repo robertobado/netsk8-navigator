@@ -41,6 +41,52 @@ func TestStore_ClusterRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStore_MCPTokenLazyAndStable(t *testing.T) {
+	s := newTestStore(t)
+	tok1, err := s.MCPToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok1 == "" {
+		t.Fatal("expected a non-empty generated token")
+	}
+	tok2, err := s.MCPToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok2 != tok1 {
+		t.Errorf("MCPToken() changed across calls (%q -> %q), want it stable — not rotated automatically", tok1, tok2)
+	}
+
+	// Persists across a fresh Store at the same path (simulating a restart).
+	restarted := NewStoreAt(s.path)
+	tok3, err := restarted.MCPToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok3 != tok1 {
+		t.Errorf("token did not survive a restart: got %q, want %q", tok3, tok1)
+	}
+}
+
+func TestStore_RegenerateMCPTokenRotates(t *testing.T) {
+	s := newTestStore(t)
+	tok1, err := s.MCPToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok2, err := s.RegenerateMCPToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok2 == tok1 {
+		t.Error("RegenerateMCPToken should produce a different token")
+	}
+	if got, _ := s.MCPToken(); got != tok2 {
+		t.Errorf("MCPToken() after regenerate = %q, want the newly regenerated %q", got, tok2)
+	}
+}
+
 func TestStore_PersistsToDisk(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.json")
 	s := &Store{path: path, data: fileData{Clusters: map[string]json.RawMessage{}}}

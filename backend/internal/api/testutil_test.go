@@ -61,10 +61,21 @@ var testGVKs = map[string]kube.Resource{
 // clientsets, so handlers can be exercised through real HTTP routing without a
 // live cluster or kubeconfig.
 type fakeManager struct {
-	client  kubernetes.Interface
-	dynamic dynamic.Interface
-	gvrs    map[string]kube.Resource
-	crds    []apiextensionsv1.CustomResourceDefinition
+	client   kubernetes.Interface
+	dynamic  dynamic.Interface
+	gvrs     map[string]kube.Resource
+	crds     []apiextensionsv1.CustomResourceDefinition
+	execInfo map[string][2]string // context -> [command, profile], for ExecInfoFor
+}
+
+// withExecInfo seeds what ExecInfoFor returns for a context — for tests of
+// the MCP exec-credential-failure hint (see mcp_test.go).
+func (f *fakeManager) withExecInfo(contextName, command, profile string) *fakeManager {
+	if f.execInfo == nil {
+		f.execInfo = map[string][2]string{}
+	}
+	f.execInfo[contextName] = [2]string{command, profile}
+	return f
 }
 
 // withCRDs seeds the CRDs CRDsFor returns, for tests exercising the generic
@@ -195,6 +206,13 @@ func (f *fakeManager) RESTMapperFor(string) (apimeta.RESTMapper, error) {
 }
 func (f *fakeManager) PodWatcherFor(string) (*kube.PodWatcher, error) {
 	return nil, fmt.Errorf("fakeManager: PodWatcherFor not supported in tests")
+}
+func (f *fakeManager) ExecInfoFor(contextName string) (command, profile string, ok bool) {
+	info, found := f.execInfo[contextName]
+	if !found {
+		return "", "", false
+	}
+	return info[0], info[1], true
 }
 
 // newTestServer builds a Server wired to a fakeManager seeded with objs, and a

@@ -22,7 +22,9 @@ export interface AppPreferences {
   // Toggles the /mcp endpoint (an MCP server sharing this same backend
   // process) so agents can manage the cluster too. allowWrite is a second,
   // more sensitive gate on top: enabled alone only exposes read tools.
-  mcp: { enabled: boolean; allowWrite: boolean }
+  // readOnlyContexts pins specific contexts (e.g. prod) read-only
+  // regardless of allowWrite — the backend ANDs both gates together.
+  mcp: { enabled: boolean; allowWrite: boolean; readOnlyContexts: string[] }
 }
 
 const DEFAULTS: AppPreferences = {
@@ -30,7 +32,7 @@ const DEFAULTS: AppPreferences = {
   metricsRefreshMs: 15_000,
   background: { enabled: false, effect: 'net', opacity: 0.6 },
   theme: 'dark', // the app predates light mode — keep existing users on dark by default
-  mcp: { enabled: false, allowWrite: false }, // off by default — opt-in
+  mcp: { enabled: false, allowWrite: false, readOnlyContexts: [] }, // off by default — opt-in
 }
 
 // Reflects the theme choice onto <html data-theme> so index.css can key off
@@ -69,6 +71,9 @@ function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
     out.mcp = {
       enabled: typeof m.enabled === 'boolean' ? m.enabled : DEFAULTS.mcp.enabled,
       allowWrite: typeof m.allowWrite === 'boolean' ? m.allowWrite : DEFAULTS.mcp.allowWrite,
+      readOnlyContexts: Array.isArray(m.readOnlyContexts)
+        ? m.readOnlyContexts.filter((c): c is string => typeof c === 'string')
+        : DEFAULTS.mcp.readOnlyContexts,
     }
   }
   return out
