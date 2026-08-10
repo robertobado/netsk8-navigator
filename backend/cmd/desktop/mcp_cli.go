@@ -19,6 +19,7 @@ func runMCPStdio(args []string) {
 
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, "")
+	srv.Version = version
 	srv.SetMCPFlags(api.NewStdioMCPFlags(cfg, allowWrite))
 
 	if err := srv.RunStdio(context.Background()); err != nil {

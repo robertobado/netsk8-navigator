@@ -45,6 +45,8 @@ const pt: Dict = {
   'controls.mcpReadOnlyContexts': 'Contextos fixados como somente leitura',
   'controls.mcpAddReadOnlyContext': 'Fixar contexto como somente leitura',
   'controls.mcpNoMoreContexts': 'Nenhum contexto disponível',
+  'controls.mcpAllowWriteNoAuthWarning':
+    'AUTH_PASSWORD não está definido — qualquer processo local pode ler o token e escrever nos clusters. Defina AUTH_PASSWORD para proteger isso de verdade.',
   'controls.mcpInstallHint': 'Prefere sem configurar URL? Rode netsk8-navigator mcp install em um terminal.',
   'controls.language': 'Idioma',
   'controls.theme': 'Tema',
@@ -413,6 +415,8 @@ const en: Dict = {
   'controls.mcpReadOnlyContexts': 'Contexts pinned read-only',
   'controls.mcpAddReadOnlyContext': 'Pin a context as read-only',
   'controls.mcpNoMoreContexts': 'No contexts available',
+  'controls.mcpAllowWriteNoAuthWarning':
+    'AUTH_PASSWORD is not set — any local process can read the token and write to your clusters. Set AUTH_PASSWORD for real protection.',
   'controls.mcpInstallHint': 'Prefer no network config? Run netsk8-navigator mcp install from a terminal.',
   'controls.language': 'Language',
   'controls.theme': 'Theme',

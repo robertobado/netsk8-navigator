@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -28,17 +29,30 @@ func main() {
 		case "--version", "-version":
 			fmt.Println("netsk8-navigator " + version)
 			return
+		case "--help", "-help", "-h":
+			printUsage(os.Stdout)
+			return
 		case "--mcp-stdio":
 			runMCPStdio(os.Args[2:])
 			return
 		case "mcp":
 			runMCPCLI(os.Args[2:])
 			return
+		default:
+			// A typo'd flag (--mcp-stdout, --mcp_stdio, ...) used to fall
+			// straight through to a normal server start — a silent extra
+			// instance instead of an error pointing at the mistake.
+			fmt.Fprintf(os.Stderr, "netsk8-navigator: unrecognized argument %q\n\n", os.Args[1])
+			printUsage(os.Stderr)
+			os.Exit(2)
 		}
 	}
 
+	kube.InstallStderrTap() // see internal/kube/execstderr.go — enriches exec-credential failures surfaced over /mcp and /api
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, os.Getenv("CORS_ORIGIN"))
+	srv.Version = version
+	srv.AuthEnabled = os.Getenv("AUTH_PASSWORD") != ""
 	if os.Getenv("DEMO_MODE") == "true" {
 		srv.DemoMode = true
 		log.Print("DEMO_MODE enabled — pod exec and port-forward are disabled")
@@ -71,6 +85,28 @@ func main() {
 	if err := serve(httpSrv); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+func printUsage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `Usage:
+  netsk8-navigator
+        Start the web server (default). See README > Security model for
+        the environment variables that configure it (ADDR, AUTH_PASSWORD, ...).
+
+  netsk8-navigator --mcp-stdio [--mcp-allow-write]
+        Serve this app's MCP tools over stdin/stdout instead of starting
+        the web server, for an MCP client to spawn on demand.
+
+  netsk8-navigator mcp install [--allow-write]
+        Register --mcp-stdio with locally installed MCP clients
+        (Claude Code, Claude Desktop, Cursor).
+
+  netsk8-navigator --version
+        Print the version and exit.
+
+  netsk8-navigator --help
+        Show this help.
+`)
 }
 
 // mustInit loads the kubeconfig and preferences store, exiting the process on

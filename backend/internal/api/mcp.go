@@ -20,11 +20,6 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
 )
 
-// mcpServerVersion is the MCP protocol-level version string some clients
-// render in a "connected servers" UI — independent of the app's own release
-// version (main.version), which the MCP server has no reason to know about.
-const mcpServerVersion = "0.1.0"
-
 // mcpInstructions is surfaced to every connecting client in `initialize` —
 // the natural place to head off the two mistakes real usage turned up:
 // guessing at a context name (each tool's schema also hard-enforces this via
@@ -37,7 +32,11 @@ const mcpInstructions = "Always call list_contexts first and use one of the retu
 // registered once at startup, and each mutating tool checks s.mcpFlags at
 // call time instead of the tool list changing dynamically.
 func (s *Server) buildMCPServer() *mcp.Server {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "netsk8-navigator", Version: mcpServerVersion}, &mcp.ServerOptions{
+	version := s.Version
+	if version == "" {
+		version = "dev" // unset in tests / a plain `go build` with no -ldflags — matches main.version's own convention
+	}
+	srv := mcp.NewServer(&mcp.Implementation{Name: "netsk8-navigator", Version: version}, &mcp.ServerOptions{
 		Instructions: mcpInstructions,
 	})
 	contexts := contextNames(s.mgr.Contexts())

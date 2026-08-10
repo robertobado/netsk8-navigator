@@ -8,14 +8,15 @@ import { setAppPrefs } from '@/lib/preferences'
 
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
 
-const { mcpTokenMock, contextsMock, regenerateMCPTokenMock } = vi.hoisted(() => ({
+const { mcpTokenMock, contextsMock, healthMock, regenerateMCPTokenMock } = vi.hoisted(() => ({
   mcpTokenMock: vi.fn(),
   contextsMock: vi.fn(),
+  healthMock: vi.fn(),
   regenerateMCPTokenMock: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
-  api: { mcpToken: mcpTokenMock, contexts: contextsMock },
+  api: { mcpToken: mcpTokenMock, contexts: contextsMock, health: healthMock },
   regenerateMCPToken: regenerateMCPTokenMock,
 }))
 
@@ -42,6 +43,7 @@ beforeEach(() => {
   writeTextMock.mockClear()
   mcpTokenMock.mockReset().mockResolvedValue({ token: 'abcdef1234567890token' })
   contextsMock.mockReset().mockResolvedValue([])
+  healthMock.mockReset().mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: 'test', authEnabled: true })
   regenerateMCPTokenMock.mockReset().mockResolvedValue({ token: 'freshfreshfreshtoken0' })
 })
 
@@ -121,6 +123,27 @@ describe('MCPControls', () => {
     await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
     await user.click(screen.getByText('Confirmar'))
     expect(prefs().mcp).toMatchObject({ enabled: true, allowWrite: true })
+  })
+
+  it('warns when granting write access with AUTH_PASSWORD unset', async () => {
+    healthMock.mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: 'test', authEnabled: false })
+    const user = userEvent.setup()
+    renderWithClient(<MCPControls />)
+    await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
+
+    await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
+    expect(await screen.findByText(/AUTH_PASSWORD não está definido/)).toBeInTheDocument()
+  })
+
+  it('does not warn when granting write access with AUTH_PASSWORD set', async () => {
+    healthMock.mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: 'test', authEnabled: true })
+    const user = userEvent.setup()
+    renderWithClient(<MCPControls />)
+    await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
+
+    await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
+    await waitFor(() => expect(healthMock).toHaveBeenCalled())
+    expect(screen.queryByText(/AUTH_PASSWORD não está definido/)).not.toBeInTheDocument()
   })
 
   it('turning MCP off clears allowWrite too', async () => {

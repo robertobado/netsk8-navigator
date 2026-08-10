@@ -54,6 +54,21 @@ type Server struct {
 	// reported via /api/health so the frontend can hide those affordances.
 	DemoMode bool
 
+	// Version is the running app's release version (main.version, stamped
+	// via -ldflags at build time) — set by main() after NewServer, since
+	// this package has no reason to otherwise know the app's own version.
+	// Surfaced via /api/health and as the MCP server's serverInfo.version,
+	// so both binaries, the MCP handshake, and the app bundle's own
+	// metadata (see wails.json's info.productVersion) all report one
+	// consistent number instead of three different ones.
+	Version string
+
+	// AuthEnabled reports whether AUTH_PASSWORD is set (HTTP Basic Auth
+	// wraps the whole app) — set by main() after NewServer. Surfaced via
+	// /api/health so the UI can warn when a sensitive toggle (MCP write
+	// access) is being granted with no authentication in front of it.
+	AuthEnabled bool
+
 	monMu   sync.Mutex
 	mon     map[string]monResult // context -> discovered Prometheus source (cached)
 	msCache map[string]bool      // context -> metrics-server availability (cached)
@@ -181,9 +196,11 @@ func (s *Server) demoModeBlocked(w http.ResponseWriter) bool {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":     "ok",
-		"kubeconfig": s.mgr.ConfigPath(),
-		"demo":       s.DemoMode,
+		"status":      "ok",
+		"kubeconfig":  s.mgr.ConfigPath(),
+		"demo":        s.DemoMode,
+		"version":     s.Version,
+		"authEnabled": s.AuthEnabled,
 	})
 }
 

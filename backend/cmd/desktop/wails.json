@@ -6,5 +6,8 @@
   "frontend:build": "",
   "author": {
     "name": "Roberto Badô"
+  },
+  "info": {
+    "productVersion": "0.0.0"
   }
 }

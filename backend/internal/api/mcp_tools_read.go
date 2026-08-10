@@ -35,7 +35,13 @@ type resourceKindArgs struct {
 	Name      string `json:"name" jsonschema:"resource name"`
 }
 
-func readOnly() *mcp.ToolAnnotations { return &mcp.ToolAnnotations{ReadOnlyHint: true} }
+// readOnly always sets IdempotentHint true alongside ReadOnlyHint: a read
+// is idempotent by definition (repeating it can't change anything), so
+// leaving IdempotentHint at its Go zero value (false) would read as a
+// contradiction to a client — "read-only, but not idempotent."
+func readOnly() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}
+}
 
 func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{

@@ -9,6 +9,7 @@ package mcpinstall
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 )
 
@@ -65,22 +66,52 @@ func InstallAll(entry Entry) []Result {
 	return results
 }
 
-// installClaudeCode shells out to the claude CLI's own `mcp add` rather
-// than hand-editing ~/.claude.json: that file carries tens of KB of
+// installClaudeCode prefers shelling out to the claude CLI's own `mcp add`
+// over hand-editing ~/.claude.json: that file carries tens of KB of
 // unrelated state (OAuth tokens included), and the CLI already owns
 // merge-safety and permission-preservation for its own config — safer than
-// us reimplementing that against a format we don't control.
+// us reimplementing that against a format we don't control. But the CLI
+// isn't a hard requirement to use Claude Code (many installs — e.g. the
+// VS Code extension — never put `claude` on PATH at all), so when it's
+// missing, fall back to editing ~/.claude.json directly: confirmed against
+// a real "-s user" registration that Claude Code's "user" scope is simply
+// a top-level "mcpServers" object in that file, the exact shape
+// installFlatConfig already merges safely for Claude Desktop/Cursor.
 func installClaudeCode(entry Entry) Result {
-	if _, err := exec.LookPath("claude"); err != nil {
-		return Result{Client: "Claude Code", Status: "skipped: claude CLI not found on PATH"}
+	if _, err := exec.LookPath("claude"); err == nil {
+		args := append([]string{"mcp", "add", "-s", "user", serverName, "--", entry.Command}, entry.Args...)
+		cmd := exec.Command("claude", args...) //nolint:gosec // args are our own constructed entry, not attacker input
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return Result{Client: "Claude Code", Status: "failed: " + firstLine(string(out), err)}
+		}
+		return Result{Client: "Claude Code", Status: "installed"}
 	}
-	args := append([]string{"mcp", "add", "-s", "user", serverName, "--", entry.Command}, entry.Args...)
-	cmd := exec.Command("claude", args...) //nolint:gosec // args are our own constructed entry, not attacker input
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return Result{Client: "Claude Code", Status: "failed: " + firstLine(string(out), err)}
+
+	path, ok := claudeCodeConfigPath()
+	if !ok {
+		return Result{Client: "Claude Code", Status: "skipped: not installed on this machine"}
 	}
-	return Result{Client: "Claude Code", Status: "installed"}
+	return installFlatConfig("Claude Code", path, entry)
+}
+
+// claudeCodeConfigPath returns ~/.claude.json if it exists — Claude Code
+// creates it on first run, so its presence is the same "is this client
+// installed" signal claudeDesktopConfigDir/cursorConfigDir use, just for a
+// bare file instead of an app-data subdirectory.
+func claudeCodeConfigPath() (string, bool) {
+	home := os.Getenv("HOME")
+	if runtime.GOOS == "windows" {
+		home = os.Getenv("USERPROFILE")
+	}
+	if home == "" {
+		return "", false
+	}
+	path := filepath.Join(home, ".claude.json")
+	if _, err := os.Stat(path); err != nil { //nolint:gosec // path is $HOME/.claude.json, not user input
+		return "", false
+	}
+	return path, true
 }
 
 func firstLine(s string, fallback error) string {

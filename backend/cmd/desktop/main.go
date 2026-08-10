@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -73,6 +74,27 @@ func fixPathForGUILaunch() {
 	log.Printf("adopted login shell PATH: %s", shellPath)
 }
 
+func printUsage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `Usage:
+  netsk8-navigator
+        Launch the app window (default).
+
+  netsk8-navigator --mcp-stdio [--mcp-allow-write]
+        Serve this app's MCP tools over stdin/stdout instead of launching
+        the window, for an MCP client to spawn on demand.
+
+  netsk8-navigator mcp install [--allow-write]
+        Register --mcp-stdio with locally installed MCP clients
+        (Claude Code, Claude Desktop, Cursor).
+
+  netsk8-navigator --version
+        Print the version and exit.
+
+  netsk8-navigator --help
+        Show this help.
+`)
+}
+
 // mustInit mirrors backend/main.go's mustInit — duplicated rather than
 // imported, since the CLI's version lives in that binary's own (unexported)
 // package main and can't be imported from here.
@@ -91,10 +113,13 @@ func mustInit() (*kube.Manager, *config.Store) {
 	return mgr, cfg
 }
 
-// buildMux mirrors backend/main.go's buildMux.
+// buildMux mirrors backend/main.go's buildMux. AuthEnabled is left at its
+// zero value (false) — this binary has no AUTH_PASSWORD/wrapWithAuth
+// equivalent at all, so that's simply accurate here.
 func buildMux() http.Handler {
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, "")
+	srv.Version = version
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
 	mux.Handle("/mcp", srv.MCPHandler()) // see backend/main.go's buildMux for the rationale
@@ -150,15 +175,29 @@ func bootstrapRedirect(url string) http.Handler {
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "--version", "-version":
+			fmt.Println("netsk8-navigator " + version)
+			return
+		case "--help", "-help", "-h":
+			printUsage(os.Stdout)
+			return
 		case "--mcp-stdio":
 			runMCPStdio(os.Args[2:])
 			return
 		case "mcp":
 			runMCPCLI(os.Args[2:])
 			return
+		default:
+			// A typo'd flag used to fall straight through to a normal GUI
+			// launch — a silent extra instance instead of an error pointing
+			// at the mistake.
+			fmt.Fprintf(os.Stderr, "netsk8-navigator: unrecognized argument %q\n\n", os.Args[1])
+			printUsage(os.Stderr)
+			os.Exit(2)
 		}
 	}
 
+	kube.InstallStderrTap() // see internal/kube/execstderr.go — enriches exec-credential failures surfaced over /mcp and /api
 	log.Printf("netsk8-navigator %s", version)
 	fixPathForGUILaunch()
 	addr := startServer(buildMux())

@@ -168,6 +168,20 @@ jobs:
           } > "$stub"
           echo "KUBECONFIG=$stub" >> "$GITHUB_ENV"
 
+      # wails.json's info.productVersion (not -ldflags, a Go-only concept)
+      # is what Wails stamps into the .app bundle's Info.plist
+      # (CFBundleVersion/CFBundleShortVersionString) — patch it to the real
+      # release version so `Get Info` in Finder doesn't show the template's
+      # default "1.0.0" forever, out of step with the binary's own -X
+      # main.version and the MCP server's serverInfo.version.
+      - name: Set app bundle version
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: backend/cmd/desktop
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "${{ steps.version.outputs.version }}" '.info.productVersion = $v' wails.json > "$tmp"
+          mv "$tmp" wails.json
+
       - name: Build the .app (universal binary)
         id: build
         if: steps.gate.outputs.enabled == 'true'
@@ -342,6 +356,14 @@ jobs:
       # against by default — this tag switches the pkg-config name it looks
       # for. Without it, the build fails at the cgo/pkg-config step with
       # "Package webkit2gtk-4.0 was not found in the pkg-config search path".
+      # See the darwin job's "Set app bundle version" step for why.
+      - name: Set app bundle version
+        working-directory: backend/cmd/desktop
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "${{ steps.version.outputs.version }}" '.info.productVersion = $v' wails.json > "$tmp"
+          mv "$tmp" wails.json
+
       - name: Build the binary
         working-directory: backend/cmd/desktop
         run: |
@@ -438,6 +460,16 @@ jobs:
             echo "  user: {}"
           } > "$stub"
           echo "KUBECONFIG=$stub" >> "$GITHUB_ENV"
+
+      # See the darwin job's "Set app bundle version" step for why — this is
+      # what stamps the .exe's file-properties version on Windows.
+      - name: Set app bundle version
+        working-directory: backend/cmd/desktop
+        shell: bash
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "${{ steps.version.outputs.version }}" '.info.productVersion = $v' wails.json > "$tmp"
+          mv "$tmp" wails.json
 
       - name: Build the binary
         working-directory: backend/cmd/desktop

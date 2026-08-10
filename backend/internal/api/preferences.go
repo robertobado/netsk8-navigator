@@ -46,15 +46,28 @@ func (s *Server) handlePutClusterPrefs(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetMCPToken: GET /api/mcp/token — the bearer token /mcp requires via
-// the X-Netsk8-MCP-Token header (see mcp.go). Same trust boundary as
-// everything else under /api/ already exposes (decoded Secret values,
-// manifest edits) — no extra gating needed here.
+// the X-Netsk8-MCP-Token header (see mcp.go).
+//
+// This is the same trust boundary as everything else under /api/ (decoded
+// Secret values, manifest edits, exec) — no *stronger* gate is added here,
+// and it can't meaningfully be: with AUTH_PASSWORD unset, nothing on this
+// loopback port can tell "the browser tab this user opened" apart from any
+// other local process, so a credential handed out over that same channel
+// is only ever as protected as the channel itself. The token still has
+// real value (it stops an MCP client from trivially discovering a
+// write-capable server by port-scanning, and composes with AUTH_PASSWORD
+// for an actual boundary when that's set — see the README's Security
+// model) — it just isn't a substitute for AUTH_PASSWORD. Audited like the
+// other sensitive reads (Secret values, exec) for the same reason: no
+// stronger gate exists in the default posture, so a log trail of who
+// asked is the best available signal.
 func (s *Server) handleGetMCPToken(w http.ResponseWriter, r *http.Request) {
 	token, err := s.cfg.MCPToken()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	audit(r, "mcp-token-read")
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
@@ -68,6 +81,7 @@ func (s *Server) handleRegenerateMCPToken(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	audit(r, "mcp-token-regenerate")
 	writeJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 

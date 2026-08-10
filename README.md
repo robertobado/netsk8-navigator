@@ -297,11 +297,15 @@ netsk8-navigator mcp install
 
 Detects installed MCP clients (Claude Code, Claude Desktop, Cursor) and
 registers itself in each — merging into their config rather than
-overwriting it, and preserving the file's existing permissions. Add
-`--allow-write` to also register write access (off by default — read-only
-until you opt in). Re-running it is safe; it updates the existing entry
-rather than duplicating it. Restart the agent's session afterward — MCP
-servers are only picked up at session start.
+overwriting it, and preserving the file's existing permissions. For Claude
+Code specifically, it prefers shelling out to the `claude` CLI's own `mcp
+add` (so that CLI's own config logic — not ours — owns correctness); if
+`claude` isn't on `$PATH` (e.g. the VS Code extension, which doesn't add
+it) but `~/.claude.json` already exists, it merges into that file directly
+instead. Add `--allow-write` to also register write access (off by
+default — read-only until you opt in). Re-running it is safe; it updates
+the existing entry rather than duplicating it. Restart the agent's session
+afterward — MCP servers are only picked up at session start.
 
 Prefer to do it by hand, or install failed to detect your client? Any
 stdio-capable client can be pointed at the binary directly:
@@ -351,9 +355,19 @@ again explicitly every time. On top of that, specific contexts (e.g. a
 production cluster) can be pinned permanently read-only from the same
 panel, regardless of the global toggle.
 
-This inherits the same trust model described in *Security model* above:
-if you've turned on `AUTH_PASSWORD`, HTTP `/mcp` requires it like
-everything else, on top of its own token; stdio mode has no separate
+This inherits the same trust model described in *Security model* above —
+be honest with yourself about what the token does and doesn't buy you.
+With `AUTH_PASSWORD` set, it composes with Basic Auth for a real boundary
+(both the token endpoint and `/mcp` itself are then behind it). Without
+`AUTH_PASSWORD`, nothing on the loopback port can tell "the browser tab
+you opened" apart from any other local process — a credential handed out
+over that same unauthenticated `/api/*` is only ever as protected as the
+channel it came from, exactly like every other unauthenticated read
+(decoded Secrets, exec) this backend already allows. The token still has
+real value there (it stops an MCP client from finding a write-capable
+server by accident) and every read of it is written to the audit log, but
+it is not a substitute for `AUTH_PASSWORD` if you're granting write
+access and care about that threat model. stdio mode has no separate
 credential at all — the trust boundary is simply whoever can spawn the
 process, the same as running `kubectl` directly.
 

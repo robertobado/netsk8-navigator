@@ -18,6 +18,8 @@ export function MCPControls() {
 
   const tokenQ = useQuery({ queryKey: ['mcp-token'], queryFn: api.mcpToken, enabled: mcp.enabled, refetchInterval: false })
   const contextsQ = useQuery({ queryKey: ['contexts'], queryFn: api.contexts, enabled: mcp.enabled && mcp.allowWrite, refetchInterval: false })
+  // Shares App.tsx's own ['health'] query — same key, same cache, no extra request.
+  const healthQ = useQuery({ queryKey: ['health'], queryFn: api.health, staleTime: Infinity, refetchInterval: false })
 
   const toggleEnabled = () => {
     // Turning MCP off also force-clears allowWrite, so re-enabling later
@@ -157,14 +159,19 @@ export function MCPControls() {
                 <span className="absolute top-0.5 left-[1.125rem] size-4 rounded-full bg-white shadow" />
               </button>
             ) : confirmingWrite ? (
-              <div className="flex items-center gap-1.5 rounded-lg border border-[color:var(--err)]/30 bg-[color:var(--err)]/5 px-2 py-1">
-                <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--err)]" />
-                <button type="button" onClick={confirmWrite} className="rounded-md bg-[color:var(--err)]/90 px-2 py-0.5 text-[11px] font-medium text-white">
-                  {t('Confirm')}
-                </button>
-                <button type="button" onClick={() => setConfirmingWrite(false)} className="text-[11px] text-muted-foreground hover:text-foreground">
-                  {t('Cancel')}
-                </button>
+              <div className="flex flex-col items-end gap-1.5">
+                {healthQ.data && !healthQ.data.authEnabled && (
+                  <p className="max-w-full text-right text-[11px] text-[color:var(--err)]">{t('controls.mcpAllowWriteNoAuthWarning')}</p>
+                )}
+                <div className="flex items-center gap-1.5 rounded-lg border border-[color:var(--err)]/30 bg-[color:var(--err)]/5 px-2 py-1">
+                  <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--err)]" />
+                  <button type="button" onClick={confirmWrite} className="rounded-md bg-[color:var(--err)]/90 px-2 py-0.5 text-[11px] font-medium text-white">
+                    {t('Confirm')}
+                  </button>
+                  <button type="button" onClick={() => setConfirmingWrite(false)} className="text-[11px] text-muted-foreground hover:text-foreground">
+                    {t('Cancel')}
+                  </button>
+                </div>
               </div>
             ) : (
               <button

@@ -33,6 +33,23 @@ func TestHandleHealth(t *testing.T) {
 	}
 }
 
+func TestHandleHealth_VersionAndAuthEnabled(t *testing.T) {
+	s := newTestServer(t)
+	s.Version = "1.2.3"
+	s.AuthEnabled = true
+	rec := doRequest(t, s, "GET", "/api/health", "")
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["version"] != "1.2.3" {
+		t.Errorf("version field = %v, want 1.2.3", body["version"])
+	}
+	if body["authEnabled"] != true {
+		t.Errorf("authEnabled field = %v, want true", body["authEnabled"])
+	}
+}
+
 func TestHandleHealth_DemoMode(t *testing.T) {
 	s := newTestServer(t)
 	s.DemoMode = true

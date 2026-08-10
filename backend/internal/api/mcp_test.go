@@ -466,3 +466,53 @@ func TestServer_RunStdioServesToolsOverAnyPersistentTransport(t *testing.T) {
 		t.Fatal("Run (RunStdio's body) didn't return after the client session closed")
 	}
 }
+
+func TestMCPTokenEndpoints_Audited(t *testing.T) {
+	s := newTestServer(t)
+
+	out := captureLog(t, func() {
+		doRequest(t, s, "GET", "/api/mcp/token", "")
+	})
+	if !strings.Contains(out, "AUDIT action=mcp-token-read") {
+		t.Errorf("GET token: expected an audit line, got: %s", out)
+	}
+
+	out = captureLog(t, func() {
+		doRequest(t, s, "POST", "/api/mcp/token/regenerate", "")
+	})
+	if !strings.Contains(out, "AUDIT action=mcp-token-regenerate") {
+		t.Errorf("regenerate token: expected an audit line, got: %s", out)
+	}
+}
+
+func TestMCPHandler_ReportsAppVersion(t *testing.T) {
+	s := newTestServer(t)
+	s.Version = "9.9.9"
+	enableMCP(s, false)
+
+	httpSrv := httptest.NewServer(s.MCPHandler())
+	defer httpSrv.Close()
+	token, err := s.cfg.MCPToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
+	httpClient := &http.Client{Transport: headerInjectingTransport{key: mcpTokenHeader, value: token}}
+	session, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: httpSrv.URL, HTTPClient: httpClient}, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	info := session.InitializeResult().ServerInfo
+	if info.Version != "9.9.9" {
+		t.Errorf("serverInfo.version = %q, want the app's own Version (9.9.9), matching the binary and bundle version instead of a separate hardcoded number", info.Version)
+	}
+}
+
+func TestReadToolAnnotations_IdempotentAlongsideReadOnly(t *testing.T) {
+	ann := readOnly()
+	if !ann.ReadOnlyHint || !ann.IdempotentHint {
+		t.Errorf("readOnly() = %+v, want both ReadOnlyHint and IdempotentHint true — a read is idempotent by definition", ann)
+	}
+}

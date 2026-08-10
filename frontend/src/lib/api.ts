@@ -5,6 +5,8 @@ export interface Health {
   status: string
   kubeconfig: string
   demo: boolean
+  version: string
+  authEnabled: boolean
 }
 
 export interface UpdateCheck {
