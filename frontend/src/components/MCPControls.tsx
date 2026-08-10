@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Bot, Check, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
-import { api, regenerateMCPToken } from '@/lib/api'
+import { AlertTriangle, Bot, Check, Copy, Eye, EyeOff, Plus, RefreshCw, X } from 'lucide-react'
+import { api, type ContextInfo, regenerateMCPToken } from '@/lib/api'
 import { useAppPrefs, setAppPrefs } from '@/lib/preferences'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -33,10 +33,11 @@ export function MCPControls() {
     setConfirmingWrite(false)
   }
 
-  const toggleReadOnlyContext = (name: string) => {
-    const readOnlyContexts = mcp.readOnlyContexts.includes(name) ? mcp.readOnlyContexts.filter((c) => c !== name) : [...mcp.readOnlyContexts, name]
-    setAppPrefs({ mcp: { ...mcp, readOnlyContexts } })
+  const addReadOnlyContext = (name: string) => {
+    if (mcp.readOnlyContexts.includes(name)) return
+    setAppPrefs({ mcp: { ...mcp, readOnlyContexts: [...mcp.readOnlyContexts, name] } })
   }
+  const removeReadOnlyContext = (name: string) => setAppPrefs({ mcp: { ...mcp, readOnlyContexts: mcp.readOnlyContexts.filter((c) => c !== name) } })
 
   const regenerateToken = async () => {
     await regenerateMCPToken()
@@ -179,37 +180,114 @@ export function MCPControls() {
             )}
           </div>
 
-          {mcp.allowWrite && contextsQ.data && contextsQ.data.length > 0 && (
-            <div className="space-y-1 border-t pt-2">
-              <span className="text-xs text-muted-foreground">{t('controls.mcpReadOnlyContexts')}</span>
-              <div className="max-h-32 space-y-1 overflow-y-auto">
-                {contextsQ.data.map((c) => {
-                  const readOnly = mcp.readOnlyContexts.includes(c.name)
-                  return (
-                    <div key={c.name} className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[11px]" title={c.name}>
-                        {c.name}
-                      </span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={readOnly}
-                        aria-label={`${t('controls.mcpReadOnlyContexts')}: ${c.name}`}
-                        onClick={() => toggleReadOnlyContext(c.name)}
-                        className={cn('relative h-4 w-7 shrink-0 rounded-full transition-colors', readOnly ? 'bg-[color:var(--brand)]' : 'bg-muted')}
-                      >
-                        <span
-                          className={cn('absolute top-0.5 size-3 rounded-full bg-white shadow transition-all', readOnly ? 'left-[0.875rem]' : 'left-0.5')}
-                        />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+          {mcp.allowWrite && (
+            <ReadOnlyContextsPicker
+              contexts={contextsQ.data ?? []}
+              readOnlyContexts={mcp.readOnlyContexts}
+              onAdd={addReadOnlyContext}
+              onRemove={removeReadOnlyContext}
+            />
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ReadOnlyContextsPicker pins specific contexts (e.g. a production cluster)
+// permanently read-only, independent of the global "Allow write" toggle.
+// Deliberately an add/remove picker rather than one toggle per context: a
+// real kubeconfig can have dozens of contexts, and a wall of individually
+// toggled switches (almost all off) doesn't scale and reads as a confusing
+// double negative. This only ever renders what's actually pinned.
+function ReadOnlyContextsPicker({
+  contexts,
+  readOnlyContexts,
+  onAdd,
+  onRemove,
+}: {
+  contexts: ContextInfo[]
+  readOnlyContexts: string[]
+  onAdd: (name: string) => void
+  onRemove: (name: string) => void
+}) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  const available = contexts.filter((c) => !readOnlyContexts.includes(c.name) && c.name.toLowerCase().includes(query.toLowerCase()))
+
+  return (
+    <div className="space-y-1.5 border-t pt-2">
+      <span className="text-xs text-muted-foreground">{t('controls.mcpReadOnlyContexts')}</span>
+
+      {readOnlyContexts.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {readOnlyContexts.map((name) => (
+            <span key={name} className="inline-flex max-w-full items-center gap-1 rounded-full border bg-background/50 py-0.5 pr-1 pl-2 text-[11px]">
+              <span className="max-w-40 truncate" title={name}>
+                {name}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(name)}
+                aria-label={`${t('Remove')} ${name}`}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="relative" ref={ref}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-center gap-1.5 rounded-lg border border-dashed bg-background/30 px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent"
+        >
+          <Plus className="size-3.5" /> {t('controls.mcpAddReadOnlyContext')}
+        </button>
+
+        {open && (
+          <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border bg-popover/95 shadow-2xl shadow-black/40 backdrop-blur-2xl">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('ns.search')}
+              className="w-full border-b bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-muted-foreground"
+            />
+            <div className="max-h-40 overflow-y-auto p-1">
+              {available.length === 0 && <p className="px-2 py-1.5 text-[11px] text-muted-foreground">{t('controls.mcpNoMoreContexts')}</p>}
+              {available.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => {
+                    onAdd(c.name)
+                    setQuery('')
+                  }}
+                  className="block w-full truncate rounded-md px-2 py-1 text-left text-[11px] hover:bg-accent"
+                  title={c.name}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

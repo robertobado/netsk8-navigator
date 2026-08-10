@@ -136,7 +136,7 @@ describe('MCPControls', () => {
     expect(prefs().mcp).toMatchObject({ enabled: false, allowWrite: false })
   })
 
-  it('lists contexts as read-only toggles once write access is granted', async () => {
+  it('pins a context read-only via the add picker, and unpins it via its chip', async () => {
     contextsMock.mockResolvedValue([
       { name: 'staging', cluster: 'staging', user: 'staging', namespace: 'default', server: '', current: false },
       { name: 'prod', cluster: 'prod', user: 'prod', namespace: 'default', server: '', current: false },
@@ -146,15 +146,22 @@ describe('MCPControls', () => {
     await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
     await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
     await user.click(screen.getByText('Confirmar'))
-
     await waitFor(() => expect(contextsMock).toHaveBeenCalled())
-    const prodToggle = await screen.findByRole('switch', { name: 'Manter somente leitura: prod' })
-    expect(prodToggle).toHaveAttribute('aria-checked', 'false')
 
-    await user.click(prodToggle)
+    // Nothing pinned yet — no chips, only the "add" affordance.
+    expect(screen.queryByText('prod')).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('Fixar contexto como somente leitura'))
+    await user.click(await screen.findByRole('button', { name: 'prod' }))
+
     expect((prefs().mcp as { readOnlyContexts: string[] }).readOnlyContexts).toEqual(['prod'])
+    expect(screen.getByText('prod')).toBeInTheDocument()
+    // Already-pinned contexts drop out of the still-open picker's list.
+    expect(screen.queryByRole('button', { name: 'prod' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'staging' })).toBeInTheDocument()
 
-    await user.click(prodToggle)
+    await user.click(screen.getByLabelText('Remover prod'))
     expect((prefs().mcp as { readOnlyContexts: string[] }).readOnlyContexts).toEqual([])
+    expect(screen.queryByText('prod')).not.toBeInTheDocument()
   })
 })

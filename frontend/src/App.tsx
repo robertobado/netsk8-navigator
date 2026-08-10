@@ -169,7 +169,14 @@ function AppMain() {
         {/* Sidebar: off-canvas below `lg`, static + always visible at `lg`+ */}
         <aside
           className={cn(
-            'fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 -translate-x-full flex-col gap-4 border-r bg-background/95 p-4 backdrop-blur-xl transition-transform duration-300 lg:static lg:translate-x-0 lg:bg-background/40',
+            // overflow-y-auto here is a safety net, not the primary scroll
+            // mechanism: the nav div below (flex-1 min-h-0 overflow-y-auto)
+            // normally absorbs any extra height by shrinking. This only
+            // kicks in if the fixed-size footer stack (controls + toggles)
+            // ever grows taller than the sidebar itself even with the nav
+            // shrunk to zero — without it, that excess used to spill out
+            // past the sidebar's bottom edge instead of scrolling.
+            'fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 -translate-x-full flex-col gap-4 overflow-y-auto border-r bg-background/95 p-4 backdrop-blur-xl transition-transform duration-300 lg:static lg:translate-x-0 lg:bg-background/40',
             sidebarOpen && 'translate-x-0',
           )}
         >
