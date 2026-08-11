@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
-import { useReactTable, getCoreRowModel, flexRender, type ColumnDef } from '@tanstack/react-table'
+import { flexRender } from '@tanstack/react-table'
+import { getCoreRowModel, useLegacyTable, type LegacyColumnDef as ColumnDef } from '@tanstack/react-table/legacy'
 import { RESOURCES, resourceByKey } from './resources'
 
 // One fabricated row carrying every field any resource's columns accessor
@@ -69,7 +70,7 @@ const kitchenSinkRow: Record<string, unknown> = {
 const unboundPVCRow: Record<string, unknown> = { ...kitchenSinkRow, status: 'Pending', mountedBy: [] }
 
 function TableHarness({ columns, data }: Readonly<{ columns: ColumnDef<never, unknown>[]; data: Record<string, unknown>[] }>) {
-  const table = useReactTable({ data: data as never[], columns, getCoreRowModel: getCoreRowModel() })
+  const table = useLegacyTable({ data: data as never[], columns, getCoreRowModel: getCoreRowModel() })
   return (
     <table>
       <tbody>

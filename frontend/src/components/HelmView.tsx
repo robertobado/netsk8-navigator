@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
+import { legacyCreateColumnHelper as createColumnHelper, type LegacyColumnDef as ColumnDef } from '@tanstack/react-table/legacy'
 import { Boxes, RefreshCw, ServerCrash, Store } from 'lucide-react'
 import { helmReleases, type HelmRelease } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
@@ -73,7 +73,7 @@ const helmCols = [
   hc.accessor('updated', {
     header: 'Updated',
     cell: (c) => <span className="text-sm text-muted-foreground">{age(c.getValue())}</span>,
-    sortingFn: (a, b) => new Date(a.original.updated).getTime() - new Date(b.original.updated).getTime(),
+    sortFn: (a, b) => new Date(a.original.updated).getTime() - new Date(b.original.updated).getTime(),
   }),
 ] as ColumnDef<Row, unknown>[]
 

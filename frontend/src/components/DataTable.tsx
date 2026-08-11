@@ -1,20 +1,17 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { flexRender, type CellData, type ColumnFiltersState, type FilterFn, type RowData, type SortingState, type TableFeatures } from '@tanstack/react-table'
 import {
-  flexRender,
   getCoreRowModel,
   getFacetedRowModel,
   getFacetedUniqueValues,
   getFilteredRowModel,
   getSortedRowModel,
-  useReactTable,
-  type Column,
-  type ColumnDef,
-  type ColumnFiltersState,
-  type FilterFn,
-  type RowData,
-  type SortingState,
-} from '@tanstack/react-table'
+  useLegacyTable,
+  type LegacyColumn as Column,
+  type LegacyColumnDef as ColumnDef,
+  type LegacyFeatures,
+} from '@tanstack/react-table/legacy'
 import { ArrowUpDown, Check, ChevronRight, Inbox, ListFilter, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -22,12 +19,12 @@ import { useT } from '@/lib/i18n'
 // Optional extra control rendered in a column header, beside the sort toggle.
 declare module '@tanstack/react-table' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface ColumnMeta<TData extends RowData, TValue> {
+  interface ColumnMeta<TFeatures extends TableFeatures, TData extends RowData, TValue extends CellData = CellData> {
     headerAddon?: ReactNode
   }
 }
 
-interface DataTableProps<T> {
+interface DataTableProps<T extends RowData> {
   title: string
   data: T[]
   columns: ColumnDef<T, unknown>[]
@@ -51,13 +48,13 @@ interface DataTableProps<T> {
 const VIRTUALIZE_MIN = 80
 
 // Multi-select column filter: keep rows whose value is in the chosen set.
-const multiSelectFilter: FilterFn<unknown> = (row, columnId, value) => {
+const multiSelectFilter: FilterFn<LegacyFeatures, RowData> = (row, columnId, value) => {
   if (!Array.isArray(value) || value.length === 0) return true
   return value.includes(String(row.getValue(columnId)))
 }
 
 // A per-column dropdown listing that column's distinct values as checkboxes.
-function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
+function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T, unknown> }>) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const selected = (column.getFilterValue() as string[] | undefined) ?? []
@@ -118,7 +115,7 @@ function FacetFilter<T>({ column }: Readonly<{ column: Column<T, unknown> }>) {
 
 // Generic resource table: sortable columns, global filter, sticky header.
 // Shared by every resource view (pods, deployments, services, ...).
-export function DataTable<T>({
+export function DataTable<T extends RowData>({
   title,
   data,
   columns,
@@ -161,10 +158,10 @@ export function DataTable<T>({
   }, [sortKey, sorting])
   const rows = useMemo(() => data, [data])
 
-  const table = useReactTable({
+  const table = useLegacyTable({
     data: rows,
     columns,
-    defaultColumn: { filterFn: multiSelectFilter as FilterFn<T> },
+    defaultColumn: { filterFn: multiSelectFilter as FilterFn<LegacyFeatures, T> },
     state: { sorting, globalFilter: filter, columnFilters },
     onSortingChange: setSorting,
     onGlobalFilterChange: setFilter,

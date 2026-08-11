@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
-import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
+import { legacyCreateColumnHelper as createColumnHelper, type LegacyColumnDef as ColumnDef } from '@tanstack/react-table/legacy'
 import { AlertTriangle, CircleCheck, Clock, ExternalLink, Loader2, Pin, Radio, WifiOff } from 'lucide-react'
 import { api, kindToSlug, type Pod, type PodUsageEntry } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
@@ -464,7 +464,7 @@ export function PodsTable({
       col.accessor('age', {
         header: 'Age',
         cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{age(c.getValue())}</span>,
-        sortingFn: (a, b) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime(),
+        sortFn: (a, b) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime(),
       }),
     ]
     // Insert the usage mini-gauges as two sortable columns right after Status,
