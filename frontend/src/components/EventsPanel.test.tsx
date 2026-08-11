@@ -14,7 +14,16 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 function ev(overrides: Partial<EventView> = {}): EventView {
-  return { type: 'Normal', reason: 'Scheduled', message: 'assigned to node-1', count: 1, first: '', last: '2026-01-01T00:00:00Z', source: 'scheduler', ...overrides }
+  return {
+    type: 'Normal',
+    reason: 'Scheduled',
+    message: 'assigned to node-1',
+    count: 1,
+    first: '',
+    last: '2026-01-01T00:00:00Z',
+    source: 'scheduler',
+    ...overrides,
+  }
 }
 
 function renderWithClient(ui: ReactElement) {

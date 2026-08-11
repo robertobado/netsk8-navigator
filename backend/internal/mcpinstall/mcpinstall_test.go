@@ -122,7 +122,7 @@ func TestClaudeDesktopConfigDir(t *testing.T) {
 		default:
 			dir = filepath.Join(home, ".config/Claude")
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Fatal(err)
 		}
 		path, ok := claudeDesktopConfigDir()
@@ -142,7 +142,7 @@ func TestCursorConfigDir(t *testing.T) {
 	if _, ok := cursorConfigDir(); ok {
 		t.Error("want ok=false before ~/.cursor exists")
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	path, ok := cursorConfigDir()
@@ -173,7 +173,7 @@ func TestInstallFlatConfig_Failures(t *testing.T) {
 	t.Run("path is a directory, not a file (read error)", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "config.json")
-		if err := os.Mkdir(path, 0o755); err != nil {
+		if err := os.Mkdir(path, 0o750); err != nil {
 			t.Fatal(err)
 		}
 		r := installFlatConfig("Test", path, Entry{Command: "/exe"})
