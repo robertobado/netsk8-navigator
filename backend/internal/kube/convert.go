@@ -189,25 +189,46 @@ type DeploymentView struct {
 }
 
 func ToDeploymentView(d *appsv1.Deployment) DeploymentView {
-	desired := int32(1)
-	if d.Spec.Replicas != nil {
-		desired = *d.Spec.Replicas
-	}
-	status := "Progressing"
-	if d.Status.ReadyReplicas == desired && desired > 0 {
-		status = "Available"
-	} else if desired == 0 {
-		status = "Scaled to 0"
-	}
+	desired := replicasOrDefault(d.Spec.Replicas)
 	return DeploymentView{
 		Name:      d.Name,
 		Namespace: d.Namespace,
 		Ready:     fmt.Sprintf("%d/%d", d.Status.ReadyReplicas, desired),
 		UpToDate:  d.Status.UpdatedReplicas,
 		Available: d.Status.AvailableReplicas,
-		Status:    status,
+		Status:    deploymentStatus(d, desired),
 		Age:       formatAge(d.CreationTimestamp.Time),
 	}
+}
+
+// deploymentStatus mirrors `kubectl rollout status`'s own algorithm (see
+// k8s.io/kubectl/pkg/polymorphichelpers/rollout_status.go) instead of the
+// replica-count shortcut this used to take (ReadyReplicas == desired →
+// "Available"). That shortcut has a real failure mode: a bad rollout (bad
+// image, failing readiness probe, ...) can leave every OLD pod fully Ready
+// — satisfying ReadyReplicas == desired — while the Deployment's own
+// Progressing condition has already flipped to False (reason
+// ProgressDeadlineExceeded). The list showed "Available" for a deployment
+// whose current rollout had actually failed, with nothing pointing at the
+// problem short of opening the detail drawer and reading the condition.
+func deploymentStatus(d *appsv1.Deployment, desired int32) string {
+	if desired == 0 {
+		return "Scaled to 0"
+	}
+	for _, c := range d.Status.Conditions {
+		if c.Type == appsv1.DeploymentProgressing && c.Status == corev1.ConditionFalse {
+			if c.Reason != "" {
+				return c.Reason
+			}
+			return "ProgressDeadlineExceeded"
+		}
+	}
+	if d.Status.UpdatedReplicas < desired ||
+		d.Status.Replicas > d.Status.UpdatedReplicas ||
+		d.Status.AvailableReplicas < d.Status.UpdatedReplicas {
+		return "Progressing"
+	}
+	return "Available"
 }
 
 // ServiceView is the UI projection of a Service.

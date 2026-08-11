@@ -12,6 +12,10 @@ import { HoverBubble } from './HoverBubble'
 
 // Deployment rollout status with a tone/icon per state (mirrors the pods column):
 // Available → green check; Progressing → blue rolling dots; Scaled to 0 → muted.
+// Anything else is the Progressing condition's own Reason once it's gone False
+// (e.g. ProgressDeadlineExceeded — a stuck/failed rollout) — every OLD pod can
+// still be fully Ready at that point, so this is deliberately NOT lumped in
+// with "Available": it renders as an error, not a neutral/unknown badge.
 export function DeploymentStatus({ status }: Readonly<{ status: string }>) {
   const pill = (className: string, children: ReactNode) => (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', className)}>{children}</span>
@@ -42,7 +46,12 @@ export function DeploymentStatus({ status }: Readonly<{ status: string }>) {
         <CircleOff className="size-3" /> {status}
       </>,
     )
-  return <StatusBadge status={status} />
+  return pill(
+    'bg-[color:var(--err)]/12 text-[color:var(--err)] ring-[color:var(--err)]/25',
+    <>
+      <AlertTriangle className="size-3" /> {status}
+    </>,
+  )
 }
 
 // CronJob "State" cell (Active / Suspended) — a plain translated string can't

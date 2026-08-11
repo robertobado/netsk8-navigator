@@ -170,16 +170,51 @@ func TestToPodView_DeletedAtAccountsForGracePeriod(t *testing.T) {
 
 func TestToDeploymentView_Status(t *testing.T) {
 	replicas := func(n int32) *int32 { return &n }
+	// A fully-rolled-out, healthy 3/3 deployment: every field kubectl's own
+	// rollout-status check looks at is consistent, not just ReadyReplicas.
+	healthy3of3 := appsv1.DeploymentStatus{ReadyReplicas: 3, UpdatedReplicas: 3, AvailableReplicas: 3, Replicas: 3}
+
 	tests := []struct {
 		name   string
 		d      *appsv1.Deployment
 		status string
 		ready  string
 	}{
-		{"available", &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: replicas(3)}, Status: appsv1.DeploymentStatus{ReadyReplicas: 3}}, "Available", "3/3"},
-		{"progressing", &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: replicas(3)}, Status: appsv1.DeploymentStatus{ReadyReplicas: 1}}, "Progressing", "1/3"},
+		{"available", &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: replicas(3)}, Status: healthy3of3}, "Available", "3/3"},
+		{"progressing: new replicas not yet updated", &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: replicas(3)}, Status: appsv1.DeploymentStatus{ReadyReplicas: 1}}, "Progressing", "1/3"},
 		{"scaled to zero", &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: replicas(0)}}, "Scaled to 0", "0/0"},
-		{"nil replicas defaults to 1", &appsv1.Deployment{Status: appsv1.DeploymentStatus{ReadyReplicas: 1}}, "Available", "1/1"},
+		{"nil replicas defaults to 1", &appsv1.Deployment{Status: appsv1.DeploymentStatus{ReadyReplicas: 1, UpdatedReplicas: 1, AvailableReplicas: 1, Replicas: 1}}, "Available", "1/1"},
+		// Regression: a bad rollout (bad image, failing probe, ...) can leave
+		// every OLD pod fully Ready — ReadyReplicas == desired, exactly like
+		// "available" above — while the Deployment's own Progressing condition
+		// has already flipped to False. That must not read as "Available".
+		{
+			"a stuck/failed rollout is surfaced even though old replicas are fully ready",
+			&appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{Replicas: replicas(3)},
+				Status: appsv1.DeploymentStatus{
+					ReadyReplicas: 3, AvailableReplicas: 3, Replicas: 3, // old ReplicaSet: fully healthy
+					UpdatedReplicas: 1, // new ReplicaSet: stuck at 1 of 3
+					Conditions: []appsv1.DeploymentCondition{
+						{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionFalse, Reason: "ProgressDeadlineExceeded"},
+					},
+				},
+			},
+			"ProgressDeadlineExceeded", "3/3",
+		},
+		{
+			"Progressing condition present but True doesn't trigger the failure branch",
+			&appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{Replicas: replicas(3)},
+				Status: appsv1.DeploymentStatus{
+					ReadyReplicas: 3, UpdatedReplicas: 3, AvailableReplicas: 3, Replicas: 3,
+					Conditions: []appsv1.DeploymentCondition{
+						{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue, Reason: "NewReplicaSetAvailable"},
+					},
+				},
+			},
+			"Available", "3/3",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -148,7 +148,7 @@ func TestHandleResourceList_Deployments(t *testing.T) {
 	s := newTestServer(t, &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
 		Spec:       appsv1.DeploymentSpec{Replicas: replicas(3)},
-		Status:     appsv1.DeploymentStatus{ReadyReplicas: 3},
+		Status:     appsv1.DeploymentStatus{ReadyReplicas: 3, UpdatedReplicas: 3, AvailableReplicas: 3, Replicas: 3},
 	})
 	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
 	if rec.Code != http.StatusOK {
