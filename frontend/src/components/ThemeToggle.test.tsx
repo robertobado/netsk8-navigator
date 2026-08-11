@@ -2,18 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeToggle } from './ThemeToggle'
+import { setAppPrefs } from '@/lib/preferences'
 
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
 
 beforeEach(() => {
   localStorage.clear()
   delete document.documentElement.dataset.theme
+  // preferences.ts holds theme in a module-level singleton that
+  // localStorage.clear() alone doesn't reset — pin it back to the default
+  // explicitly so these tests don't inherit whatever another test file
+  // left it at when the suite runs without per-file module isolation.
+  setAppPrefs({ theme: 'dark' })
 })
 
 describe('ThemeToggle', () => {
-  // preferences.ts holds its state in a module-level singleton (see
-  // preferences.test.ts), so these run in file order: the default-state
-  // assertion must come first, before a later test mutates it.
   it('renders one button per mode, "dark" pressed by default', () => {
     render(<ThemeToggle />)
     expect(screen.getByRole('button', { name: 'Claro' })).toHaveAttribute('aria-pressed', 'false')

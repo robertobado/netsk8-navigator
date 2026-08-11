@@ -6,8 +6,8 @@ import { useT } from '@/lib/i18n'
 
 const ICONS: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, auto: Monitor }
 
-// Compact light/dark/auto switch (part of app preferences), styled to match
-// LanguageToggle right below it in the sidebar.
+// Compact light/dark/auto switch, rendered inside PreferencesDialog (styled
+// to match LanguageToggle next to it there).
 export function ThemeToggle() {
   const t = useT()
   const theme = useAppPrefs().theme

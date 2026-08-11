@@ -9,7 +9,8 @@
 <h1 align="center">Netsk8 Navigator</h1>
 
 <p align="center">
-  A Kubernetes cluster navigator in the browser — think Lens or k9s, but web.<br/>
+  A Kubernetes cluster navigator — a native desktop app, a browser-based web UI,
+  or an MCP server your agents can drive, all the same single binary.<br/>
   The name is a tribute to the old Netscape Navigator.
 </p>
 
@@ -57,11 +58,19 @@
 
 ## What it is
 
-Netsk8 Navigator is an SPA that reads your `kubeconfig` and browses any
-Kubernetes cluster (standard resources + CRDs) through a thin Go backend
-that talks directly to the cluster API. Nothing installed on the cluster,
-no agent, no state beyond your local preferences — the same trust model as
-running `kubectl` from your own machine.
+Netsk8 Navigator reads your `kubeconfig` and browses any Kubernetes cluster
+(standard resources + CRDs) through a thin Go backend that talks directly to
+the cluster API. Nothing installed on the cluster, no agent, no state beyond
+your local preferences — the same trust model as running `kubectl` from your
+own machine. One backend, three ways in:
+
+- a **native desktop app** (macOS/Windows/Linux) with its own window and icon,
+- the same UI in your **browser**, single binary or Docker,
+- and an **[MCP](https://modelcontextprotocol.io) server** so Claude (or any
+  other agent) can drive the cluster too.
+
+Pick whichever fits the moment — they're all the same app, so preferences,
+saved contexts, and everything below work identically in each.
 
 - 🗂️ **All standard resources** (Workloads, Network, Config, Storage, RBAC,
   Governance, Cluster) in filterable, sortable tables, with row expansion
@@ -84,10 +93,10 @@ running `kubectl` from your own machine.
   restarting anything; every resource is resolved via discovery/RESTMapper
   at request time, so it works against whatever Kubernetes version the
   cluster actually serves.
-- 🤖 **MCP server built in** — flip one toggle in the sidebar and the same
-  running app also serves an [MCP](https://modelcontextprotocol.io)
-  endpoint, so Claude (or any other MCP-speaking agent) can browse and
-  manage the cluster too, no `kubectl` or terminal needed.
+- 🤖 **MCP server built in** — spawn it over stdio or flip one toggle for
+  HTTP, and Claude (or any other MCP-speaking agent) can browse and manage
+  the cluster too, no `kubectl` or terminal needed. See
+  [MCP server (agent access)](#mcp-server-agent-access) below.
 
 ## See it in action
 
@@ -107,22 +116,42 @@ data, no install or kubeconfig needed.
 
 ## Quick start
 
-Ready-to-run binaries (Linux/macOS/Windows) + a Docker image on every
+Ready-to-run binaries (Linux/macOS/Windows), a native desktop app for all
+three, and a Docker image, all on every
 [release](https://github.com/robertobado/netsk8-navigator/releases) — no
-need for Go/Node installed. Download the file for your platform, extract it
-and run:
+need for Go/Node installed.
+
+### Desktop app
+
+The `.dmg` (macOS), `*_windows_*_gui.zip`, and `*_linux_*_gui.tar.gz`
+downloads are a native app with its own window and icon — no terminal, no
+browser tab.
+
+- **macOS**: mount the `.dmg`, drag "Netsk8 Navigator" to Applications, open
+  it. It's signed and notarized. The plain `darwin_*.tar.gz` binary below is
+  notarized too (fine to run via Terminal), but a bare Unix binary can't have
+  the notarization ticket "stapled" to it, so double-clicking it directly in
+  Finder may still warn.
+- **Windows**: unzip `*_windows_*_gui.zip` and run `netsk8-navigator.exe`.
+- **Linux**: extract `*_linux_*_gui.tar.gz` (needs a desktop session —
+  X11/Wayland/WebKitGTK) and run `./netsk8-navigator`.
+
+### Server binary
+
+The plain (non-`_gui`) downloads run the same app as a background server
+that opens your default browser to the UI — handy for headless boxes,
+scripting, or just preferring a browser tab over a window:
 
 ```bash
 tar xzf netsk8-navigator_*_darwin_arm64.tar.gz   # or linux_amd64, windows_amd64.zip, etc.
 ./netsk8-navigator
 ```
 
-Once it's ready, a release binary opens your default browser to the UI on
-its own (Linux needs a desktop session — X11/Wayland — for this; a headless
-server just skips it and logs the URL instead). Set `OPEN_BROWSER=false` to
-turn this off, or `OPEN_BROWSER=true` to force it even for a `go run .`/
-source build (which otherwise never auto-opens, so restarting during
-development doesn't keep popping a new tab).
+A headless Linux server (no X11/Wayland) just skips opening a browser and
+logs the URL instead. Set `OPEN_BROWSER=false` to turn this off, or
+`OPEN_BROWSER=true` to force it even for a `go run .`/source build (which
+otherwise never auto-opens, so restarting during development doesn't keep
+popping a new tab).
 
 **On Debian/Ubuntu/Fedora/RHEL**, grab the `.deb`/`.rpm` from the release page
 instead — installs `netsk8-navigator` onto your `PATH`:
@@ -132,13 +161,9 @@ sudo dpkg -i netsk8-navigator_*_amd64.deb   # Debian, Ubuntu, ...
 sudo rpm -i netsk8-navigator_*_amd64.rpm    # Fedora, RHEL, ...
 ```
 
-**On macOS**, prefer the `.dmg` on the release page instead: it's a signed,
-notarized native app you can double-click, with its own icon and its own
-window — mount it, drag "Netsk8 Navigator" to Applications, and open it, no
-Terminal or browser tab involved. The raw `darwin_*.tar.gz` binaries above
-remain notarized too (fine to run via Terminal), but a bare Unix binary
-can't have the notarization ticket "stapled" to it, so double-clicking it
-directly in Finder may still warn.
+Both the desktop app and the server binary also work as a headless MCP
+server for agents with no window or browser involved at all — see
+[MCP server (agent access)](#mcp-server-agent-access) below.
 
 Prefer Docker, or building from source? Keep reading.
 
@@ -316,11 +341,11 @@ stdio-capable client can be pointed at the binary directly:
 
 **HTTP** — talks to the same already-running backend the browser UI uses
 (so it shares its cache), instead of spawning its own process. Turn it on
-in the sidebar's **MCP server** panel; the endpoint is
-`http://<host>:<port>/mcp`, and every call must carry the token shown in
-that same panel as an `X-Netsk8-MCP-Token` header (rotate it any time with
-the panel's regenerate button — no cost besides re-registering any client
-that had the old one):
+from the gear icon's **Preferences** dialog, under **MCP server**; the
+endpoint is `http://<host>:<port>/mcp`, and every call must carry the token
+shown in that same panel as an `X-Netsk8-MCP-Token` header (rotate it any
+time with the panel's regenerate button — no cost besides re-registering
+any client that had the old one):
 
 ```bash
 claude mcp add --transport http netsk8-navigator http://127.0.0.1:8080/mcp \

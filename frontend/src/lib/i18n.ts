@@ -79,6 +79,8 @@ const pt: Dict = {
   Detail: 'Detalhe',
   Confirm: 'Confirmar',
   Cancel: 'Cancelar',
+  Close: 'Fechar',
+  Preferences: 'Preferências',
   Apply: 'Aplicar',
   Discard: 'Descartar',
   Copy: 'Copiar',

@@ -3,8 +3,7 @@ import { cn } from '@/lib/utils'
 import { useAppPrefs } from '@/lib/preferences'
 import { LANGUAGES, setLanguage, useT } from '@/lib/i18n'
 
-// Compact language switch (part of app preferences). A precursor to the full
-// preferences screen; kept in the sidebar so i18n is reachable and testable.
+// Compact language switch, rendered inside PreferencesDialog.
 export function LanguageToggle() {
   const t = useT()
   const lang = useAppPrefs().language

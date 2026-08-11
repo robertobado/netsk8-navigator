@@ -4,7 +4,16 @@ import { LANGUAGES, setLanguage, tAgo, tf, useT } from './i18n'
 
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
 
-beforeEach(() => localStorage.clear())
+// preferences.ts holds language in a module-level singleton that
+// localStorage.clear() alone doesn't reset (it only affects what a future
+// load() would read) — reset it explicitly so these pt-BR-assuming tests
+// don't inherit 'en' left behind by another test file (e.g.
+// preferences.test.ts sets language: 'en' and never restores it) when the
+// suite runs without per-file module isolation.
+beforeEach(() => {
+  localStorage.clear()
+  setLanguage('pt-BR')
+})
 afterEach(() => localStorage.clear())
 
 describe('useT (pt-BR, the default language)', () => {

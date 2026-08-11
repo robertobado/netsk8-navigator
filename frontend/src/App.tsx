@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Boxes, CircleAlert, CircleDot, Layers, Menu, Server } from 'lucide-react'
+import { Activity, Boxes, CircleAlert, CircleDot, Layers, Menu, Server, Settings2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useLivePods } from '@/lib/useLivePods'
 import { cn, shortContext } from '@/lib/utils'
@@ -24,12 +24,9 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { NavigatorLoader, LoaderPreview } from '@/components/Loader'
 import { MetricsSection } from '@/components/MetricsSection'
 import { VantaBackground } from '@/components/VantaBackground'
-import { VantaControls } from '@/components/VantaControls'
 import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
-import { MCPControls } from '@/components/MCPControls'
-import { LanguageToggle } from '@/components/LanguageToggle'
-import { ThemeToggle } from '@/components/ThemeToggle'
+import { PreferencesDialog } from '@/components/PreferencesDialog'
 import { useT, type TFunc } from '@/lib/i18n'
 import { IssueCarousel } from '@/components/IssueCarousel'
 import type { IssueItem, Pod } from '@/lib/api'
@@ -86,6 +83,7 @@ function AppMain() {
   const [searchTarget, setSearchTarget] = useState<DrawerTarget | null>(null)
   // Off-canvas below `lg`; the sidebar is always visible at `lg` and above.
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
   const vanta = useVantaSettings()
   const t = useT()
 
@@ -171,11 +169,9 @@ function AppMain() {
           className={cn(
             // overflow-y-auto here is a safety net, not the primary scroll
             // mechanism: the nav div below (flex-1 min-h-0 overflow-y-auto)
-            // normally absorbs any extra height by shrinking. This only
-            // kicks in if the fixed-size footer stack (controls + toggles)
-            // ever grows taller than the sidebar itself even with the nav
-            // shrunk to zero — without it, that excess used to spill out
-            // past the sidebar's bottom edge instead of scrolling.
+            // normally absorbs any extra height by shrinking, should
+            // MetricsControls (the one fixed-size element left below it)
+            // ever need more room than the sidebar has.
             'fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 -translate-x-full flex-col gap-4 overflow-y-auto border-r bg-background/95 p-4 backdrop-blur-xl transition-transform duration-300 lg:static lg:translate-x-0 lg:bg-background/40',
             sidebarOpen && 'translate-x-0',
           )}
@@ -200,10 +196,6 @@ function AppMain() {
           </div>
 
           <MetricsControls />
-          <VantaControls {...vanta} />
-          <MCPControls />
-          <ThemeToggle />
-          <LanguageToggle />
         </aside>
 
         {/* Main */}
@@ -227,6 +219,15 @@ function AppMain() {
                 <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{viewTitle}</h2>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setPreferencesOpen(true)}
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label={t('Preferences')}
+              title={t('Preferences')}
+            >
+              <Settings2 className="size-5" />
+            </button>
           </header>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 lg:p-5">
@@ -272,6 +273,7 @@ function AppMain() {
           onOpenResource={setSearchTarget}
         />
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
+        <PreferencesDialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} vanta={vanta} />
       </div>
       {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}
       {updateQ.data?.available && (
