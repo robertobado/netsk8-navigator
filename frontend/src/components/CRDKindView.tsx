@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
+import { legacyCreateColumnHelper as createColumnHelper, type LegacyColumnDef as ColumnDef } from '@tanstack/react-table/legacy'
 import { api, type CRDItem, type CRDKind } from '@/lib/api'
 import { age } from '@/lib/utils'
 import { CRDResourceDrawer } from './CRDResourceDrawer'
@@ -33,7 +33,7 @@ export function CRDKindView({ ctx, ns, rk }: Readonly<{ ctx: string; ns: string;
         col.accessor('age', {
           header: 'Age',
           cell: (c) => <span className="font-mono text-sm text-muted-foreground tabular-nums">{age(c.getValue())}</span>,
-          sortingFn: (a, b) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime(),
+          sortFn: (a, b) => new Date(a.original.age).getTime() - new Date(b.original.age).getTime(),
         }),
       ] as ColumnDef<CRDItem, unknown>[],
     [rk.namespaced],

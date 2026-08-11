@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { createColumnHelper, type ColumnDef } from '@tanstack/react-table'
+import { legacyCreateColumnHelper as createColumnHelper, type LegacyColumnDef as ColumnDef } from '@tanstack/react-table/legacy'
 import { Plus, RefreshCw, ServerCrash } from 'lucide-react'
 import { api, kindToSlug, CREATABLE_KINDS, type CreatedResource, type ManifestKind, type PodUsageEntry } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
