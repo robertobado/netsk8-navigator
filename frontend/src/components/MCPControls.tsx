@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Bot, Check, Copy, Eye, EyeOff, Plus, RefreshCw, X } from 'lucide-react'
 import { api, type ContextInfo, regenerateMCPToken } from '@/lib/api'
@@ -221,15 +222,42 @@ function ReadOnlyContextsPicker({
   const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
 
+  // The dropdown is portaled to document.body (see the render below) instead
+  // of living in normal flow: every preferences card has backdrop-blur-xl,
+  // which establishes its own CSS stacking context, so a merely-high z-index
+  // on a dropdown nested inside one card can never paint above a sibling
+  // card's own stacking context (e.g. Theme/Language, which come later in
+  // the DOM) — it always renders "underneath" them regardless of z-index.
+  // Portaling escapes that entirely; position is tracked via getBoundingClientRect
+  // (same approach as HoverBubble.tsx) since a portaled node can't rely on
+  // its original ancestor's layout for `position: absolute`.
   useEffect(() => {
+    if (!open) return
+    const updatePos = () => {
+      const r = triggerRef.current?.getBoundingClientRect()
+      if (r) setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+    }
+    updatePos()
     function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [])
+    window.addEventListener('resize', updatePos)
+    // capture:true so this also fires for scroll on PreferencesDialog's own
+    // scrollable body, not just window-level scroll.
+    window.addEventListener('scroll', updatePos, true)
+    return () => {
+      document.removeEventListener('mousedown', onClick)
+      window.removeEventListener('resize', updatePos)
+      window.removeEventListener('scroll', updatePos, true)
+    }
+  }, [open])
 
   const available = contexts.filter((c) => !readOnlyContexts.includes(c.name) && c.name.toLowerCase().includes(query.toLowerCase()))
 
@@ -257,7 +285,7 @@ function ReadOnlyContextsPicker({
         </div>
       )}
 
-      <div className="relative" ref={ref}>
+      <div ref={triggerRef}>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -265,9 +293,16 @@ function ReadOnlyContextsPicker({
         >
           <Plus className="size-3.5" /> {t('controls.mcpAddReadOnlyContext')}
         </button>
+      </div>
 
-        {open && (
-          <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border bg-popover/95 shadow-2xl shadow-black/40 backdrop-blur-2xl">
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+            className="z-[95] overflow-hidden rounded-lg border bg-popover/95 shadow-2xl shadow-black/40 backdrop-blur-2xl"
+          >
             <input
               autoFocus
               value={query}
@@ -292,9 +327,9 @@ function ReadOnlyContextsPicker({
                 </button>
               ))}
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
-      </div>
     </div>
   )
 }
