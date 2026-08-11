@@ -13,6 +13,14 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # Pinned below r152 deliberately — see the comment on the `three`
+      # import in src/components/VantaBackground.tsx. r152+ silently breaks
+      # vanta 0.5.x's bundled shaders (no error, no thrown exception, the
+      # animated background just renders nothing). A future bump needs the
+      # same manual verification that pin was bisected from, not an
+      # automated merge.
+      - dependency-name: "three"
 
   - package-ecosystem: github-actions
     directory: /
