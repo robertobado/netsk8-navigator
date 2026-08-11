@@ -183,9 +183,17 @@ func serve(httpSrv *http.Server) error {
 // bearer token could be attached to from browser JS. Credentials are hashed
 // before the constant-time comparison so mismatched lengths don't leak via
 // timing, and so the compared values are fixed-size regardless of input.
+//
+// SHA-256 (not bcrypt/scrypt/Argon2/PBKDF2) is deliberate and correct here:
+// there is no stored password hash for an attacker to steal and crack
+// offline — password comes straight from AUTH_PASSWORD in memory and is
+// rehashed fresh on every request purely to get a fixed-length digest for
+// ConstantTimeCompare. A slow KDF is the right tool against offline
+// brute-forcing of an at-rest hash; used per-request here it would only add
+// real latency to every API call for no corresponding security benefit.
 func withBasicAuth(user, password string, next http.Handler) http.Handler {
 	wantUser := sha256.Sum256([]byte(user))
-	wantPass := sha256.Sum256([]byte(password))
+	wantPass := sha256.Sum256([]byte(password)) // codeql[go/weak-sensitive-data-hashing] -- fixed-length digest for constant-time compare, not at-rest password storage; see doc comment above
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
 		gotUser := sha256.Sum256([]byte(u))
