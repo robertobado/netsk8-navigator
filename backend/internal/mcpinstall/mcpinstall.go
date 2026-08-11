@@ -18,6 +18,12 @@ import (
 // and so a user recognizes the same entry across tools.
 const serverName = "netsk8-navigator"
 
+const (
+	clientClaudeCode            = "Claude Code"
+	statusSkippedNotInstalled   = "skipped: not installed on this machine"
+	claudeDesktopConfigFileName = "claude_desktop_config.json"
+)
+
 // Entry is the MCP server registration this app writes into a client's
 // config — always a stdio command, never an HTTP URL (see the package doc
 // and the plan this implements: HTTP self-registration is out of scope,
@@ -56,12 +62,12 @@ func InstallAll(entry Entry) []Result {
 	if path, ok := claudeDesktopConfigDir(); ok {
 		results = append(results, installFlatConfig("Claude Desktop", path, entry))
 	} else {
-		results = append(results, Result{Client: "Claude Desktop", Status: "skipped: not installed on this machine"})
+		results = append(results, Result{Client: "Claude Desktop", Status: statusSkippedNotInstalled})
 	}
 	if path, ok := cursorConfigDir(); ok {
 		results = append(results, installFlatConfig("Cursor", path, entry))
 	} else {
-		results = append(results, Result{Client: "Cursor", Status: "skipped: not installed on this machine"})
+		results = append(results, Result{Client: "Cursor", Status: statusSkippedNotInstalled})
 	}
 	return results
 }
@@ -83,16 +89,16 @@ func installClaudeCode(entry Entry) Result {
 		cmd := exec.Command("claude", args...) //nolint:gosec // args are our own constructed entry, not attacker input
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			return Result{Client: "Claude Code", Status: "failed: " + firstLine(string(out), err)}
+			return Result{Client: clientClaudeCode, Status: "failed: " + firstLine(string(out), err)}
 		}
-		return Result{Client: "Claude Code", Status: "installed"}
+		return Result{Client: clientClaudeCode, Status: "installed"}
 	}
 
 	path, ok := claudeCodeConfigPath()
 	if !ok {
-		return Result{Client: "Claude Code", Status: "skipped: not installed on this machine"}
+		return Result{Client: clientClaudeCode, Status: statusSkippedNotInstalled}
 	}
-	return installFlatConfig("Claude Code", path, entry)
+	return installFlatConfig(clientClaudeCode, path, entry)
 }
 
 // claudeCodeConfigPath returns ~/.claude.json if it exists — Claude Code
@@ -132,11 +138,11 @@ func firstLine(s string, fallback error) string {
 func claudeDesktopConfigDir() (string, bool) {
 	switch runtime.GOOS {
 	case "darwin":
-		return configDirIfExists(os.Getenv("HOME"), "Library/Application Support/Claude", "claude_desktop_config.json")
+		return configDirIfExists(os.Getenv("HOME"), "Library/Application Support/Claude", claudeDesktopConfigFileName)
 	case "windows":
-		return configDirIfExists(os.Getenv("APPDATA"), "Claude", "claude_desktop_config.json")
+		return configDirIfExists(os.Getenv("APPDATA"), "Claude", claudeDesktopConfigFileName)
 	default: // best-effort on Linux — no official build, but community packaging follows this path
-		return configDirIfExists(os.Getenv("HOME"), ".config/Claude", "claude_desktop_config.json")
+		return configDirIfExists(os.Getenv("HOME"), ".config/Claude", claudeDesktopConfigFileName)
 	}
 }
 

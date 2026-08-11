@@ -2,8 +2,10 @@ package mcpinstall
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -81,4 +83,126 @@ func TestInstallClaudeCode_FallsBackToDirectEditWhenCLIMissing(t *testing.T) {
 	if _, ok := servers[serverName]; !ok {
 		t.Errorf("servers[%q] missing after install", serverName)
 	}
+}
+
+func TestFirstLine(t *testing.T) {
+	fallback := errors.New("fallback")
+	cases := []struct{ in, want string }{
+		{"single line", "single line"},
+		{"first\nsecond", "first"},
+		{"", "fallback"},
+		{"\nsecond", "fallback"}, // a leading newline (i==0) falls back too, not ""
+	}
+	for _, c := range cases {
+		if got := firstLine(c.in, fallback); got != c.want {
+			t.Errorf("firstLine(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestClaudeDesktopConfigDir(t *testing.T) {
+	t.Run("not installed", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("APPDATA", home)
+		if _, ok := claudeDesktopConfigDir(); ok {
+			t.Error("want ok=false when no Claude Desktop dir exists")
+		}
+	})
+	t.Run("installed", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("APPDATA", home)
+		var dir string
+		switch runtime.GOOS {
+		case "darwin":
+			dir = filepath.Join(home, "Library/Application Support/Claude")
+		case "windows":
+			dir = filepath.Join(home, "Claude")
+		default:
+			dir = filepath.Join(home, ".config/Claude")
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		path, ok := claudeDesktopConfigDir()
+		if !ok {
+			t.Fatal("want ok=true once the app-support dir exists")
+		}
+		if filepath.Base(path) != claudeDesktopConfigFileName {
+			t.Errorf("path = %q", path)
+		}
+	})
+}
+
+func TestCursorConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if _, ok := cursorConfigDir(); ok {
+		t.Error("want ok=false before ~/.cursor exists")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, ok := cursorConfigDir()
+	if !ok || filepath.Base(path) != "mcp.json" {
+		t.Errorf("path=%q ok=%v", path, ok)
+	}
+}
+
+func TestInstallAll_EverySkippedWhenNothingIsInstalled(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", home)
+	t.Setenv("USERPROFILE", home)
+
+	results := InstallAll(Entry{Command: "/exe", Args: []string{"--mcp-stdio"}})
+	if len(results) != 3 {
+		t.Fatalf("want 3 results (Claude Code, Claude Desktop, Cursor), got %d: %+v", len(results), results)
+	}
+	for _, r := range results {
+		if r.Status != statusSkippedNotInstalled {
+			t.Errorf("%s: status = %q, want %q", r.Client, r.Status, statusSkippedNotInstalled)
+		}
+	}
+}
+
+func TestInstallFlatConfig_Failures(t *testing.T) {
+	t.Run("path is a directory, not a file (read error)", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.json")
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		r := installFlatConfig("Test", path, Entry{Command: "/exe"})
+		if r.Status == "installed" {
+			t.Fatalf("want a failure status, got %q", r.Status)
+		}
+	})
+
+	t.Run("existing file is not valid JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.json")
+		if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		r := installFlatConfig("Test", path, Entry{Command: "/exe"})
+		if r.Status == "installed" {
+			t.Fatalf("want a failure status, got %q", r.Status)
+		}
+	})
+
+	t.Run("existing mcpServers is not an object", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.json")
+		if err := os.WriteFile(path, []byte(`{"mcpServers": "not an object"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		r := installFlatConfig("Test", path, Entry{Command: "/exe"})
+		if r.Status == "installed" {
+			t.Fatalf("want a failure status, got %q", r.Status)
+		}
+	})
 }

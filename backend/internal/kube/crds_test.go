@@ -34,3 +34,19 @@ func TestCRDsFor(t *testing.T) {
 		t.Errorf("Name = %q, want widgets.example.com", got[0].Name)
 	}
 }
+
+// TestCRDsFor_BuildsAndCachesClientOnFirstUse exercises the branch
+// TestCRDsFor's pre-seeded apiextClients map skips: building the
+// apiextensions clientset from the context's REST config on first use. The
+// client is cached before the List call, so this holds regardless of
+// whether that call (against managerWithContext's unroutable fake server)
+// actually succeeds.
+func TestCRDsFor_BuildsAndCachesClientOnFirstUse(t *testing.T) {
+	m := managerWithContext("test-context")
+	m.apiextClients = make(map[string]apiextensionsclientset.Interface)
+
+	_, _ = m.CRDsFor(context.Background(), "test-context")
+	if _, ok := m.apiextClients["test-context"]; !ok {
+		t.Error("want the apiextensions clientset cached after the first call")
+	}
+}

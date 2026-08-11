@@ -30,54 +30,77 @@ func configDirIfExists(base, subdir, filename string) (string, bool) {
 // named explicitly in the feedback this implements: overwriting unrelated
 // state, and loosening permissions on a file that may hold credentials.
 func installFlatConfig(label, path string, entry Entry) Result {
-	mode := os.FileMode(0o600)
-	root := map[string]json.RawMessage{}
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm()
-		raw, err := os.ReadFile(path) //nolint:gosec // path is one of our own resolved client-config locations, not user input
-		if err != nil {
-			return Result{Client: label, Status: "failed: reading " + path + ": " + err.Error()}
-		}
-		if len(raw) > 0 {
-			if err := json.Unmarshal(raw, &root); err != nil {
-				return Result{Client: label, Status: "failed: " + path + " is not valid JSON: " + err.Error()}
-			}
-		}
-	} else if !os.IsNotExist(err) {
-		return Result{Client: label, Status: "failed: " + err.Error()}
-	}
-
-	servers := map[string]json.RawMessage{}
-	if raw, ok := root["mcpServers"]; ok {
-		if err := json.Unmarshal(raw, &servers); err != nil {
-			return Result{Client: label, Status: "failed: existing mcpServers is not an object: " + err.Error()}
-		}
-	}
-
-	entryJSON, err := json.MarshalIndent(struct {
-		Command string   `json:"command"`
-		Args    []string `json:"args"`
-	}{entry.Command, entry.Args}, "", "  ")
+	root, mode, err := loadFlatConfig(path)
 	if err != nil {
-		return Result{Client: label, Status: "failed: " + err.Error()}
+		return failResult(label, err)
 	}
-	servers[serverName] = entryJSON
 
-	serversJSON, err := json.Marshal(servers)
+	serversJSON, err := mergedServersJSON(root, entry)
 	if err != nil {
-		return Result{Client: label, Status: "failed: " + err.Error()}
+		return failResult(label, err)
 	}
 	root["mcpServers"] = serversJSON
 
 	out, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
-		return Result{Client: label, Status: "failed: " + err.Error()}
+		return failResult(label, err)
 	}
 
 	if err := writeAtomicPreservingMode(path, out, mode); err != nil {
-		return Result{Client: label, Status: "failed: " + err.Error()}
+		return failResult(label, err)
 	}
 	return Result{Client: label, Status: "installed"}
+}
+
+// loadFlatConfig reads path's existing top-level JSON object (or a fresh
+// empty one, at the default 0600 mode, if it doesn't exist yet) along with
+// its current permission bits, for installFlatConfig to merge into.
+func loadFlatConfig(path string) (map[string]json.RawMessage, os.FileMode, error) {
+	mode := os.FileMode(0o600)
+	root := map[string]json.RawMessage{}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return root, mode, nil
+		}
+		return nil, 0, err
+	}
+	mode = info.Mode().Perm()
+	raw, err := os.ReadFile(path) //nolint:gosec // path is one of our own resolved client-config locations, not user input
+	if err != nil {
+		return nil, 0, fmt.Errorf("reading %s: %w", path, err)
+	}
+	if len(raw) == 0 {
+		return root, mode, nil
+	}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return nil, 0, fmt.Errorf("%s is not valid JSON: %w", path, err)
+	}
+	return root, mode, nil
+}
+
+// mergedServersJSON returns root's "mcpServers" object with entry merged in
+// under serverName, marshaled back to raw JSON.
+func mergedServersJSON(root map[string]json.RawMessage, entry Entry) (json.RawMessage, error) {
+	servers := map[string]json.RawMessage{}
+	if raw, ok := root["mcpServers"]; ok {
+		if err := json.Unmarshal(raw, &servers); err != nil {
+			return nil, fmt.Errorf("existing mcpServers is not an object: %w", err)
+		}
+	}
+	entryJSON, err := json.MarshalIndent(struct {
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+	}{entry.Command, entry.Args}, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	servers[serverName] = entryJSON
+	return json.Marshal(servers)
+}
+
+func failResult(label string, err error) Result {
+	return Result{Client: label, Status: "failed: " + err.Error()}
 }
 
 // writeAtomicPreservingMode writes data to path via a temp-file-then-rename

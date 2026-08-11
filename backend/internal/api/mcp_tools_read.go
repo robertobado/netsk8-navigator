@@ -43,6 +43,12 @@ func readOnly() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}
 }
 
+// contextPath builds a path-escaped /api/contexts/{context}/{suffix} route —
+// the shape every MCP read tool's REST call replays against.
+func contextPath(context, suffix string) string {
+	return "/api/contexts/" + url.PathEscape(context) + "/" + suffix
+}
+
 // registerSimpleGetTool registers a read-only tool whose handler is nothing
 // but a GET to a fixed sub-path under /api/contexts/{context}/ — the shape
 // list_namespaces, list_nodes, and get_overview all share exactly.
@@ -53,8 +59,7 @@ func registerSimpleGetTool(srv *mcp.Server, s *Server, contexts []string, name, 
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[ctxArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/" + subpath
-		return toolResult(s.callREST(ctx, "GET", path, nil))
+		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, subpath), nil))
 	})
 }
 
@@ -68,9 +73,8 @@ func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[resourceKindArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
-		path := fmt.Sprintf("/api/contexts/%s/%s/%s/%s/%s",
-			url.PathEscape(args.Context), urlSegment, url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "GET", path, nil))
+		suffix := fmt.Sprintf("%s/%s/%s/%s", urlSegment, url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
+		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil))
 	})
 }
 
@@ -92,7 +96,7 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[namespaceScopedListArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args namespaceScopedListArgs) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/pods"
+		path := contextPath(args.Context, "pods")
 		if args.Namespace != "" {
 			path += "?namespace=" + url.QueryEscape(args.Namespace)
 		}
@@ -120,7 +124,7 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
 	},
 	) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/resources/" + url.PathEscape(args.Resource)
+		path := contextPath(args.Context, "resources/"+url.PathEscape(args.Resource))
 		if args.Namespace != "" {
 			path += "?namespace=" + url.QueryEscape(args.Namespace)
 		}
@@ -177,7 +181,7 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		Since   string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items since this are returned"`
 	},
 	) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/issues"
+		path := contextPath(args.Context, "issues")
 		status, body := s.callREST(ctx, "GET", path, nil)
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)

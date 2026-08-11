@@ -47,6 +47,26 @@ function applyTheme(theme: ThemeMode) {
 
 const LS_KEY = 'netsk8.prefs'
 
+function sanitizeBackground(raw: unknown): AppPreferences['background'] | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const b = raw as Record<string, unknown>
+  return {
+    enabled: typeof b.enabled === 'boolean' ? b.enabled : DEFAULTS.background.enabled,
+    effect: typeof b.effect === 'string' ? b.effect : DEFAULTS.background.effect,
+    opacity: typeof b.opacity === 'number' ? b.opacity : DEFAULTS.background.opacity,
+  }
+}
+
+function sanitizeMcp(raw: unknown): AppPreferences['mcp'] | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const m = raw as Record<string, unknown>
+  return {
+    enabled: typeof m.enabled === 'boolean' ? m.enabled : DEFAULTS.mcp.enabled,
+    allowWrite: typeof m.allowWrite === 'boolean' ? m.allowWrite : DEFAULTS.mcp.allowWrite,
+    readOnlyContexts: Array.isArray(m.readOnlyContexts) ? m.readOnlyContexts.filter((c): c is string => typeof c === 'string') : DEFAULTS.mcp.readOnlyContexts,
+  }
+}
+
 // Picks only the known, correctly-typed fields out of an arbitrary value before
 // it's trusted as preferences — applied to both the localStorage read and the
 // server's response, since neither is guaranteed to still match this shape
@@ -58,24 +78,10 @@ function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
   if (typeof r.language === 'string') out.language = r.language
   if (typeof r.metricsRefreshMs === 'number') out.metricsRefreshMs = r.metricsRefreshMs
   if (typeof r.theme === 'string' && (THEME_MODES as string[]).includes(r.theme)) out.theme = r.theme as ThemeMode
-  if (typeof r.background === 'object' && r.background !== null) {
-    const b = r.background as Record<string, unknown>
-    out.background = {
-      enabled: typeof b.enabled === 'boolean' ? b.enabled : DEFAULTS.background.enabled,
-      effect: typeof b.effect === 'string' ? b.effect : DEFAULTS.background.effect,
-      opacity: typeof b.opacity === 'number' ? b.opacity : DEFAULTS.background.opacity,
-    }
-  }
-  if (typeof r.mcp === 'object' && r.mcp !== null) {
-    const m = r.mcp as Record<string, unknown>
-    out.mcp = {
-      enabled: typeof m.enabled === 'boolean' ? m.enabled : DEFAULTS.mcp.enabled,
-      allowWrite: typeof m.allowWrite === 'boolean' ? m.allowWrite : DEFAULTS.mcp.allowWrite,
-      readOnlyContexts: Array.isArray(m.readOnlyContexts)
-        ? m.readOnlyContexts.filter((c): c is string => typeof c === 'string')
-        : DEFAULTS.mcp.readOnlyContexts,
-    }
-  }
+  const background = sanitizeBackground(r.background)
+  if (background) out.background = background
+  const mcp = sanitizeMcp(r.mcp)
+  if (mcp) out.mcp = mcp
   return out
 }
 
