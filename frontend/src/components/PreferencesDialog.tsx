@@ -38,29 +38,37 @@ export function PreferencesDialog({ open, onClose, vanta }: Readonly<Props>) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="flex max-h-[85vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b px-5 py-3.5">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Settings2 className="size-4" /> {t('Preferences')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label={t('Close')}
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+    <>
+      {/* Backdrop is a separate, aria-hidden sibling (not a click handler on
+          a wrapping div) — same pattern as RolloutHistory.tsx. The centering
+          wrapper below is pointer-events-none so a click anywhere in its
+          padding falls through to this backdrop and closes the dialog,
+          without needing stopPropagation() on the panel itself. */}
+      <div aria-hidden="true" className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="pointer-events-none fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div className="pointer-events-auto flex max-h-[85vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl">
+          <div className="flex items-center justify-between border-b px-5 py-3.5">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Settings2 className="size-4" /> {t('Preferences')}
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label={t('Close')}
+            >
+              <X className="size-4" />
+            </button>
+          </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-          <VantaControls {...vanta} />
-          <MCPControls />
-          <ThemeToggle />
-          <LanguageToggle />
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            <VantaControls {...vanta} />
+            <MCPControls />
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

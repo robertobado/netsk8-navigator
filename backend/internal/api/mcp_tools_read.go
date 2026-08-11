@@ -43,6 +43,37 @@ func readOnly() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}
 }
 
+// registerSimpleGetTool registers a read-only tool whose handler is nothing
+// but a GET to a fixed sub-path under /api/contexts/{context}/ — the shape
+// list_namespaces, list_nodes, and get_overview all share exactly.
+func registerSimpleGetTool(srv *mcp.Server, s *Server, contexts []string, name, description, subpath string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[ctxArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
+		path := "/api/contexts/" + url.PathEscape(args.Context) + "/" + subpath
+		return toolResult(s.callREST(ctx, "GET", path, nil))
+	})
+}
+
+// registerResourceGetTool registers a read-only tool whose handler is a GET
+// to /api/contexts/{context}/{urlSegment}/{kind}/{namespace}/{name} — the
+// shape get_resource_detail and get_manifest both share.
+func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name, description, urlSegment string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[resourceKindArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
+		path := fmt.Sprintf("/api/contexts/%s/%s/%s/%s/%s",
+			url.PathEscape(args.Context), urlSegment, url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
+		return toolResult(s.callREST(ctx, "GET", path, nil))
+	})
+}
+
 func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_contexts",
@@ -52,25 +83,8 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		return toolResult(s.callREST(ctx, "GET", "/api/contexts", nil))
 	})
 
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_namespaces",
-		Description: "List namespaces in a cluster context.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[ctxArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/namespaces"
-		return toolResult(s.callREST(ctx, "GET", path, nil))
-	})
-
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_nodes",
-		Description: "List nodes in a cluster context, with readiness, roles, version, and capacity.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[ctxArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/nodes"
-		return toolResult(s.callREST(ctx, "GET", path, nil))
-	})
+	registerSimpleGetTool(srv, s, contexts, "list_namespaces", "List namespaces in a cluster context.", "namespaces")
+	registerSimpleGetTool(srv, s, contexts, "list_nodes", "List nodes in a cluster context, with readiness, roles, version, and capacity.", "nodes")
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_pods",
@@ -117,27 +131,8 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
 	})
 
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_resource_detail",
-		Description: "Get structured detail (status, conditions, images, related resources, etc.) for a single resource by kind/namespace/name.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[resourceKindArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
-		path := fmt.Sprintf("/api/contexts/%s/detail/%s/%s/%s",
-			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "GET", path, nil))
-	})
-
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_manifest",
-		Description: "Get a resource's current manifest as YAML — read this before apply_manifest to edit the live version rather than guessing its shape.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[resourceKindArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
-		path := fmt.Sprintf("/api/contexts/%s/manifest/%s/%s/%s",
-			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "GET", path, nil))
-	})
+	registerResourceGetTool(srv, s, contexts, "get_resource_detail", "Get structured detail (status, conditions, images, related resources, etc.) for a single resource by kind/namespace/name.", "detail")
+	registerResourceGetTool(srv, s, contexts, "get_manifest", "Get a resource's current manifest as YAML — read this before apply_manifest to edit the live version rather than guessing its shape.", "manifest")
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "get_logs",
@@ -165,15 +160,7 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: logs}}}, nil, nil
 	})
 
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_overview",
-		Description: "Get cluster-wide counts: node/pod/namespace totals, ready nodes, and pods by phase (running/pending/failed).",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[ctxArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
-		path := "/api/contexts/" + url.PathEscape(args.Context) + "/overview"
-		return toolResult(s.callREST(ctx, "GET", path, nil))
-	})
+	registerSimpleGetTool(srv, s, contexts, "get_overview", "Get cluster-wide counts: node/pod/namespace totals, ready nodes, and pods by phase (running/pending/failed).", "overview")
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "get_issues",

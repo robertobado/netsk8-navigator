@@ -17,6 +17,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
 )
 
@@ -87,6 +88,18 @@ func contextInputSchema[T any](contexts []string) *jsonschema.Schema {
 // this is called.
 func (s *Server) RunStdio(ctx context.Context) error {
 	return s.buildMCPServer().Run(ctx, &mcp.StdioTransport{})
+}
+
+// RunMCPStdio wires up and runs a --mcp-stdio server: both backend/main.go
+// and backend/cmd/desktop/main.go call this with their own mustInit()/version
+// (each lives in that binary's own unexported package main and can't be
+// imported here), so the wiring itself — NewServer, SetMCPFlags, RunStdio —
+// only needs to exist once.
+func RunMCPStdio(ctx context.Context, mgr clusterManager, cfg *config.Store, version string, allowWrite bool) error {
+	srv := NewServer(mgr, cfg, "")
+	srv.Version = version
+	srv.SetMCPFlags(NewStdioMCPFlags(cfg, allowWrite))
+	return srv.RunStdio(ctx)
 }
 
 // mcpTokenHeader carries the /mcp bearer token (see mcpToken below). Not

@@ -16,6 +16,7 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/api"
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
+	"github.com/robertobado/netsk8-navigator/backend/internal/mcpinstall"
 	"github.com/robertobado/netsk8-navigator/backend/internal/web"
 )
 
@@ -36,7 +37,7 @@ func main() {
 			runMCPStdio(os.Args[2:])
 			return
 		case "mcp":
-			runMCPCLI(os.Args[2:])
+			mcpinstall.RunCLI(os.Args[2:])
 			return
 		default:
 			// A typo'd flag (--mcp-stdout, --mcp_stdio, ...) used to fall

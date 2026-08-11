@@ -77,10 +77,12 @@ describe('PreferencesDialog', () => {
 
   it('calls onClose on a backdrop click but not on a click inside the panel', () => {
     const onClose = vi.fn()
-    renderWithClient(<PreferencesDialog open={true} onClose={onClose} vanta={vantaProps()} />)
+    const { container } = renderWithClient(<PreferencesDialog open={true} onClose={onClose} vanta={vantaProps()} />)
     fireEvent.click(screen.getByText('Preferências'))
     expect(onClose).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByText('Preferências').closest('.fixed')!)
+    // The backdrop is a separate aria-hidden sibling, not an ancestor of the
+    // panel (see PreferencesDialog.tsx) — select it directly.
+    fireEvent.click(container.querySelector('[aria-hidden="true"]')!)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
