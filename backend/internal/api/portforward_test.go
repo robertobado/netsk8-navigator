@@ -2,8 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
+
+	"k8s.io/client-go/kubernetes"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
 // The real dial path needs a live SPDY upgrade against an actual kubelet —
@@ -18,6 +26,43 @@ func TestHandleStartPortForward_RejectsInvalidPort(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("body=%s: status = %d, want 400", body, rec.Code)
 		}
+	}
+}
+
+// errReader always fails, letting a test exercise the io.ReadAll error branch
+// in handleStartPortForward — something doRequest's plain string body can
+// never trigger.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, fmt.Errorf("boom") }
+
+func TestHandleStartPortForward_BodyReadError(t *testing.T) {
+	s := newTestServer(t)
+	r := httptest.NewRequest("POST", "/api/contexts/test/portforward/ns/web", io.NopCloser(errReader{}))
+	rec := httptest.NewRecorder()
+	s.Routes().ServeHTTP(rec, r)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// clientForErrManager wraps a *fakeManager but fails ClientFor, to exercise
+// handleStartPortForward's ClientFor error branch — fakeManager's own
+// ClientFor never errors, so newTestServer alone can't reach it.
+type clientForErrManager struct {
+	*fakeManager
+}
+
+func (clientForErrManager) ClientFor(string) (kubernetes.Interface, error) {
+	return nil, fmt.Errorf("no client for context")
+}
+
+func TestHandleStartPortForward_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "POST", "/api/contexts/test/portforward/ns/web", `{"port":8080}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }
 

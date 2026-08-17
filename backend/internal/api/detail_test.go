@@ -906,3 +906,605 @@ func TestEnrichPVCConsumers(t *testing.T) {
 		}
 	})
 }
+
+// --- additional coverage: small pure helpers ---------------------------------
+
+func TestOwnerOf(t *testing.T) {
+	t.Run("no owner refs", func(t *testing.T) {
+		k, n := ownerOf(metav1.ObjectMeta{})
+		if k != "" || n != "" {
+			t.Errorf("got kind=%q name=%q, want empty", k, n)
+		}
+	})
+	t.Run("controller owner", func(t *testing.T) {
+		isController := true
+		k, n := ownerOf(metav1.ObjectMeta{OwnerReferences: []metav1.OwnerReference{
+			{Kind: "ReplicaSet", Name: "web-abc123", Controller: &isController},
+		}})
+		if k != "ReplicaSet" || n != "web-abc123" {
+			t.Errorf("got kind=%q name=%q", k, n)
+		}
+	})
+	t.Run("non-controller owner ref is skipped", func(t *testing.T) {
+		notController := false
+		k, n := ownerOf(metav1.ObjectMeta{OwnerReferences: []metav1.OwnerReference{
+			{Kind: "ReplicaSet", Name: "web-abc123", Controller: &notController},
+		}})
+		if k != "" || n != "" {
+			t.Errorf("got kind=%q name=%q, want empty when Controller=false", k, n)
+		}
+	})
+}
+
+func TestWorkloadConditions(t *testing.T) {
+	got := workloadConditions([]appsv1.DeploymentCondition{
+		{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+		{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionFalse},
+		{Type: appsv1.DeploymentReplicaFailure, Status: corev1.ConditionUnknown},
+	})
+	if len(got) != 3 {
+		t.Fatalf("got %d conditions, want 3", len(got))
+	}
+	if got[0].Tone != "ok" {
+		t.Errorf("True condition tone = %q, want ok", got[0].Tone)
+	}
+	if got[1].Tone != "err" {
+		t.Errorf("False condition tone = %q, want err", got[1].Tone)
+	}
+	if got[2].Tone != "muted" {
+		t.Errorf("Unknown condition tone = %q, want muted", got[2].Tone)
+	}
+}
+
+func TestAppendUnique(t *testing.T) {
+	if got := appendUnique([]string{"a", "b"}, "b"); len(got) != 2 {
+		t.Errorf("got %+v, want no duplicate appended", got)
+	}
+	if got := appendUnique([]string{"a"}, "b"); len(got) != 2 || got[1] != "b" {
+		t.Errorf("got %+v, want b appended", got)
+	}
+}
+
+func TestIngressStatusChips(t *testing.T) {
+	t.Run("no class, no address", func(t *testing.T) {
+		got := ingressStatusChips(&networkingv1.Ingress{})
+		if got[0].Value != "—" || got[1].Value != "—" {
+			t.Errorf("got %+v, want dashes for absent class/address", got)
+		}
+	})
+	t.Run("class and hostname address", func(t *testing.T) {
+		class := "nginx"
+		got := ingressStatusChips(&networkingv1.Ingress{
+			Spec: networkingv1.IngressSpec{IngressClassName: &class},
+			Status: networkingv1.IngressStatus{LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{{Hostname: "lb.example.com"}},
+			}},
+		})
+		if got[0].Value != "nginx" || got[1].Value != "lb.example.com" {
+			t.Errorf("got %+v", got)
+		}
+	})
+	t.Run("IP address fallback when hostname empty", func(t *testing.T) {
+		got := ingressStatusChips(&networkingv1.Ingress{
+			Status: networkingv1.IngressStatus{LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{{IP: "9.9.9.9"}},
+			}},
+		})
+		if got[1].Value != "9.9.9.9" {
+			t.Errorf("Address = %q, want 9.9.9.9", got[1].Value)
+		}
+	})
+}
+
+func TestIngressTLSSection(t *testing.T) {
+	if s := ingressTLSSection(&networkingv1.Ingress{}); s != nil {
+		t.Errorf("got %+v, want nil for no TLS", s)
+	}
+	s := ingressTLSSection(&networkingv1.Ingress{
+		Spec: networkingv1.IngressSpec{TLS: []networkingv1.IngressTLS{{Hosts: []string{"a.example.com", "b.example.com"}}}},
+	})
+	if s == nil || s.Title != "TLS" || s.Items[0].Value != "a.example.com, b.example.com" {
+		t.Errorf("got %+v", s)
+	}
+}
+
+func TestIngressPathBackend(t *testing.T) {
+	t.Run("no backend service", func(t *testing.T) {
+		svc, port := ingressPathBackend(networkingv1.HTTPIngressPath{})
+		if svc != "" || port != "" {
+			t.Errorf("got svc=%q port=%q, want empty", svc, port)
+		}
+	})
+	t.Run("named port", func(t *testing.T) {
+		svc, port := ingressPathBackend(networkingv1.HTTPIngressPath{
+			Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: "web", Port: networkingv1.ServiceBackendPort{Name: "http"}}},
+		})
+		if svc != "web" || port != "http" {
+			t.Errorf("got svc=%q port=%q", svc, port)
+		}
+	})
+	t.Run("numbered port", func(t *testing.T) {
+		svc, port := ingressPathBackend(networkingv1.HTTPIngressPath{
+			Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: "web", Port: networkingv1.ServiceBackendPort{Number: 8080}}},
+		})
+		if svc != "web" || port != "8080" {
+			t.Errorf("got svc=%q port=%q", svc, port)
+		}
+	})
+}
+
+func TestNpPorts(t *testing.T) {
+	port := intstrFromInt(80)
+	proto := corev1.ProtocolTCP
+	if got := npPorts([]networkingv1.NetworkPolicyPort{{Port: &port, Protocol: &proto}}); got != "80/TCP" {
+		t.Errorf("port+protocol = %q, want 80/TCP", got)
+	}
+	if got := npPorts([]networkingv1.NetworkPolicyPort{{Protocol: &proto}}); got != "/TCP" {
+		t.Errorf("protocol only = %q, want /TCP", got)
+	}
+	if got := npPorts([]networkingv1.NetworkPolicyPort{{Port: &port}}); got != "80" {
+		t.Errorf("port only = %q, want 80", got)
+	}
+}
+
+func TestPvSource_LocalAndAWSEBS(t *testing.T) {
+	if got := pvSource(corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: "/mnt/disk1"}}); got != "Local: /mnt/disk1" {
+		t.Errorf("local = %q, want Local: /mnt/disk1", got)
+	}
+	if got := pvSource(corev1.PersistentVolumeSource{AWSElasticBlockStore: &corev1.AWSElasticBlockStoreVolumeSource{VolumeID: "vol-123"}}); got != "AWS EBS: vol-123" {
+		t.Errorf("aws ebs = %q, want AWS EBS: vol-123", got)
+	}
+}
+
+func TestHpaMetricTarget(t *testing.T) {
+	cases := []struct {
+		name string
+		t    autoscalingv2.MetricTarget
+		want string
+	}{
+		{"utilization", autoscalingv2.MetricTarget{AverageUtilization: int32Ptr(80)}, "80%"},
+		{"average value", autoscalingv2.MetricTarget{AverageValue: resource.NewQuantity(100, resource.DecimalSI)}, "100"},
+		{"plain value", autoscalingv2.MetricTarget{Value: resource.NewQuantity(5, resource.DecimalSI)}, "5"},
+		{"none set", autoscalingv2.MetricTarget{}, "—"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := hpaMetricTarget(c.t); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestHpaMetricCurrent(t *testing.T) {
+	cases := []struct {
+		name string
+		v    autoscalingv2.MetricValueStatus
+		want string
+	}{
+		{"utilization", autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(50)}, "50%"},
+		{"average value", autoscalingv2.MetricValueStatus{AverageValue: resource.NewQuantity(20, resource.DecimalSI)}, "20"},
+		{"plain value", autoscalingv2.MetricValueStatus{Value: resource.NewQuantity(3, resource.DecimalSI)}, "3"},
+		{"none set", autoscalingv2.MetricValueStatus{}, "—"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := hpaMetricCurrent(c.v); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestHpaMetricSpec_AllTypes(t *testing.T) {
+	util := int32(70)
+	cases := []struct {
+		name       string
+		m          autoscalingv2.MetricSpec
+		key, label string
+	}{
+		{"container resource", autoscalingv2.MetricSpec{
+			Type:              autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricSource{Name: corev1.ResourceMemory, Container: "app", Target: autoscalingv2.MetricTarget{AverageUtilization: &util}},
+		}, "container/app/memory", "memory (app)"},
+		{"pods", autoscalingv2.MetricSpec{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricSource{Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"}, Target: autoscalingv2.MetricTarget{Value: resource.NewQuantity(10, resource.DecimalSI)}},
+		}, "pods/queue_depth", "queue_depth"},
+		{"object", autoscalingv2.MetricSpec{
+			Type:   autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricSource{Metric: autoscalingv2.MetricIdentifier{Name: "requests-per-second"}, Target: autoscalingv2.MetricTarget{Value: resource.NewQuantity(1000, resource.DecimalSI)}},
+		}, "object/requests-per-second", "requests-per-second"},
+		{"external", autoscalingv2.MetricSpec{
+			Type:     autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricSource{Metric: autoscalingv2.MetricIdentifier{Name: "queue_length"}, Target: autoscalingv2.MetricTarget{Value: resource.NewQuantity(30, resource.DecimalSI)}},
+		}, "external/queue_length", "queue_length"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			key, label, _ := hpaMetricSpec(c.m)
+			if key != c.key || label != c.label {
+				t.Errorf("got key=%q label=%q, want key=%q label=%q", key, label, c.key, c.label)
+			}
+		})
+	}
+	t.Run("unknown type falls back to the raw type string", func(t *testing.T) {
+		key, label, target := hpaMetricSpec(autoscalingv2.MetricSpec{Type: "Weird"})
+		if key != "Weird" || label != "Weird" || target != "—" {
+			t.Errorf("got key=%q label=%q target=%q", key, label, target)
+		}
+	})
+}
+
+func TestHpaMetricStatus_AllTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		m    autoscalingv2.MetricStatus
+		key  string
+	}{
+		{"container resource", autoscalingv2.MetricStatus{
+			Type:              autoscalingv2.ContainerResourceMetricSourceType,
+			ContainerResource: &autoscalingv2.ContainerResourceMetricStatus{Name: corev1.ResourceMemory, Container: "app", Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(60)}},
+		}, "container/app/memory"},
+		{"pods", autoscalingv2.MetricStatus{
+			Type: autoscalingv2.PodsMetricSourceType,
+			Pods: &autoscalingv2.PodsMetricStatus{Metric: autoscalingv2.MetricIdentifier{Name: "queue_depth"}, Current: autoscalingv2.MetricValueStatus{Value: resource.NewQuantity(4, resource.DecimalSI)}},
+		}, "pods/queue_depth"},
+		{"object", autoscalingv2.MetricStatus{
+			Type:   autoscalingv2.ObjectMetricSourceType,
+			Object: &autoscalingv2.ObjectMetricStatus{Metric: autoscalingv2.MetricIdentifier{Name: "rps"}, Current: autoscalingv2.MetricValueStatus{Value: resource.NewQuantity(500, resource.DecimalSI)}},
+		}, "object/rps"},
+		{"external", autoscalingv2.MetricStatus{
+			Type:     autoscalingv2.ExternalMetricSourceType,
+			External: &autoscalingv2.ExternalMetricStatus{Metric: autoscalingv2.MetricIdentifier{Name: "ql"}, Current: autoscalingv2.MetricValueStatus{Value: resource.NewQuantity(9, resource.DecimalSI)}},
+		}, "external/ql"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			key, _ := hpaMetricStatus(c.m)
+			if key != c.key {
+				t.Errorf("got key=%q, want %q", key, c.key)
+			}
+		})
+	}
+	t.Run("unknown type", func(t *testing.T) {
+		key, cur := hpaMetricStatus(autoscalingv2.MetricStatus{Type: "Weird"})
+		if key != "Weird" || cur != "—" {
+			t.Errorf("got key=%q cur=%q", key, cur)
+		}
+	})
+}
+
+func TestEndpointSliceEndpoints(t *testing.T) {
+	ready := true
+	notReady := false
+	o := &discoveryv1.EndpointSlice{
+		ObjectMeta: meta("web-abc", "prod"),
+		Endpoints: []discoveryv1.Endpoint{
+			{Addresses: []string{"10.0.0.1"}, Conditions: discoveryv1.EndpointConditions{Ready: &ready}, TargetRef: &corev1.ObjectReference{Kind: "Pod", Name: "web-1"}},
+			{Addresses: []string{"10.0.0.2"}, Conditions: discoveryv1.EndpointConditions{Ready: &notReady}},
+			{Addresses: []string{"10.0.0.3"}, Conditions: discoveryv1.EndpointConditions{Ready: &ready}, TargetRef: &corev1.ObjectReference{Kind: "Node", Name: "external-thing"}},
+		},
+	}
+	refs, orphans := endpointSliceEndpoints(o, "Endpoints (3)")
+	if len(refs) != 1 || refs[0].Name != "web-1" || refs[0].Namespace != "prod" {
+		t.Fatalf("refs = %+v, want just the Pod-backed endpoint, defaulted to the slice's namespace", refs)
+	}
+	if len(orphans) != 2 {
+		t.Fatalf("orphans = %+v, want 2 (not-ready + non-Pod target)", orphans)
+	}
+	if orphans[0].Value != "not ready" {
+		t.Errorf("not-ready orphan = %+v, want value 'not ready'", orphans[0])
+	}
+	if orphans[1].Value != "ready" {
+		t.Errorf("Node-targeted endpoint = %+v, want treated as a plain ready orphan", orphans[1])
+	}
+}
+
+func TestIngressClassDetail_ParametersAndNonDefault(t *testing.T) {
+	group := "k8s.io"
+	scope := "Cluster"
+	d := ingressClassDetail(&networkingv1.IngressClass{
+		ObjectMeta: meta("custom", ""),
+		Spec: networkingv1.IngressClassSpec{
+			Controller: "example.com/ingress",
+			Parameters: &networkingv1.IngressClassParametersReference{Kind: "ConfigMap", Name: "params", APIGroup: &group, Scope: &scope},
+		},
+	})
+	if d.Status[1].Value != "No" || d.Status[1].Tone != "muted" {
+		t.Errorf("Default chip = %+v, want No/muted", d.Status[1])
+	}
+	if len(d.Sections) != 1 || d.Sections[0].Title != "Parameters" {
+		t.Fatalf("Sections = %+v", d.Sections)
+	}
+	items := d.Sections[0].Items
+	if len(items) != 4 {
+		t.Fatalf("got %d items, want 4 (Kind, Name, API group, Scope)", len(items))
+	}
+	if items[2].Label != "API group" || items[2].Value != "k8s.io" {
+		t.Errorf("API group item = %+v", items[2])
+	}
+	if items[3].Label != "Scope" || items[3].Value != "Cluster" {
+		t.Errorf("Scope item = %+v", items[3])
+	}
+}
+
+func TestServiceAccountDetail_AutomountAndPullSecrets(t *testing.T) {
+	t.Run("automount true", func(t *testing.T) {
+		yes := true
+		d := serviceAccountDetail(&corev1.ServiceAccount{ObjectMeta: meta("web", "prod"), AutomountServiceAccountToken: &yes})
+		if d.Status[1].Value != "yes" {
+			t.Errorf("Automount chip = %+v, want yes", d.Status[1])
+		}
+	})
+	t.Run("automount false", func(t *testing.T) {
+		no := false
+		d := serviceAccountDetail(&corev1.ServiceAccount{ObjectMeta: meta("web", "prod"), AutomountServiceAccountToken: &no})
+		if d.Status[1].Value != "no" {
+			t.Errorf("Automount chip = %+v, want no", d.Status[1])
+		}
+	})
+	t.Run("secrets and image pull secrets", func(t *testing.T) {
+		d := serviceAccountDetail(&corev1.ServiceAccount{
+			ObjectMeta:       meta("web", "prod"),
+			Secrets:          []corev1.ObjectReference{{Name: "web-token"}},
+			ImagePullSecrets: []corev1.LocalObjectReference{{Name: "registry-creds"}},
+		})
+		if len(d.Refs) != 1 || d.Refs[0].Name != "web-token" {
+			t.Errorf("Refs = %+v", d.Refs)
+		}
+		if len(d.Sections) != 1 || d.Sections[0].Title != "Image pull secrets" || d.Sections[0].Items[0].Label != "registry-creds" {
+			t.Errorf("Sections = %+v", d.Sections)
+		}
+	})
+}
+
+func TestRuntimeClassSchedulingSection(t *testing.T) {
+	t.Run("no scheduling", func(t *testing.T) {
+		if s := runtimeClassSchedulingSection(&nodev1.RuntimeClass{}); s != nil {
+			t.Errorf("got %+v, want nil", s)
+		}
+	})
+	t.Run("scheduling set but empty yields nil section", func(t *testing.T) {
+		if s := runtimeClassSchedulingSection(&nodev1.RuntimeClass{Scheduling: &nodev1.Scheduling{}}); s != nil {
+			t.Errorf("got %+v, want nil", s)
+		}
+	})
+	t.Run("node selector and tolerations", func(t *testing.T) {
+		s := runtimeClassSchedulingSection(&nodev1.RuntimeClass{
+			Scheduling: &nodev1.Scheduling{
+				NodeSelector: map[string]string{"kubernetes.io/arch": "amd64"},
+				Tolerations:  []corev1.Toleration{{Key: "special", Value: "true", Effect: corev1.TaintEffectNoSchedule}},
+			},
+		})
+		if s == nil || s.Title != "Scheduling" || len(s.Items) != 2 {
+			t.Fatalf("got %+v", s)
+		}
+		if s.Items[1].Label != "toleration special=true" {
+			t.Errorf("toleration item = %+v", s.Items[1])
+		}
+	})
+}
+
+func TestRuntimeClassOverheadSection(t *testing.T) {
+	if s := runtimeClassOverheadSection(&nodev1.RuntimeClass{}); s != nil {
+		t.Errorf("got %+v, want nil for no Overhead", s)
+	}
+	s := runtimeClassOverheadSection(&nodev1.RuntimeClass{
+		Overhead: &nodev1.Overhead{PodFixed: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("250m"),
+			corev1.ResourceMemory: resource.MustParse("64Mi"),
+		}},
+	})
+	if s == nil || s.Title != "Overhead" || len(s.Items) != 2 || s.Items[0].Label != "cpu" || s.Items[1].Label != "memory" {
+		t.Errorf("got %+v, want cpu then memory (sorted by label)", s)
+	}
+}
+
+func TestRuntimeClassDetail_WithSchedulingAndOverhead(t *testing.T) {
+	d := runtimeClassDetail(&nodev1.RuntimeClass{
+		ObjectMeta: meta("gvisor", ""),
+		Handler:    "runsc",
+		Scheduling: &nodev1.Scheduling{NodeSelector: map[string]string{"arch": "amd64"}},
+		Overhead:   &nodev1.Overhead{PodFixed: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")}},
+	})
+	if len(d.Sections) != 2 {
+		t.Fatalf("Sections = %+v, want a Scheduling section and an Overhead section", d.Sections)
+	}
+	if d.Sections[0].Title != "Scheduling" || d.Sections[1].Title != "Overhead" {
+		t.Errorf("Sections = %+v", d.Sections)
+	}
+}
+
+func TestNodeAddresses(t *testing.T) {
+	ip, host := nodeAddresses(&corev1.Node{Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{
+		{Type: corev1.NodeInternalIP, Address: "10.0.0.5"},
+		{Type: corev1.NodeHostName, Address: "node-1.internal"},
+		{Type: corev1.NodeExternalIP, Address: "1.2.3.4"},
+	}}})
+	if ip != "10.0.0.5" || host != "node-1.internal" {
+		t.Errorf("got ip=%q host=%q, want ip=10.0.0.5 host=node-1.internal (external IP ignored)", ip, host)
+	}
+}
+
+func TestNodeTaintsSection(t *testing.T) {
+	if s := nodeTaintsSection(&corev1.Node{}); s != nil {
+		t.Errorf("got %+v, want nil for no taints", s)
+	}
+	s := nodeTaintsSection(&corev1.Node{Spec: corev1.NodeSpec{Taints: []corev1.Taint{
+		{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoSchedule},
+		{Key: "spot", Effect: corev1.TaintEffectPreferNoSchedule},
+	}}})
+	if s == nil || s.Title != "Taints" || len(s.Items) != 2 {
+		t.Fatalf("got %+v", s)
+	}
+	if s.Items[0].Label != "dedicated=gpu" {
+		t.Errorf("taint with value = %+v, want label dedicated=gpu", s.Items[0])
+	}
+	if s.Items[1].Label != "spot" {
+		t.Errorf("taint without value = %+v, want label spot", s.Items[1])
+	}
+}
+
+func TestDeploymentDetail_RollingUpdateStrategy(t *testing.T) {
+	surge := intstrFromInt(1)
+	unavail := intstrFromInt(0)
+	d := deploymentDetail(&appsv1.Deployment{
+		ObjectMeta: meta("web", "prod"),
+		Spec: appsv1.DeploymentSpec{
+			Strategy: appsv1.DeploymentStrategy{
+				Type:          appsv1.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDeployment{MaxSurge: &surge, MaxUnavailable: &unavail},
+			},
+		},
+	})
+	items := d.Sections[0].Items
+	if len(items) != 3 {
+		t.Fatalf("got %d items, want 3 (Type, Max surge, Max unavailable)", len(items))
+	}
+	if items[1].Label != "Max surge" || items[1].Value != "1" {
+		t.Errorf("Max surge item = %+v", items[1])
+	}
+	if items[2].Label != "Max unavailable" || items[2].Value != "0" {
+		t.Errorf("Max unavailable item = %+v", items[2])
+	}
+}
+
+func TestServiceDetail_ExternalAddressSources(t *testing.T) {
+	t.Run("load balancer hostname", func(t *testing.T) {
+		d := serviceDetail(&corev1.Service{
+			ObjectMeta: meta("web", "prod"),
+			Status:     corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{Hostname: "lb.example.com"}}}},
+		})
+		if !hasKV(d.Sections, "External", "lb.example.com") {
+			t.Errorf("Sections = %+v, want External=lb.example.com", d.Sections)
+		}
+	})
+	t.Run("load balancer IP falls back when hostname empty", func(t *testing.T) {
+		d := serviceDetail(&corev1.Service{
+			ObjectMeta: meta("web", "prod"),
+			Status:     corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "1.2.3.4"}}}},
+		})
+		if !hasKV(d.Sections, "External", "1.2.3.4") {
+			t.Errorf("Sections = %+v, want External=1.2.3.4", d.Sections)
+		}
+	})
+	t.Run("external IPs used when no load balancer", func(t *testing.T) {
+		d := serviceDetail(&corev1.Service{
+			ObjectMeta: meta("web", "prod"),
+			Spec:       corev1.ServiceSpec{ExternalIPs: []string{"5.6.7.8"}},
+		})
+		if !hasKV(d.Sections, "External", "5.6.7.8") {
+			t.Errorf("Sections = %+v, want External=5.6.7.8", d.Sections)
+		}
+	})
+	t.Run("node port surfaces as Extra", func(t *testing.T) {
+		d := serviceDetail(&corev1.Service{
+			ObjectMeta: meta("web", "prod"),
+			Spec: corev1.ServiceSpec{
+				Type:  corev1.ServiceTypeNodePort,
+				Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstrFromInt(8080), NodePort: 30080}},
+			},
+		})
+		if len(d.Ports) != 1 || d.Ports[0].Extra != "node 30080" {
+			t.Errorf("Ports = %+v, want Extra 'node 30080'", d.Ports)
+		}
+	})
+}
+
+// hasKV reports whether any section carries an item with the given label/value.
+func hasKV(sections []section, label, value string) bool {
+	for _, s := range sections {
+		for _, i := range s.Items {
+			if i.Label == label && i.Value == value {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestConfigMapDetail_BinaryData(t *testing.T) {
+	d := configMapDetail(&corev1.ConfigMap{
+		ObjectMeta: meta("app-config", "prod"),
+		BinaryData: map[string][]byte{"cert.der": {0x01, 0x02, 0x03}},
+	})
+	found := false
+	for _, s := range d.Sections {
+		if s.Title == "Binary data" && len(s.Items) == 1 && s.Items[0].Label == "cert.der" && s.Items[0].Value == "3 bytes (binary)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Sections = %+v, want a Binary data section", d.Sections)
+	}
+}
+
+func TestResourceQuotaDetail_Scopes(t *testing.T) {
+	d := resourceQuotaDetail(&corev1.ResourceQuota{
+		ObjectMeta: meta("quota", "prod"),
+		Spec:       corev1.ResourceQuotaSpec{Scopes: []corev1.ResourceQuotaScope{corev1.ResourceQuotaScopeBestEffort}},
+	})
+	if len(d.Status) != 1 || d.Status[0].Label != "Scopes" || d.Status[0].Value != "BestEffort" {
+		t.Errorf("Status = %+v, want a single Scopes=BestEffort chip", d.Status)
+	}
+}
+
+func TestHpaDetail_MetricsAndConditions(t *testing.T) {
+	d := hpaDetail(&autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: meta("web", "prod"),
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MaxReplicas:    5,
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "CustomThing", Name: "widget"},
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type:     autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricSource{Name: corev1.ResourceCPU, Target: autoscalingv2.MetricTarget{AverageUtilization: int32Ptr(80)}},
+			}},
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			CurrentMetrics: []autoscalingv2.MetricStatus{{
+				Type:     autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricStatus{Name: corev1.ResourceCPU, Current: autoscalingv2.MetricValueStatus{AverageUtilization: int32Ptr(50)}},
+			}},
+			Conditions: []autoscalingv2.HorizontalPodAutoscalerCondition{
+				{Type: autoscalingv2.AbleToScale, Status: corev1.ConditionTrue},
+				{Type: autoscalingv2.ScalingLimited, Status: corev1.ConditionFalse},
+			},
+		},
+	})
+	// MinReplicas unset defaults to 1.
+	if d.Status[1].Value != "1" {
+		t.Errorf("Min chip = %+v, want default 1", d.Status[1])
+	}
+	if len(d.Sections) != 2 {
+		t.Fatalf("Sections = %+v, want a Metrics section and a plain Target section", d.Sections)
+	}
+	if d.Sections[0].Items[0].Value != "50% / 80%" {
+		t.Errorf("Metrics item = %+v, want '50%% / 80%%'", d.Sections[0].Items[0])
+	}
+	// "CustomThing" isn't a known manifest slug, so the target renders as a
+	// plain kv row instead of a clickable ref.
+	if len(d.Refs) != 0 || d.Sections[1].Title != "Target" || d.Sections[1].Items[0].Label != "CustomThing" {
+		t.Errorf("got Refs=%+v Sections[1]=%+v, want a plain CustomThing target row and no Refs", d.Refs, d.Sections[1])
+	}
+	if len(d.Conditions) != 2 || d.Conditions[0].Tone != "ok" || d.Conditions[1].Tone != "warn" {
+		t.Errorf("Conditions = %+v", d.Conditions)
+	}
+}
+
+func TestHpaDetail_MetricWithNoCurrentReading(t *testing.T) {
+	d := hpaDetail(&autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: meta("web", "prod"),
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			MaxReplicas:    5,
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{Kind: "Deployment", Name: "web"},
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type: autoscalingv2.PodsMetricSourceType,
+				Pods: &autoscalingv2.PodsMetricSource{Metric: autoscalingv2.MetricIdentifier{Name: "requests"}, Target: autoscalingv2.MetricTarget{AverageValue: resource.NewQuantity(100, resource.DecimalSI)}},
+			}},
+		},
+	})
+	if d.Sections[0].Items[0].Value != "— / 100" {
+		t.Errorf("got %q, want '— / 100' when no status metric matches", d.Sections[0].Items[0].Value)
+	}
+}
