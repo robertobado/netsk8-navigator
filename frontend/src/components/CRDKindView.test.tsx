@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CRDKindView } from './CRDKindView'
@@ -59,7 +59,7 @@ describe('CRDKindView', () => {
     renderWithClient(<CRDKindView ctx="c" ns="" rk={namespacedKind} />)
 
     await user.click(await screen.findByText('w1'))
-    await waitFor(() => expect(screen.getByText('drawer-open')).toBeInTheDocument())
+    expect(await screen.findByText('drawer-open')).toBeInTheDocument()
     expect(drawerRkProp).toHaveBeenCalledWith(namespacedKind)
   })
 })

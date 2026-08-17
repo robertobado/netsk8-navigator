@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { EventsPanel } from './EventsPanel'
 import type { EventView } from '@/lib/api'
@@ -35,14 +35,14 @@ describe('EventsPanel', () => {
   it('shows an empty state when there are no events', async () => {
     eventsMock.mockResolvedValue([])
     renderWithClient(<EventsPanel ctx="test" namespace="default" name="web-1" kind="Pod" />)
-    await waitFor(() => expect(screen.getByText('No recent events for this pod.')).toBeInTheDocument())
+    expect(await screen.findByText('No recent events for this pod.')).toBeInTheDocument()
     expect(eventsMock).toHaveBeenCalledWith('test', 'default', 'web-1', 'Pod')
   })
 
   it('lists events, marking Warning ones and showing the repeat count and source', async () => {
     eventsMock.mockResolvedValue([ev({ reason: 'Scheduled' }), ev({ type: 'Warning', reason: 'BackOff', message: 'restarting', count: 4, source: 'kubelet' })])
     renderWithClient(<EventsPanel ctx="test" namespace="default" name="web-1" />)
-    await waitFor(() => expect(screen.getByText('Scheduled')).toBeInTheDocument())
+    expect(await screen.findByText('Scheduled')).toBeInTheDocument()
     expect(screen.getByText('BackOff')).toBeInTheDocument()
     expect(screen.getByText('×4')).toBeInTheDocument()
     expect(screen.getByText('kubelet')).toBeInTheDocument()

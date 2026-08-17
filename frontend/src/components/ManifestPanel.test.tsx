@@ -59,13 +59,13 @@ describe('ManifestPanel', () => {
   it('shows an error state when the fetch fails', async () => {
     getManifestRefMock.mockRejectedValue(new Error('not found'))
     renderPanel()
-    await waitFor(() => expect(screen.getByText('not found')).toBeInTheDocument())
+    expect(await screen.findByText('not found')).toBeInTheDocument()
   })
 
   it('read-only mode: no footer, no syntax checking, editor is read-only', async () => {
     getManifestRefMock.mockResolvedValue('kind: Deployment\n')
     renderPanel(false)
-    await waitFor(() => expect(screen.getByLabelText('yaml')).toBeInTheDocument())
+    expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
     expect(screen.getByText(/read-only/)).toBeInTheDocument()
     expect(screen.getByLabelText('yaml')).toHaveAttribute('readonly')
     expect(screen.queryByText('Preview')).not.toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('ManifestPanel', () => {
     getManifestRefMock.mockResolvedValue('kind: Deployment\nspec:\n  replicas: 1\n')
     applyManifestRefMock.mockResolvedValue('kind: Deployment\nspec:\n  replicas: 2\n')
     renderPanel()
-    await waitFor(() => expect(screen.getByLabelText('yaml')).toBeInTheDocument())
+    expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: Deployment\nspec:\n  replicas: 2\n' } })
     expect(screen.getByText('Discard')).toBeInTheDocument()
@@ -105,7 +105,7 @@ describe('ManifestPanel', () => {
     getManifestRefMock.mockResolvedValue('kind: Deployment\n')
     applyManifestRefMock.mockResolvedValue('kind: Deployment\n')
     renderPanel()
-    await waitFor(() => expect(screen.getByLabelText('yaml')).toBeInTheDocument())
+    expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: Deployment\nextra: true\n' } })
 
     await act(async () => {
@@ -122,7 +122,7 @@ describe('ManifestPanel', () => {
     getManifestRefMock.mockResolvedValue('kind: Deployment\n')
     applyManifestRefMock.mockRejectedValue(new Error('admission webhook denied the request'))
     renderPanel()
-    await waitFor(() => expect(screen.getByLabelText('yaml')).toBeInTheDocument())
+    expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: Deployment\nextra: true\n' } })
 
     await act(async () => {
@@ -144,7 +144,7 @@ describe('ManifestPanel', () => {
   it('invalid YAML disables Preview and shows a line/column error instead of the dry-run error', async () => {
     getManifestRefMock.mockResolvedValue('kind: Deployment\n')
     renderPanel()
-    await waitFor(() => expect(screen.getByLabelText('yaml')).toBeInTheDocument())
+    expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: [unterminated' } })
     expect(screen.getByText(/^Line \d+:/)).toBeInTheDocument()
     expect(screen.getByText('Preview').closest('button')).toBeDisabled()
@@ -153,7 +153,7 @@ describe('ManifestPanel', () => {
   it('Copy writes the current YAML to the clipboard and shows Copied briefly', async () => {
     getManifestRefMock.mockResolvedValue('kind: Deployment\n')
     renderPanel()
-    await waitFor(() => expect(screen.getByLabelText('yaml')).toBeInTheDocument())
+    expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
 
     vi.useFakeTimers() // enabled before the click so the revert setTimeout(…, 1500) it schedules is fake
     await act(async () => {

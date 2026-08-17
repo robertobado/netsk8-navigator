@@ -73,7 +73,7 @@ describe('TerminatingStatus', () => {
     await waitFor(() => expect(container.querySelector('.lucide-triangle-alert')).toBeInTheDocument())
     fireEvent.mouseOver(screen.getByText('Terminating'))
 
-    await waitFor(() => expect(screen.getByText('Termination problems')).toBeInTheDocument())
+    expect(await screen.findByText('Termination problems')).toBeInTheDocument()
   })
 })
 
@@ -93,7 +93,7 @@ describe('PodsTable', () => {
         onOpenResource={vi.fn()}
       />,
     )
-    await waitFor(() => expect(screen.getByText('running-pod')).toBeInTheDocument())
+    expect(await screen.findByText('running-pod')).toBeInTheDocument()
     expect(screen.getByTitle('Active')).toBeInTheDocument() // Running's pulse dot
     expect(screen.getByText('CrashLoopBackOff')).toBeInTheDocument()
     expect(screen.getByText('Completed')).toBeInTheDocument()
@@ -115,7 +115,7 @@ describe('PodsTable', () => {
         onOpenResource={vi.fn()}
       />,
     )
-    await waitFor(() => expect(screen.getByText('healthy')).toBeInTheDocument())
+    expect(await screen.findByText('healthy')).toBeInTheDocument()
     const readyCells = screen.getAllByText('0/1')
     // finished-job's "0/1" is healthy (green), unhealthy's "0/1" is not.
     expect(readyCells.some((c) => c.className.includes('--ok'))).toBe(true)
@@ -131,7 +131,7 @@ describe('PodsTable', () => {
     renderWithClient(
       <PodsTable ctx="test" pods={[pod({ ownerKind: 'Deployment', ownerName: 'web' })]} connState="live" onSelect={onSelect} onOpenResource={onOpenResource} />,
     )
-    await waitFor(() => expect(screen.getByText('web')).toBeInTheDocument())
+    expect(await screen.findByText('web')).toBeInTheDocument()
     fireEvent.click(screen.getByText('web'))
     expect(onOpenResource).toHaveBeenCalledWith({ kind: 'deployment', namespace: 'default', name: 'web', editable: false })
     expect(onSelect).not.toHaveBeenCalled()
@@ -148,7 +148,7 @@ describe('PodsTable', () => {
         onOpenResource={onOpenResource}
       />,
     )
-    await waitFor(() => expect(screen.getByText('node-1')).toBeInTheDocument())
+    expect(await screen.findByText('node-1')).toBeInTheDocument()
     fireEvent.click(screen.getByText('node-1'))
     expect(onOpenResource).toHaveBeenCalledWith({ kind: 'node', namespace: '', name: 'node-1', editable: false })
   })
@@ -158,7 +158,7 @@ describe('PodsTable', () => {
     podsUsageMock.mockResolvedValue({ available: false })
     const target = pod({ name: 'clickable' })
     renderWithClient(<PodsTable ctx="test" pods={[target]} connState="live" onSelect={onSelect} onOpenResource={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('clickable')).toBeInTheDocument())
+    expect(await screen.findByText('clickable')).toBeInTheDocument()
     fireEvent.click(screen.getByText('clickable'))
     expect(onSelect).toHaveBeenCalledWith(target)
   })
@@ -169,7 +169,7 @@ describe('PodsTable', () => {
       items: { 'default/web-1': { cpu: { used: 0.5, total: 1, unit: 'cores' }, memory: { used: 500_000_000, total: 1_000_000_000, unit: 'bytes' } } },
     })
     renderWithClient(<PodsTable ctx="test" pods={[pod()]} connState="live" onOpenResource={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('CPU')).toBeInTheDocument())
+    expect(await screen.findByText('CPU')).toBeInTheDocument()
     expect(screen.getByText('Mem')).toBeInTheDocument()
   })
 
@@ -181,7 +181,7 @@ describe('PodsTable', () => {
 
     fireEvent.mouseEnter(screen.getAllByText('Pending')[0])
     await waitFor(() => expect(podPendingMock).toHaveBeenCalledWith('test', 'default', 'web-1'))
-    await waitFor(() => expect(screen.getByText('insufficient cpu')).toBeInTheDocument())
+    expect(await screen.findByText('insufficient cpu')).toBeInTheDocument()
   })
 
   it('LiveIndicator reflects the connection state', async () => {

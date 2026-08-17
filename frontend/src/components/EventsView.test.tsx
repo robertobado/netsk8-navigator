@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { EventsView } from './EventsView'
 import type { EventView } from '@/lib/api'
@@ -38,14 +38,14 @@ describe('EventsView', () => {
   it('shows an error state with a retry button when the fetch fails', async () => {
     allEventsMock.mockRejectedValue(new Error('exec: no such credential helper'))
     renderWithClient(<EventsView ctx="test" ns="" onOpen={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('Could not load events for this cluster.')).toBeInTheDocument())
+    expect(await screen.findByText('Could not load events for this cluster.')).toBeInTheDocument()
     expect(screen.getByText(/expired credential or no permission/)).toBeInTheDocument()
   })
 
   it('shows an empty state when there are no events', async () => {
     allEventsMock.mockResolvedValue([])
     renderWithClient(<EventsView ctx="test" ns="" onOpen={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('No events found.')).toBeInTheDocument())
+    expect(await screen.findByText('No events found.')).toBeInTheDocument()
   })
 
   it('lists events, counts warnings, and opens the involved object on click', async () => {
@@ -56,7 +56,7 @@ describe('EventsView', () => {
     ])
     renderWithClient(<EventsView ctx="test" ns="" onOpen={onOpen} />)
 
-    await waitFor(() => expect(screen.getByText('Scheduled')).toBeInTheDocument())
+    expect(await screen.findByText('Scheduled')).toBeInTheDocument()
     expect(screen.getByText('BackOff')).toBeInTheDocument()
     expect(screen.getByText('×3')).toBeInTheDocument()
 
@@ -70,7 +70,7 @@ describe('EventsView', () => {
       ev({ type: 'Warning', reason: 'FailedMount', message: 'Unable to attach or mount volumes', objectName: 'web-2' }),
     ])
     renderWithClient(<EventsView ctx="test" ns="" onOpen={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('Scheduled')).toBeInTheDocument())
+    expect(await screen.findByText('Scheduled')).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Warnings'))
     expect(screen.queryByText('Scheduled')).not.toBeInTheDocument()
@@ -88,7 +88,7 @@ describe('EventsView', () => {
   it('shows a non-clickable object label when the kind has no known drawer slug', async () => {
     allEventsMock.mockResolvedValue([ev({ objectKind: 'SomeCRD', objectName: 'thing-1', objectNamespace: 'default' })])
     renderWithClient(<EventsView ctx="test" ns="" onOpen={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('Scheduled')).toBeInTheDocument())
+    expect(await screen.findByText('Scheduled')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /default\/thing-1/ })).not.toBeInTheDocument()
     expect(screen.getByText('default/thing-1', { exact: false })).toBeInTheDocument()
   })
@@ -97,7 +97,7 @@ describe('EventsView', () => {
     const many = Array.from({ length: 401 }, (_, i) => ev({ reason: `Reason${i}`, objectName: `pod-${i}` }))
     allEventsMock.mockResolvedValue(many)
     renderWithClient(<EventsView ctx="test" ns="" onOpen={vi.fn()} />)
-    await waitFor(() => expect(screen.getByText('Reason0')).toBeInTheDocument())
+    expect(await screen.findByText('Reason0')).toBeInTheDocument()
     expect(screen.getByText(/most recent events out of/)).toBeInTheDocument()
     expect(screen.queryByText('Reason400')).not.toBeInTheDocument()
   })

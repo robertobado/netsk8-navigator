@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MultiPodLogsPanel } from './MultiPodLogsPanel'
 
@@ -63,7 +63,7 @@ describe('MultiPodLogsPanel', () => {
     expect(FakeEventSource.instances[0].url).toBe('/api/contexts/c/pods-of/deployment/prod/web/logs?container=app')
 
     FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'hello from web-1' })
-    await waitFor(() => expect(screen.getByText('hello from web-1')).toBeInTheDocument())
+    expect(await screen.findByText('hello from web-1')).toBeInTheDocument()
   })
 
   it('filters out a pod when its chip is toggled off', async () => {
@@ -74,7 +74,7 @@ describe('MultiPodLogsPanel', () => {
 
     const chip = await screen.findByRole('button', { name: 'web-1' })
     FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'visible line' })
-    await waitFor(() => expect(screen.getByText('visible line')).toBeInTheDocument())
+    expect(await screen.findByText('visible line')).toBeInTheDocument()
 
     await user.click(chip)
     expect(screen.queryByText('visible line')).not.toBeInTheDocument()
