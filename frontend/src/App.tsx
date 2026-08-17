@@ -43,26 +43,26 @@ export default function App() {
 
 function AppMain() {
   // Persist the selected cluster/namespace so a refresh keeps you where you were.
-  const [ctx, setCtxState] = useState<string | undefined>(() => localStorage.getItem(CTX_KEY) ?? undefined)
-  const [ns, setNsState] = useState<string>(() => localStorage.getItem(NS_KEY) ?? '') // '' = all namespaces
+  const [ctx, setCtx] = useState<string | undefined>(() => localStorage.getItem(CTX_KEY) ?? undefined)
+  const [ns, setNs] = useState<string>(() => localStorage.getItem(NS_KEY) ?? '') // '' = all namespaces
 
-  const setNs = (v: string) => {
+  const updateNs = (v: string) => {
     if (v) localStorage.setItem(NS_KEY, v)
     else localStorage.removeItem(NS_KEY)
-    setNsState(v)
+    setNs(v)
   }
   // Switching cluster resets the namespace (they differ per cluster).
-  const setCtx = (v: string) => {
+  const updateCtx = (v: string) => {
     localStorage.setItem(CTX_KEY, v)
-    setCtxState(v)
-    setNs('')
+    setCtx(v)
+    updateNs('')
   }
   // View is deep-linked via the URL hash (#pods, #services, #crd:group/ver/res)
   // so views are bookmarkable and shareable.
-  const [view, setViewState] = useState<string>(() => window.location.hash.slice(1) || 'overview')
-  const setView = (v: string) => {
+  const [view, setView] = useState<string>(() => window.location.hash.slice(1) || 'overview')
+  const updateView = (v: string) => {
     window.location.hash = v
-    setViewState(v)
+    setView(v)
     setSidebarOpen(false)
   }
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -104,7 +104,7 @@ function AppMain() {
     if (!valid) {
       const fallback = contextsQ.data.find((c) => c.current)?.name ?? contextsQ.data[0].name
       localStorage.setItem(CTX_KEY, fallback)
-      setCtxState(fallback)
+      setCtx(fallback)
     }
   }, [contextsQ.data, ctx])
 
@@ -177,11 +177,11 @@ function AppMain() {
             </div>
           </div>
 
-          <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={setCtx} />
-          {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={setNs} />}
+          <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={updateCtx} />
+          {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={updateNs} />}
 
           <div className="min-h-0 flex-1 overflow-y-auto pt-1">
-            <ResourceNav active={view} onSelect={setView} routes={routes} crdKinds={crdKinds} />
+            <ResourceNav active={view} onSelect={updateView} routes={routes} crdKinds={crdKinds} />
           </div>
 
           <MetricsControls />
@@ -258,8 +258,8 @@ function AppMain() {
           onOpenChange={setPaletteOpen}
           contexts={contextsQ.data ?? []}
           selectedCtx={ctx}
-          onNavigate={setView}
-          onSelectContext={setCtx}
+          onNavigate={updateView}
+          onSelectContext={updateCtx}
           onOpenResource={setSearchTarget}
         />
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}

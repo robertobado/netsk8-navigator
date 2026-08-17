@@ -31,7 +31,7 @@ export function DeploymentStatus({ status }: Readonly<{ status: string }>) {
     return pill(
       'bg-[#38bdf8]/12 text-[#38bdf8] ring-[#38bdf8]/30',
       <>
-        Progressing
+        Progressing{' '}
         <span className="inline-flex items-end gap-0.5">
           {[0, 1, 2].map((i) => (
             <span key={i} className="size-1 animate-bounce rounded-full bg-[#38bdf8]" style={{ animationDelay: `${i * 0.15}s` }} />

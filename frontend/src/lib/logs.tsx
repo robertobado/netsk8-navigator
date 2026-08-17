@@ -23,8 +23,8 @@ export const LEVEL_TEXT: Record<Level, string> = {
 }
 
 export function detectLevel(msg: string): Level {
-  const field = msg.match(/(?:level|lvl|severity)["']?\s*[=:]\s*["']?(\w+)/i)
-  const token = field?.[1] ?? msg.match(/\b(ERROR|ERRO|FATAL|PANIC|WARN|WARNING|INFO|DEBUG|TRACE)\b/)?.[1]
+  const field = /(?:level|lvl|severity)["']?\s*[=:]\s*["']?(\w+)/i.exec(msg)
+  const token = field?.[1] ?? /\b(ERROR|ERRO|FATAL|PANIC|WARN|WARNING|INFO|DEBUG|TRACE)\b/.exec(msg)?.[1]
   switch (token?.toLowerCase()) {
     case 'error':
     case 'erro':

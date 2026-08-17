@@ -75,7 +75,7 @@ func (s *Server) handleWorkloadLogs(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	for i := range pods {
 		wg.Add(1)
-		go streamPodLogsInto(ctx, &wg, client, ns, pods[i].Name, container, tail, lines)
+		go streamPodLogsInto(ctx, &wg, client, podLogsTarget{namespace: ns, pod: pods[i].Name, container: container}, tail, lines)
 	}
 	go func() {
 		wg.Wait()
@@ -91,18 +91,26 @@ func (s *Server) handleWorkloadLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// podLogsTarget names the pod/namespace/container streamPodLogsInto follows —
+// grouped into one param to keep the function's parameter count in check.
+type podLogsTarget struct {
+	namespace string
+	pod       string
+	container string
+}
+
 // streamPodLogsInto follows one pod's logs, sending each line into out until
 // the stream ends or ctx is cancelled. A pod that fails to stream (e.g. still
 // pending) is silently skipped — the others keep flowing.
-func streamPodLogsInto(ctx context.Context, wg *sync.WaitGroup, client kubernetes.Interface, ns, pod, container string, tail int64, out chan<- multiLogLine) {
+func streamPodLogsInto(ctx context.Context, wg *sync.WaitGroup, client kubernetes.Interface, target podLogsTarget, tail int64, out chan<- multiLogLine) {
 	defer wg.Done()
 	opts := &corev1.PodLogOptions{
 		Follow:     true,
-		Container:  container,
+		Container:  target.container,
 		TailLines:  &tail,
 		Timestamps: true,
 	}
-	stream, err := client.CoreV1().Pods(ns).GetLogs(pod, opts).Stream(ctx)
+	stream, err := client.CoreV1().Pods(target.namespace).GetLogs(target.pod, opts).Stream(ctx)
 	if err != nil {
 		return
 	}
@@ -112,7 +120,7 @@ func streamPodLogsInto(ctx context.Context, wg *sync.WaitGroup, client kubernete
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		select {
-		case out <- multiLogLine{Pod: pod, Line: scanner.Text()}:
+		case out <- multiLogLine{Pod: target.pod, Line: scanner.Text()}:
 		case <-ctx.Done():
 			return
 		}

@@ -181,7 +181,7 @@ func (f *fakeManager) Contexts() []kube.ContextInfo {
 func (f *fakeManager) ConfigPath() string                             { return "/fake/kubeconfig" }
 func (f *fakeManager) ClientFor(string) (kubernetes.Interface, error) { return f.client, nil }
 func (f *fakeManager) DynamicFor(string) (dynamic.Interface, error)   { return f.dynamic, nil }
-func (f *fakeManager) ResolveResource(_ string, resource string) (kube.Resource, error) {
+func (f *fakeManager) ResolveResource(_, resource string) (kube.Resource, error) {
 	r, ok := f.gvrs[resource]
 	if !ok {
 		return kube.Resource{}, fmt.Errorf("fakeManager: no GVR registered for %q", resource)

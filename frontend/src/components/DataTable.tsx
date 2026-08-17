@@ -61,7 +61,7 @@ function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T,
   // Cheap to recompute and only read while the dropdown is open, so no memo —
   // this also keeps the values fresh as the table's faceted data changes.
   const options = Array.from(column.getFacetedUniqueValues().keys())
-    .map((v) => (v == null ? '' : String(v)))
+    .map((v) => (v == null || typeof v === 'object' ? '' : String(v)))
     .filter((v) => v !== '')
     .sort((a, b) => a.localeCompare(b))
   const toggle = (v: string) => {

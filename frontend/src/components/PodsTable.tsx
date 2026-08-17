@@ -54,9 +54,9 @@ const GROUP_STYLE: Record<string, string> = {
 
 // Live-ticking relative age from an ISO timestamp (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
-  const [, tick] = useState(0)
+  const [, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => tick((t) => t + 1), 1000)
+    const id = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [])
   return <>{age(since)}</>
@@ -77,9 +77,9 @@ export function TerminatingStatus({
   finalizers,
 }: Readonly<{ ctx: string; namespace: string; name: string; deletedAt?: string; finalizers: string[] }>) {
   const t = useT()
-  const [, tick] = useState(0)
+  const [, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => tick((t) => t + 1), 1000)
+    const id = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [])
   const eventsQ = useQuery({

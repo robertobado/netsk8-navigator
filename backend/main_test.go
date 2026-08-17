@@ -63,7 +63,7 @@ func TestWithBasicAuth(t *testing.T) {
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("status = %d, want 401", rec.Code)
 		}
-		if got := rec.Header().Get("WWW-Authenticate"); got == "" {
+		if rec.Header().Get("WWW-Authenticate") == "" {
 			t.Error("expected a WWW-Authenticate header to prompt the browser")
 		}
 	})

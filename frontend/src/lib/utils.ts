@@ -24,6 +24,6 @@ export function age(iso?: string): string {
 
 /** Shorten an EKS ARN context name to just the cluster name for display. */
 export function shortContext(name: string): string {
-  const m = name.match(/cluster\/(.+)$/)
+  const m = /cluster\/(.+)$/.exec(name)
   return m ? m[1] : name
 }

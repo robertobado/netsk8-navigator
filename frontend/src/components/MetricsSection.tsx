@@ -307,8 +307,8 @@ function GaugeLegend({
     return (
       <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-0.5 rounded-full bg-foreground" />
-          req <span className="font-mono text-foreground">{request > 0 ? fmt(request) : '—'}</span>
+          <span className="inline-block h-2.5 w-0.5 rounded-full bg-foreground" /> req{' '}
+          <span className="font-mono text-foreground">{request > 0 ? fmt(request) : '—'}</span>
         </span>
         <span className="inline-flex items-center gap-1">
           lim <span className="font-mono text-foreground">{limit > 0 ? fmt(limit) : '∞'}</span>

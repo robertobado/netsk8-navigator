@@ -8,7 +8,7 @@ import (
 
 func TestSpaHandler_NoIndexReturnsNil(t *testing.T) {
 	empty := fstest.MapFS{"dist/.gitkeep": &fstest.MapFile{}}
-	if h := spaHandler(empty); h != nil {
+	if spaHandler(empty) != nil {
 		t.Error("expected nil handler when dist/ has no index.html (unbuilt frontend)")
 	}
 }

@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import type { Gauge, PodUsageEntry } from '@/lib/api'
+import type { Gauge } from '@/lib/api'
 import { fmtBytes, fmtCores, type UsageBasis } from '@/lib/usage'
 import { useT } from '@/lib/i18n'
 
@@ -80,4 +80,4 @@ export function UsageBasisToggle({ basis, onChange }: Readonly<{ basis: UsageBas
   )
 }
 
-export type { PodUsageEntry }
+export type { PodUsageEntry } from '@/lib/api'
