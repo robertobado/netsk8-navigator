@@ -2,12 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
 )
@@ -115,5 +118,77 @@ func TestHandleRestartRollout_RejectsNonRestartableKind(t *testing.T) {
 	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-restart/service/prod/web", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 (service can't be restarted)", rec.Code)
+	}
+}
+
+func TestHandleDeleteResource_DeleteFails(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("delete", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "DELETE", "/api/contexts/test/manifest/deployment/prod/web", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (Delete failed)", rec.Code)
+	}
+}
+
+func TestHandleScaleResource_InvalidJSON(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/scale/deployment/prod/web", `not-json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (malformed JSON body)", rec.Code)
+	}
+}
+
+func TestHandleScaleResource_ResourceNotFound(t *testing.T) {
+	s := newTestServer(t) // no deployment seeded
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/scale/deployment/prod/web", `{"replicas":5}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (resource doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleScaleResource_UpdateFails(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("update", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("conflict")
+	})
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/scale/deployment/prod/web", `{"replicas":5}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (Update failed)", rec.Code)
+	}
+}
+
+func TestHandleRestartRollout_ResourceNotFound(t *testing.T) {
+	s := newTestServer(t) // no deployment seeded
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-restart/deployment/prod/web", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (resource doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleRestartRollout_UpdateFails(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("update", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("conflict")
+	})
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-restart/deployment/prod/web", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (Update failed)", rec.Code)
 	}
 }

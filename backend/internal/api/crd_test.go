@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,7 +12,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	ktesting "k8s.io/client-go/testing"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
 func TestValueSummary(t *testing.T) {
@@ -615,5 +621,220 @@ func TestHandleRouteKinds_NoneDiscovered(t *testing.T) {
 	}
 	if len(out) != 0 {
 		t.Errorf("got %+v, want none — the fake discovery client serves nothing", out)
+	}
+}
+
+// routeKindsDiscovery stubs ServerPreferredResources. The base fake
+// clientset's FakeDiscovery hardcodes that one method to always return
+// (nil, nil) regardless of any PrependReactor — it never invokes the
+// reactor chain at all — so exercising handleRouteKinds' actual branches
+// needs a real stand-in instead.
+type routeKindsDiscovery struct {
+	discovery.DiscoveryInterface
+	lists []*metav1.APIResourceList
+	err   error
+}
+
+func (d *routeKindsDiscovery) ServerPreferredResources() ([]*metav1.APIResourceList, error) {
+	return d.lists, d.err
+}
+
+type clientWithDiscoveryStub struct {
+	kubernetes.Interface
+	disc discovery.DiscoveryInterface
+}
+
+func (c *clientWithDiscoveryStub) Discovery() discovery.DiscoveryInterface { return c.disc }
+
+// routeKindsManager wraps fakeManager so ClientFor's Discovery() reports
+// caller-supplied preferred resources / error.
+type routeKindsManager struct {
+	*fakeManager
+	lists []*metav1.APIResourceList
+	err   error
+}
+
+func (m *routeKindsManager) ClientFor(ctx string) (kubernetes.Interface, error) {
+	client, err := m.fakeManager.ClientFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &clientWithDiscoveryStub{Interface: client, disc: &routeKindsDiscovery{lists: m.lists, err: m.err}}, nil
+}
+
+func newRouteKindsServer(t *testing.T, lists []*metav1.APIResourceList, err error) *Server {
+	t.Helper()
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	return NewServer(&routeKindsManager{fakeManager: newFakeManager(), lists: lists, err: err}, cfg, "")
+}
+
+func routeKindsAPIList(groupVersion string, resources ...metav1.APIResource) *metav1.APIResourceList {
+	return &metav1.APIResourceList{GroupVersion: groupVersion, APIResources: resources}
+}
+
+func TestHandleRouteKinds_DiscoversKnownCandidatesAcrossFamilies(t *testing.T) {
+	lists := []*metav1.APIResourceList{
+		routeKindsAPIList("gateway.networking.k8s.io/v1",
+			metav1.APIResource{Name: "gateways", Kind: "Gateway", Namespaced: true},
+			metav1.APIResource{Name: "httproutes", Kind: "HTTPRoute", Namespaced: true},
+			metav1.APIResource{Name: "gateways/status", Kind: "Gateway", Namespaced: true}, // subresource — must be skipped
+		),
+		routeKindsAPIList("traefik.io/v1alpha1",
+			metav1.APIResource{Name: "ingressroutes", Kind: "IngressRoute", Namespaced: true},
+		),
+		routeKindsAPIList("apps/v1", // not a route candidate group at all — must be skipped
+			metav1.APIResource{Name: "deployments", Kind: "Deployment", Namespaced: true},
+		),
+	}
+	s := newRouteKindsServer(t, lists, nil)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/routekinds", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []routeKind
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 3 {
+		t.Fatalf("got %d route kinds, want 3 (gateways, httproutes, ingressroutes): %+v", len(out), out)
+	}
+	// Sorted by candidate Order: Gateways(1), HTTPRoutes(2), IngressRoutes(10).
+	if out[0].Label != "Gateways" || out[1].Label != "HTTPRoutes" || out[2].Label != "IngressRoutes" {
+		t.Errorf("order wrong: %+v", out)
+	}
+	if out[0].Group != "gateway.networking.k8s.io" || out[0].Version != "v1" || out[0].Resource != "gateways" || !out[0].Namespaced {
+		t.Errorf("gateways entry = %+v", out[0])
+	}
+}
+
+func TestHandleRouteKinds_SkipsUnparseableGroupVersion(t *testing.T) {
+	lists := []*metav1.APIResourceList{
+		routeKindsAPIList("bad/group/version", metav1.APIResource{Name: "whatever"}),
+		routeKindsAPIList("gateway.networking.k8s.io/v1", metav1.APIResource{Name: "gateways", Kind: "Gateway", Namespaced: true}),
+	}
+	s := newRouteKindsServer(t, lists, nil)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/routekinds", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []routeKind
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Label != "Gateways" {
+		t.Errorf("got %+v, want the malformed GroupVersion entry skipped and gateways still discovered", out)
+	}
+}
+
+func TestHandleRouteKinds_PartialDiscoveryErrorStillReturnsResults(t *testing.T) {
+	lists := []*metav1.APIResourceList{
+		routeKindsAPIList("gateway.networking.k8s.io/v1", metav1.APIResource{Name: "gateways", Kind: "Gateway", Namespaced: true}),
+	}
+	s := newRouteKindsServer(t, lists, fmt.Errorf("some aggregated API is unavailable"))
+	rec := doRequest(t, s, "GET", "/api/contexts/test/routekinds", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []routeKind
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 {
+		t.Errorf("got %+v, want the partial result kept despite a non-fatal discovery error", out)
+	}
+}
+
+func TestHandleRouteKinds_DiscoveryErrorWithNoResults(t *testing.T) {
+	s := newRouteKindsServer(t, nil, fmt.Errorf("discovery totally failed"))
+	rec := doRequest(t, s, "GET", "/api/contexts/test/routekinds", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []routeKind
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("got %+v, want an empty result for a fatal discovery error", out)
+	}
+}
+
+func TestHandleCRDList_ListFails(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+	}})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("list", "widgets", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets?namespace=prod", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (List failed)", rec.Code)
+	}
+}
+
+func TestHandleCRDManifest_NotFound(t *testing.T) {
+	s := newTestServer(t) // nothing seeded
+	rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/missing/manifest", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (resource doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleCRDDetail_NotFound(t *testing.T) {
+	s := newTestServer(t) // nothing seeded
+	rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/missing/detail", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (resource doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleCRDApply_InvalidJSON(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", `not-json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (malformed JSON body)", rec.Code)
+	}
+}
+
+func TestHandleCRDApply_InvalidYAML(t *testing.T) {
+	s := newTestServer(t)
+	body := `{"yaml":"not: valid: yaml: : :"}`
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (malformed YAML)", rec.Code)
+	}
+}
+
+func TestHandleCRDApply_UpdateFails(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+		"spec":     map[string]any{"color": "blue"},
+	}})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("update", "widgets", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("conflict")
+	})
+	body := `{"yaml":"apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  color: red\n"}`
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", body)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (Update failed)", rec.Code)
+	}
+}
+
+func TestHandleCRDDelete_DeleteFails(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+	}})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("delete", "widgets", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "DELETE", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (Delete failed)", rec.Code)
 	}
 }

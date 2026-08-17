@@ -3,13 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	ktesting "k8s.io/client-go/testing"
 )
 
 const testDepUID = types.UID("dep-uid")
@@ -120,5 +124,82 @@ func TestHandleRolloutUndo_RejectsNonDeploymentKind(t *testing.T) {
 	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-undo/daemonset/prod/web", `{"toRevision":1}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleRolloutHistory_DeploymentNotFound(t *testing.T) {
+	s := newTestServer(t) // no deployment seeded
+	rec := doRequest(t, s, "GET", "/api/contexts/test/rollout-history/deployment/prod/web", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (deployment doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleRolloutHistory_ReplicaSetsListFails(t *testing.T) {
+	dep, rsOld, rsNew := rolloutFixtures()
+	s := newTestServer(t, dep, rsOld, rsNew)
+	fakeClient(t, s).PrependReactor("list", "replicasets", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/rollout-history/deployment/prod/web", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (ReplicaSets List failed)", rec.Code)
+	}
+}
+
+func TestDeploymentReplicaSets_InvalidSelectorReturnsError(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/contexts/test/rollout-history/deployment/prod/web", nil)
+	req.SetPathValue("ctx", "test")
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "app", Operator: "BogusOp", Values: []string{"web"}}},
+			},
+		},
+	}
+	if _, err := s.deploymentReplicaSets(req, dep); err == nil {
+		t.Error("expected an error for an invalid label selector operator")
+	}
+}
+
+func TestHandleRolloutUndo_InvalidJSON(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-undo/deployment/prod/web", `not-json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (malformed JSON body)", rec.Code)
+	}
+}
+
+func TestHandleRolloutUndo_DeploymentNotFound(t *testing.T) {
+	s := newTestServer(t) // no deployment seeded
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-undo/deployment/prod/web", `{"toRevision":1}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (deployment doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleRolloutUndo_ReplicaSetsListFails(t *testing.T) {
+	dep, rsOld, rsNew := rolloutFixtures()
+	s := newTestServer(t, dep, rsOld, rsNew)
+	fakeClient(t, s).PrependReactor("list", "replicasets", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-undo/deployment/prod/web", `{"toRevision":1}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (ReplicaSets List failed)", rec.Code)
+	}
+}
+
+func TestHandleRolloutUndo_UpdateFails(t *testing.T) {
+	dep, rsOld, rsNew := rolloutFixtures()
+	s := newTestServer(t, dep, rsOld, rsNew)
+	fakeClient(t, s).PrependReactor("update", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("conflict")
+	})
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-undo/deployment/prod/web", `{"toRevision":1}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (Update failed)", rec.Code)
 	}
 }

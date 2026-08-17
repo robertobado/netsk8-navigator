@@ -89,6 +89,41 @@ func TestCheckLatestRelease(t *testing.T) {
 			t.Error("expected an error for a non-200 response")
 		}
 	})
+
+	t.Run("malformed request URL is an error", func(t *testing.T) {
+		if _, err := checkLatestRelease(context.Background(), "http://[::1]:namedport", "0.0.4"); err == nil {
+			t.Error("expected an error building the request for an invalid URL")
+		}
+	})
+
+	t.Run("unreachable server is an error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		url := srv.URL
+		srv.Close() // now nothing is listening — client.Do should fail
+		if _, err := checkLatestRelease(context.Background(), url, "0.0.4"); err == nil {
+			t.Error("expected an error for an unreachable server")
+		}
+	})
+
+	t.Run("malformed JSON body is an error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("not json"))
+		}))
+		t.Cleanup(srv.Close)
+		if _, err := checkLatestRelease(context.Background(), srv.URL, "0.0.4"); err == nil {
+			t.Error("expected an error for a malformed JSON response body")
+		}
+	})
+}
+
+func TestRunUpdateCheck_SuccessUpdatesCachedResult(t *testing.T) {
+	s := newTestServer(t)
+	srv := newLatestReleaseServer(t, "v0.0.9")
+	s.runUpdateCheck(context.Background(), srv.URL, "0.0.4")
+	if !s.updateChecker.result.Available || s.updateChecker.result.Latest != "0.0.9" {
+		t.Errorf("got %+v, want the fetched result cached", s.updateChecker.result)
+	}
 }
 
 func TestHandleUpdateCheck(t *testing.T) {

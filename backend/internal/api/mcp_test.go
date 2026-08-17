@@ -274,6 +274,162 @@ func TestMCPHandler_WriteToolBlockedUntilAllowWrite(t *testing.T) {
 	}
 }
 
+// TestMCPHandler_CallApplyManifest exercises apply_manifest's handler
+// closure — registerWriteTools' registration alone (covered by every other
+// MCP test's ListTools) doesn't run its body, only an actual CallTool does.
+func TestMCPHandler_CallApplyManifest(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	enableMCP(s, true)
+	session := mcpConnect(t, s)
+	ctx := t.Context()
+
+	yaml := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: prod\nspec:\n  replicas: 7\n"
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "apply_manifest",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "yaml": yaml},
+	})
+	if err != nil {
+		t.Fatalf("CallTool apply_manifest: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("apply_manifest returned a tool error: %+v", result.Content)
+	}
+
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+	var out []kube.DeploymentView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Ready != "0/7" {
+		t.Errorf("after apply_manifest, got %+v, want replicas=7 reflected", out)
+	}
+}
+
+func TestMCPHandler_CallApplyManifest_BlockedWithoutWriteAccess(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "apply_manifest",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "yaml": "kind: Deployment"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool apply_manifest: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected apply_manifest to be blocked while allowWrite is false")
+	}
+}
+
+// TestMCPHandler_CallDeleteResource exercises delete_resource's handler
+// closure, uncovered by any other test.
+func TestMCPHandler_CallDeleteResource(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	enableMCP(s, true)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "delete_resource",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool delete_resource: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("delete_resource returned a tool error: %+v", result.Content)
+	}
+
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+	var out []kube.DeploymentView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("after delete_resource, got %d deployments, want 0", len(out))
+	}
+}
+
+func TestMCPHandler_CallDeleteResource_BlockedWithoutWriteAccess(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "delete_resource",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool delete_resource: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected delete_resource to be blocked while allowWrite is false")
+	}
+}
+
+// TestMCPHandler_CallRestartRollout exercises restart_rollout's handler
+// closure, uncovered by any other test.
+func TestMCPHandler_CallRestartRollout(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	enableMCP(s, true)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "restart_rollout",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool restart_rollout: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("restart_rollout returned a tool error: %+v", result.Content)
+	}
+
+	rec := doRequest(t, s, "GET", "/api/contexts/test/manifest/deployment/prod/web", "")
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out["yaml"], "kubectl.kubernetes.io/restartedAt") {
+		t.Errorf("expected restartedAt annotation in manifest, got:\n%s", out["yaml"])
+	}
+}
+
+func TestMCPHandler_CallRestartRollout_BlockedWithoutWriteAccess(t *testing.T) {
+	s := newTestServer(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+	})
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "restart_rollout",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool restart_rollout: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected restart_rollout to be blocked while allowWrite is false")
+	}
+}
+
 func TestMCPHandler_WriteToolBlockedForReadOnlyContext(t *testing.T) {
 	s := newTestServer(t, &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
@@ -482,6 +638,101 @@ func TestMCPTokenEndpoints_Audited(t *testing.T) {
 	})
 	if !strings.Contains(out, "AUDIT action=mcp-token-regenerate") {
 		t.Errorf("regenerate token: expected an audit line, got: %s", out)
+	}
+}
+
+func TestExecFailureHint_NoStderr(t *testing.T) {
+	s := newTestServer(t)
+	if hint := s.execFailureHint("/api/contexts/test/nodes", ""); hint != "" {
+		t.Errorf("execFailureHint with empty stderr = %q, want empty", hint)
+	}
+}
+
+func TestExecFailureHint_UnrecognizedPathHasNoContext(t *testing.T) {
+	s := newTestServer(t)
+	if hint := s.execFailureHint("/api/health", "Token has expired\n"); hint != "" {
+		t.Errorf("execFailureHint for a path with no context segment = %q, want empty", hint)
+	}
+}
+
+func TestExecFailureHint_NoExecInfoForContext(t *testing.T) {
+	s := newTestServer(t) // no withExecInfo call — ExecInfoFor returns ok=false
+	if hint := s.execFailureHint("/api/contexts/test/nodes", "Token has expired\n"); hint != "" {
+		t.Errorf("execFailureHint with no exec info for the context = %q, want empty", hint)
+	}
+}
+
+func TestExecFailureHint_StderrDoesntMatchAnyKnownHint(t *testing.T) {
+	s := newTestServer(t)
+	s.mgr.(*fakeManager).withExecInfo("test", "aws", "studio-stage") //nolint:forcetypeassert // test-only fake
+	if hint := s.execFailureHint("/api/contexts/test/nodes", "some unrelated plugin failure\n"); hint != "" {
+		t.Errorf("execFailureHint for unmatched stderr = %q, want empty", hint)
+	}
+}
+
+func TestExecFailureHint_MatchedButNoProfileYieldsNoHint(t *testing.T) {
+	s := newTestServer(t)
+	s.mgr.(*fakeManager).withExecInfo("test", "aws", "") //nolint:forcetypeassert // test-only fake, empty profile
+	if hint := s.execFailureHint("/api/contexts/test/nodes", "Token has expired\n"); hint != "" {
+		t.Errorf("execFailureHint with an empty profile = %q, want empty (no actionable command to suggest)", hint)
+	}
+}
+
+func TestContextNameFromPath(t *testing.T) {
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/api/contexts/prod/nodes", "prod"},
+		{"/api/contexts/prod", "prod"},
+		{"/api/contexts/prod?foo=bar", "prod"},
+		{"/api/health", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := contextNameFromPath(c.path); got != c.want {
+			t.Errorf("contextNameFromPath(%q) = %q, want %q", c.path, got, c.want)
+		}
+	}
+}
+
+func TestToolResult_ErrorStatus(t *testing.T) {
+	_, _, err := toolResult(http.StatusInternalServerError, []byte(`{"error":"boom"}`))
+	if err == nil {
+		t.Fatal("expected an error for a non-2xx status")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error = %v, want it to include the response body", err)
+	}
+}
+
+func TestPathNamespace(t *testing.T) {
+	if got := pathNamespace(""); got != "-" {
+		t.Errorf("pathNamespace(\"\") = %q, want \"-\"", got)
+	}
+	if got := pathNamespace("prod"); got != "prod" {
+		t.Errorf("pathNamespace(%q) = %q, want it unchanged", "prod", got)
+	}
+}
+
+// TestMCPHandler_TokenLookupErrorReturns500 points the store's config file at
+// a path nested under /dev/null (a file, not a directory), so MkdirAll — and
+// so cfg.MCPToken()'s lazy-persist step — fails, exercising MCPHandler's
+// "internal error" branch that a broken token store would hit.
+func TestMCPHandler_TokenLookupErrorReturns500(t *testing.T) {
+	cfg := config.NewStoreAt("/dev/null/nested/config.json")
+	s := NewServer(newFakeManager(), cfg, "")
+	enableMCP(s, false)
+	httpSrv := httptest.NewServer(s.MCPHandler())
+	defer httpSrv.Close()
+
+	resp, err := httpSrv.Client().Get(httpSrv.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when MCPToken() fails", resp.StatusCode)
 	}
 }
 
