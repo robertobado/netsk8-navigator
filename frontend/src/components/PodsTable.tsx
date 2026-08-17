@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { legacyCreateColumnHelper as createColumnHelper, type LegacyColumnDef as ColumnDef } from '@tanstack/react-table/legacy'
@@ -54,10 +54,11 @@ const GROUP_STYLE: Record<string, string> = {
 
 // Live-ticking relative age from an ISO timestamp (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
-  const [tick, setTick] = useState(0)
-  void tick // re-render trigger only — age() recomputes from the current clock, not from tick's value
+  // Force-update idiom: age() recomputes from the current clock on every
+  // render, so only the re-render itself matters — not any state value.
+  const [, forceUpdate] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000)
+    const id = setInterval(forceUpdate, 1000)
     return () => clearInterval(id)
   }, [])
   return <>{age(since)}</>
@@ -78,10 +79,11 @@ export function TerminatingStatus({
   finalizers,
 }: Readonly<{ ctx: string; namespace: string; name: string; deletedAt?: string; finalizers: string[] }>) {
   const t = useT()
-  const [tick, setTick] = useState(0)
-  void tick // re-render trigger only
+  // Force-update idiom (see LiveAge above) so the "stuck for N minutes"
+  // check below keeps re-evaluating against the current clock.
+  const [, forceUpdate] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000)
+    const id = setInterval(forceUpdate, 1000)
     return () => clearInterval(id)
   }, [])
   const eventsQ = useQuery({

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clock, Pin, type LucideIcon } from 'lucide-react'
 import type { IssueItem } from '@/lib/api'
 import { age, cn } from '@/lib/utils'
@@ -6,10 +6,11 @@ import { useT } from '@/lib/i18n'
 
 // Live-ticking relative age (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
-  const [tick, setTick] = useState(0)
-  void tick // re-render trigger only — age() recomputes from the current clock, not from tick's value
+  // Force-update idiom: age() recomputes from the current clock on every
+  // render, so only the re-render itself matters — not any state value.
+  const [, forceUpdate] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000)
+    const id = setInterval(forceUpdate, 1000)
     return () => clearInterval(id)
   }, [])
   return <>{age(since)}</>
