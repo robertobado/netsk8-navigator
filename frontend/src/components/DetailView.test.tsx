@@ -1,9 +1,46 @@
+import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { DetailBody } from './DetailView'
-import type { ResourceDetail } from '@/lib/api'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { DetailBody, DetailView } from './DetailView'
+import type { Pod, ResourceDetail } from '@/lib/api'
 
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string) => key }))
+
+const { getDetailMock, workloadPodsMock } = vi.hoisted(() => ({
+  getDetailMock: vi.fn(),
+  workloadPodsMock: vi.fn(),
+}))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return { ...actual, getDetail: getDetailMock, api: { ...actual.api, workloadPods: workloadPodsMock } }
+})
+
+function renderWithClient(ui: ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+}
+
+function pod(overrides: Partial<Pod> = {}): Pod {
+  return {
+    name: 'web-1',
+    namespace: 'prod',
+    status: 'Running',
+    ready: 1,
+    total: 1,
+    restarts: 0,
+    node: 'node-1',
+    ip: '10.0.0.5',
+    age: '',
+    containers: ['app'],
+    ownerKind: 'Deployment',
+    ownerName: 'web',
+    reason: '',
+    deletedAt: '',
+    finalizers: [],
+    ...overrides,
+  }
+}
 
 function detail(sections: ResourceDetail['sections']): ResourceDetail {
   return {
@@ -143,5 +180,63 @@ describe('DetailBody — pod problem banner', () => {
   it('renders no banner for a healthy pod', () => {
     render(<DetailBody d={detail([])} ctx="c" kind="widget" namespace="prod" name="web-1" />)
     expect(screen.queryByText('no detail')).not.toBeInTheDocument()
+  })
+})
+
+describe('DetailView', () => {
+  it('shows a loading state while the detail query is pending', () => {
+    getDetailMock.mockReturnValue(new Promise(() => {}))
+    renderWithClient(<DetailView ctx="c" kind="pod" namespace="prod" name="web-1" />)
+    expect(screen.getByText('Loading details...')).toBeInTheDocument()
+  })
+
+  it('shows the error message when the detail query fails', async () => {
+    getDetailMock.mockRejectedValue(new Error('exec: no such credential helper'))
+    renderWithClient(<DetailView ctx="c" kind="pod" namespace="prod" name="web-1" />)
+    expect(await screen.findByText('exec: no such credential helper')).toBeInTheDocument()
+  })
+
+  it('renders the fetched detail via DetailBody once loaded', async () => {
+    getDetailMock.mockResolvedValue(detail([{ title: 'Spec', items: [{ label: 'statusCode', value: '503' }] }]))
+    renderWithClient(<DetailView ctx="c" kind="pod" namespace="prod" name="web-1" />)
+    expect(await screen.findByText('statusCode')).toBeInTheDocument()
+    expect(getDetailMock).toHaveBeenCalledWith('c', 'pod', 'prod', 'web-1')
+  })
+})
+
+describe('DetailBody — backing pods list (WorkloadPods)', () => {
+  it('shows a loading state while the workload-pods query is pending', () => {
+    workloadPodsMock.mockReturnValue(new Promise(() => {}))
+    renderWithClient(<DetailBody d={detail([])} ctx="c" kind="deployment" namespace="prod" name="web" onOpenPod={vi.fn()} />)
+    expect(screen.getByText('Loading pods...')).toBeInTheDocument()
+  })
+
+  it('shows an empty state when the workload has no pods', async () => {
+    workloadPodsMock.mockResolvedValue([])
+    renderWithClient(<DetailBody d={detail([])} ctx="c" kind="deployment" namespace="prod" name="web" onOpenPod={vi.fn()} />)
+    expect(await screen.findByText('No pods.')).toBeInTheDocument()
+  })
+
+  it('lists the workload pods and opens the clicked one', async () => {
+    const onOpenPod = vi.fn()
+    workloadPodsMock.mockResolvedValue([pod({ name: 'web-1' }), pod({ name: 'web-2' })])
+    renderWithClient(<DetailBody d={detail([])} ctx="c" kind="deployment" namespace="prod" name="web" onOpenPod={onOpenPod} />)
+    const row = await screen.findByText('web-1')
+    row.click()
+    expect(onOpenPod).toHaveBeenCalledWith(expect.objectContaining({ name: 'web-1' }))
+    expect(screen.getByText('web-2')).toBeInTheDocument()
+  })
+
+  it('labels the list "Endpoints" for a Service instead of "Pods"', async () => {
+    workloadPodsMock.mockResolvedValue([])
+    renderWithClient(<DetailBody d={detail([])} ctx="c" kind="service" namespace="prod" name="web" onOpenPod={vi.fn()} />)
+    expect(await screen.findByText('Endpoints (0)')).toBeInTheDocument()
+  })
+
+  it('does not render the pods list for a non-workload kind', () => {
+    workloadPodsMock.mockClear()
+    renderWithClient(<DetailBody d={detail([])} ctx="c" kind="configmap" namespace="prod" name="web" onOpenPod={vi.fn()} />)
+    expect(screen.queryByText('Loading pods...')).not.toBeInTheDocument()
+    expect(workloadPodsMock).not.toHaveBeenCalled()
   })
 })

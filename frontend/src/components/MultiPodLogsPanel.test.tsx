@@ -44,6 +44,12 @@ afterEach(() => {
 })
 
 describe('MultiPodLogsPanel', () => {
+  it('shows a loading state while the pod list is being fetched', () => {
+    workloadPodsMock.mockReturnValue(new Promise(() => {}))
+    renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
   it('shows an empty state when the workload has no pods', async () => {
     workloadPodsMock.mockResolvedValue([])
     renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
@@ -78,5 +84,85 @@ describe('MultiPodLogsPanel', () => {
 
     await user.click(chip)
     expect(screen.queryByText('visible line')).not.toBeInTheDocument()
+  })
+
+  it('shows a container selector and re-opens the stream when a container is switched', async () => {
+    workloadPodsMock.mockResolvedValue([{ name: 'web-1', namespace: 'prod', containers: ['app', 'sidecar'] }])
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
+
+    await screen.findByText('web-1')
+    expect(FakeEventSource.instances[0].url).toBe('/api/contexts/c/pods-of/deployment/prod/web/logs?container=app')
+
+    await user.selectOptions(screen.getByRole('combobox'), 'sidecar')
+    expect(FakeEventSource.instances[1].url).toBe('/api/contexts/c/pods-of/deployment/prod/web/logs?container=sidecar')
+  })
+
+  it('toggling a level hides its lines; toggling it again shows them', async () => {
+    workloadPodsMock.mockResolvedValue([{ name: 'web-1', namespace: 'prod', containers: ['app'] }])
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
+    await screen.findByText('web-1')
+
+    FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'ERROR boom' })
+    FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'plain info line' })
+    expect(await screen.findByText(/boom/)).toBeInTheDocument()
+
+    const errorToggle = screen.getByTitle('1 error')
+    await user.click(errorToggle)
+    expect(screen.queryByText(/boom/)).not.toBeInTheDocument()
+    expect(screen.getByText('plain info line')).toBeInTheDocument()
+
+    await user.click(errorToggle)
+    expect(await screen.findByText(/boom/)).toBeInTheDocument()
+  })
+
+  it('search filters lines by message and shows a "no match" state', async () => {
+    workloadPodsMock.mockResolvedValue([{ name: 'web-1', namespace: 'prod', containers: ['app'] }])
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
+    await screen.findByText('web-1')
+
+    FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'hello world' })
+    await screen.findByText('hello world')
+
+    await user.type(screen.getByPlaceholderText('Search logs...'), 'nothing matches this')
+    expect(screen.queryByText('hello world')).not.toBeInTheDocument()
+    expect(screen.getByText('No line matches the filter.')).toBeInTheDocument()
+  })
+
+  it('newest-first reverses the line order', async () => {
+    workloadPodsMock.mockResolvedValue([{ name: 'web-1', namespace: 'prod', containers: ['app'] }])
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
+    await screen.findByText('web-1')
+
+    FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'first line' })
+    FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'second line' })
+    await screen.findByText('second line')
+
+    await user.click(screen.getByTitle('Newest first'))
+    const lines = screen.getAllByText(/line$/)
+    expect(lines[0]).toHaveTextContent('second line')
+    expect(lines[1]).toHaveTextContent('first line')
+  })
+
+  it('Clear empties the buffered lines', async () => {
+    workloadPodsMock.mockResolvedValue([{ name: 'web-1', namespace: 'prod', containers: ['app'] }])
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    renderWithClient(<MultiPodLogsPanel ctx="c" kind="deployment" namespace="prod" name="web" />)
+    await screen.findByText('web-1')
+
+    FakeEventSource.instances[0].emit({ pod: 'web-1', line: 'will be cleared' })
+    await screen.findByText('will be cleared')
+
+    await user.click(screen.getByTitle('Clear'))
+    expect(screen.queryByText('will be cleared')).not.toBeInTheDocument()
+    expect(screen.getByText('Waiting for logs...')).toBeInTheDocument()
   })
 })
