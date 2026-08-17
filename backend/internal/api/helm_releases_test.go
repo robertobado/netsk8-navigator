@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -165,6 +166,16 @@ func TestHandleHelmReleaseHistory_RunFailsWithoutLiveCluster(t *testing.T) {
 	rec := doRequest(t, s, "GET", "/api/contexts/test/helm/releases/prod/web/history", "")
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleHelmReleaseRollback_BodyReadError(t *testing.T) {
+	s := newTestServer(t)
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/contexts/test/helm/releases/prod/web/rollback", errReader{})
+	s.Routes().ServeHTTP(rec, r)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }
 
