@@ -27,21 +27,10 @@ import { VantaBackground } from '@/components/VantaBackground'
 import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
 import { PreferencesDialog } from '@/components/PreferencesDialog'
-import { useT, type TFunc } from '@/lib/i18n'
+import { useT } from '@/lib/i18n'
 import { IssueCarousel } from '@/components/IssueCarousel'
 import type { IssueItem, Pod } from '@/lib/api'
-
-// Titles for the special (non-catalog) views; catalog resources and CRDs derive
-// their own labels from the catalog / discovery.
-function viewTitles(t: TFunc): Record<View, string> {
-  return {
-    overview: t('Cluster overview'),
-    pods: 'Pods',
-    topology: t('Cluster topology'),
-    events: t('Cluster events'),
-    helm: t('nav.helm'),
-  }
-}
+import { issueToPod, ov, viewTitles } from '@/lib/appView'
 
 const CTX_KEY = 'netsk8s.ctx'
 const NS_KEY = 'netsk8s.ns'
@@ -203,6 +192,7 @@ function AppMain() {
           <header className="relative z-30 flex items-center justify-between gap-4 border-b bg-background/30 px-4 py-4 backdrop-blur-xl lg:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <button
+                type="button"
                 onClick={() => setSidebarOpen(true)}
                 className="-ml-1 shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
                 aria-label={t('app.openMenu')}
@@ -310,26 +300,6 @@ function EventsPage({ ctx, ns }: Readonly<{ ctx: string; ns: string }>) {
   )
 }
 
-function issueToPod(it: IssueItem): Pod {
-  return {
-    name: it.name,
-    namespace: it.namespace ?? '',
-    status: it.reason || 'Pending',
-    ready: 0,
-    total: 0,
-    restarts: 0,
-    node: '',
-    ip: '',
-    age: it.since,
-    containers: it.containers ?? [],
-    ownerKind: '',
-    ownerName: '',
-    reason: it.reason,
-    deletedAt: '',
-    finalizers: [],
-  }
-}
-
 function OverviewPanel({
   ctx,
   ns,
@@ -388,8 +358,6 @@ function OverviewPanel({
     </>
   )
 }
-
-const ov = (v?: number) => (v === undefined ? '—' : v.toLocaleString('pt-BR'))
 
 function ErrorBanner({ message }: { message: string }) {
   return (

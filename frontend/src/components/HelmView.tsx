@@ -49,6 +49,7 @@ export function HelmView({ ctx, ns }: Readonly<{ ctx: string; ns: string }>) {
 function TabButton({ active, onClick, icon: Icon, label }: Readonly<{ active: boolean; onClick: () => void; icon: typeof Boxes; label: string }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
@@ -90,6 +91,7 @@ function HelmReleasesTable({ ctx, ns }: Readonly<{ ctx: string; ns: string }>) {
         <p className="text-sm font-medium text-[color:var(--err)]">{t('Could not load Helm releases.')}</p>
         <p className="max-w-lg truncate px-4 font-mono text-[10px] text-muted-foreground/60">{(q.error as Error).message}</p>
         <button
+          type="button"
           onClick={() => q.refetch()}
           disabled={q.isFetching}
           className="mt-1 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"

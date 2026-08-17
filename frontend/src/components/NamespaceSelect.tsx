@@ -30,6 +30,7 @@ export function NamespaceSelect({ namespaces, selected, onSelect }: Readonly<Pro
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-3 rounded-xl border bg-card/70 px-3 py-2.5 text-left backdrop-blur-xl transition-colors hover:border-primary/40"
       >
@@ -85,6 +86,7 @@ export function NamespaceSelect({ namespaces, selected, onSelect }: Readonly<Pro
 function Item({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn('flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent', active && 'bg-accent')}
     >

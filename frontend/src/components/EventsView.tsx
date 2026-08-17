@@ -74,6 +74,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
           {raw}
         </p>
         <button
+          type="button"
           onClick={() => q.refetch()}
           disabled={q.isFetching}
           className="mt-1 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
@@ -139,6 +140,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
                       <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{e.objectKind}</span>
                       {clickable ? (
                         <button
+                          type="button"
                           onClick={() => onOpen({ kind: slug!, namespace: e.objectNamespace ?? '', name: e.objectName! })}
                           className="min-w-0 truncate font-medium text-[color:var(--brand)] hover:underline"
                         >
@@ -177,6 +179,7 @@ export function EventsView({ ctx, ns, onOpen }: Readonly<{ ctx: string; ns: stri
 function FilterTab({ active, onClick, children }: Readonly<{ active: boolean; onClick: () => void; children: React.ReactNode }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors',

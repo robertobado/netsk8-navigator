@@ -42,6 +42,7 @@ function CRDGroupNode({ group, kinds, active, onSelect }: Readonly<{ group: stri
   return (
     <div className="flex flex-col gap-0.5">
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
       >
@@ -56,6 +57,7 @@ function CRDGroupNode({ group, kinds, active, onSelect }: Readonly<{ group: stri
             const isActive = active === view
             return (
               <button
+                type="button"
                 key={view}
                 onClick={() => onSelect(view)}
                 className={cn(
@@ -118,6 +120,7 @@ export function ResourceNav({
             const isActive = active === item.view
             return (
               <button
+                type="button"
                 key={item.view}
                 onClick={() => onSelect(item.view)}
                 className={cn(

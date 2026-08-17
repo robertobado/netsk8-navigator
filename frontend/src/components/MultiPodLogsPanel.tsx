@@ -138,6 +138,7 @@ export function MultiPodLogsPanel({ ctx, kind, namespace, name }: Readonly<{ ctx
         <div className="flex items-center gap-1">
           {LEVELS.map((lv) => (
             <button
+              type="button"
               key={lv}
               onClick={() => toggleLevel(lv)}
               title={`${counts[lv]} ${lv}`}
@@ -167,6 +168,7 @@ export function MultiPodLogsPanel({ ctx, kind, namespace, name }: Readonly<{ ctx
       <div className="flex flex-wrap items-center gap-1.5 border-b border-white/5 px-3 py-1.5">
         {podNames.map((p) => (
           <button
+            type="button"
             key={p}
             onClick={() => togglePod(p)}
             className={cn(

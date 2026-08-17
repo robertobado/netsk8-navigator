@@ -184,6 +184,7 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
           {raw}
         </p>
         <button
+          type="button"
           onClick={() => q.refetch()}
           disabled={q.isFetching}
           className="mt-1 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
@@ -211,6 +212,7 @@ export function ResourceView({ def, ctx, ns }: Readonly<{ def: ResourceDef; ctx:
         headerExtra={
           creatable ? (
             <button
+              type="button"
               onClick={() => setCreating(true)}
               className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >

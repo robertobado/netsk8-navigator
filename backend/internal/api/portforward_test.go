@@ -21,6 +21,26 @@ func TestHandleStartPortForward_RejectsInvalidPort(t *testing.T) {
 	}
 }
 
+func TestHandleStartPortForward_MalformedBody(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "POST", "/api/contexts/test/portforward/ns/web", `not json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// A valid port gets past validation and s.mgr.ClientFor (fakeManager never
+// errors there), then fails fast at s.mgr.RESTConfigFor — fakeManager always
+// errors there since a real tunnel needs a live kubelet, same limitation the
+// package header comment already calls out for the SPDY dial itself.
+func TestHandleStartPortForward_RunFailsWithoutLiveCluster(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "POST", "/api/contexts/test/portforward/ns/web", `{"port":8080}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
 func TestHandleListPortForwards(t *testing.T) {
 	s := newTestServer(t)
 	s.pf["abc"] = &pfSession{namespace: "prod", pod: "web-1", port: 8080, localPort: 54321, stopCh: make(chan struct{})}

@@ -94,13 +94,18 @@ export function HelmReleaseDrawer({
                   {target.namespace} {statusQ.data && <HelmStatusBadge status={statusQ.data.status} />}
                 </p>
               </div>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
                 <X className="size-4" />
               </button>
             </header>
 
             <div className="flex flex-wrap items-center gap-3 border-b px-5 py-2.5">
               <button
+                type="button"
                 onClick={() => setUpgrading(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
@@ -111,18 +116,20 @@ export function HelmReleaseDrawer({
                   <AlertTriangle className="size-4 shrink-0 text-[color:var(--err)]" />
                   <span className="text-xs text-[color:var(--err)]">{t('Uninstall this release?')}</span>
                   <button
+                    type="button"
                     onClick={uninstall}
                     disabled={uninstalling}
                     className="inline-flex items-center gap-1 rounded-md bg-[color:var(--err)]/90 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
                   >
                     {uninstalling ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
                   </button>
-                  <button onClick={() => setConfirmUninstall(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+                  <button type="button" onClick={() => setConfirmUninstall(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                     {t('Cancel')}
                   </button>
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={() => setConfirmUninstall(true)}
                   className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[color:var(--err)] transition-colors hover:bg-[color:var(--err)]/10"
                 >
@@ -171,6 +178,7 @@ export function HelmReleaseDrawer({
 function TabButton({ active, onClick, icon: Icon, label }: Readonly<{ active: boolean; onClick: () => void; icon: typeof FileCode2; label: string }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
@@ -229,6 +237,7 @@ function HistoryList({ loading, revisions, onRollback }: Readonly<{ loading: boo
             </span>
           ) : (
             <button
+              type="button"
               onClick={() => onRollback(rev.revision)}
               className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-accent"
             >

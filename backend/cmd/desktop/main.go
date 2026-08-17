@@ -210,6 +210,14 @@ func main() {
 	fileMenu.AddText("Open in Browser", nil, func(_ *menu.CallbackData) {
 		runtime.BrowserOpenURL(app.ctx, url)
 	})
+	// Without a native Edit menu, macOS's WKWebView doesn't reliably route
+	// Cmd+C/Cmd+X/Cmd+V/Cmd+A into the focused element — the OS looks for
+	// an NSMenu item bound to the standard copy:/cut:/paste:/selectAll:
+	// selectors before forwarding the key event, so those shortcuts misbehave
+	// app-wide (most noticeably when pasting large YAML manifests into the
+	// editor). EditMenu() supplies the standard Cut/Copy/Paste/Undo/Redo/
+	// Select All items wired to those selectors.
+	appMenu.Append(menu.EditMenu())
 
 	err := wails.Run(&options.App{
 		Title:  "Netsk8 Navigator",

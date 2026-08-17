@@ -341,6 +341,7 @@ function LiveIndicator({ state }: Readonly<{ state: ConnState }>) {
 function ResourceLink({ label, onOpen }: Readonly<{ label: string; onOpen: () => void }>) {
   return (
     <button
+      type="button"
       onClick={(e) => {
         e.stopPropagation()
         onOpen()

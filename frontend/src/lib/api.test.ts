@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  addHelmRepo,
   applyManifest,
   applyManifestRef,
   blankManifestYAML,
@@ -7,17 +8,36 @@ import {
   createResource,
   crdApply,
   crdDelete,
+  crdDetail,
   deleteResource,
   deleteResourceRef,
+  execURL,
   getManifestRef,
+  helmChartDetail,
+  helmRepos,
+  helmReleaseHistory,
+  helmReleaseManifest,
+  helmReleaseRollback,
+  helmReleases,
+  helmReleaseStatus,
+  helmReleaseUninstall,
+  helmSearch,
+  installHelmRelease,
   listPortForwards,
+  logsURL,
+  refreshHelmRepo,
+  regenerateMCPToken,
+  removeHelmRepo,
   restartRollout,
   rolloutHistory,
   rolloutUndo,
   scaleResource,
   startPortForward,
   stopPortForward,
+  upgradeHelmRelease,
+  workloadLogsURL,
   type CRDRef,
+  type HelmInstallRequest,
 } from './api'
 
 function mockFetch(ok: boolean, body?: unknown, status = 200, statusText = 'OK') {
@@ -293,5 +313,150 @@ describe('port-forward', () => {
     const result = await listPortForwards('my-ctx')
     expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/portforward')
     expect(result).toHaveLength(1)
+  })
+})
+
+describe('crdDetail', () => {
+  it('fetches the detail endpoint for a CRD instance, defaulting namespace to "-"', async () => {
+    const rk: CRDRef = { group: 'example.com', version: 'v1', resource: 'widgets' }
+    const fetchMock = mockFetch(true, { kind: 'Widget' })
+    await crdDetail('my-ctx', rk, '', 'w1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets/-/w1/detail')
+  })
+})
+
+describe('regenerateMCPToken', () => {
+  it('POSTs to the regenerate endpoint and returns the new token', async () => {
+    const fetchMock = mockFetch(true, { token: 'new-token' })
+    const result = await regenerateMCPToken()
+    expect(fetchMock).toHaveBeenCalledWith('/api/mcp/token/regenerate', { method: 'POST' })
+    expect(result).toEqual({ token: 'new-token' })
+  })
+})
+
+describe('stream URL builders', () => {
+  it('logsURL includes the container query param only when given one', () => {
+    expect(logsURL('my-ctx', 'prod', 'web-1')).toBe('/api/contexts/my-ctx/pods/prod/web-1/logs')
+    expect(logsURL('my-ctx', 'prod', 'web-1', 'app')).toBe('/api/contexts/my-ctx/pods/prod/web-1/logs?container=app')
+  })
+
+  it('workloadLogsURL builds the aggregated per-workload logs endpoint', () => {
+    expect(workloadLogsURL('my-ctx', 'deployment', 'prod', 'web')).toBe('/api/contexts/my-ctx/pods-of/deployment/prod/web/logs')
+    expect(workloadLogsURL('my-ctx', 'deployment', 'prod', 'web', 'app')).toBe('/api/contexts/my-ctx/pods-of/deployment/prod/web/logs?container=app')
+  })
+
+  it('execURL picks ws:// on http and wss:// on https, against the current host', () => {
+    expect(execURL('my-ctx', 'prod', 'web-1')).toBe('ws://localhost/api/contexts/my-ctx/pods/prod/web-1/exec')
+    expect(execURL('my-ctx', 'prod', 'web-1', 'app')).toBe('ws://localhost/api/contexts/my-ctx/pods/prod/web-1/exec?container=app')
+  })
+})
+
+describe('helm', () => {
+  it('helmReleases lists releases, optionally scoped to a namespace', async () => {
+    const fetchMock = mockFetch(true, [])
+    await helmReleases('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases')
+    await helmReleases('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases?namespace=prod')
+  })
+
+  it('helmReleaseStatus fetches one release', async () => {
+    const fetchMock = mockFetch(true, {})
+    await helmReleaseStatus('my-ctx', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases/prod/web')
+  })
+
+  it('helmReleaseManifest fetches and unwraps the yaml field', async () => {
+    mockFetch(true, { yaml: 'kind: Deployment' })
+    expect(await helmReleaseManifest('my-ctx', 'prod', 'web')).toBe('kind: Deployment')
+  })
+
+  it('helmReleaseHistory fetches revision history', async () => {
+    const fetchMock = mockFetch(true, [])
+    await helmReleaseHistory('my-ctx', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases/prod/web/history')
+  })
+
+  it('helmReleaseRollback POSTs the target revision', async () => {
+    const fetchMock = mockFetch(true)
+    await helmReleaseRollback('my-ctx', 'prod', 'web', 2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases/prod/web/rollback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: 2 }),
+    })
+  })
+
+  it('helmReleaseUninstall sends a DELETE', async () => {
+    const fetchMock = mockFetch(true)
+    await helmReleaseUninstall('my-ctx', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases/prod/web', { method: 'DELETE' })
+  })
+
+  const installReq: HelmInstallRequest = { repo: 'bitnami', chart: 'nginx', version: '1.2.3', releaseName: 'web', namespace: 'prod', values: '' }
+
+  it('installHelmRelease POSTs the install request', async () => {
+    const fetchMock = mockFetch(true, { name: 'web' })
+    const result = await installHelmRelease('my-ctx', installReq)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(installReq),
+    })
+    expect(result).toEqual({ name: 'web' })
+  })
+
+  it('upgradeHelmRelease PUTs the upgrade request', async () => {
+    const fetchMock = mockFetch(true, { name: 'web' })
+    await upgradeHelmRelease('my-ctx', 'prod', 'web', installReq)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/helm/releases/prod/web', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(installReq),
+    })
+  })
+
+  it('helmRepos lists locally-added repos', async () => {
+    const fetchMock = mockFetch(true, [])
+    await helmRepos()
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/repos')
+  })
+
+  it('addHelmRepo POSTs name+url', async () => {
+    const fetchMock = mockFetch(true, { name: 'bitnami', url: 'https://charts.bitnami.com' })
+    await addHelmRepo('bitnami', 'https://charts.bitnami.com')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/repos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'bitnami', url: 'https://charts.bitnami.com' }),
+    })
+  })
+
+  it('removeHelmRepo sends a DELETE', async () => {
+    const fetchMock = mockFetch(true)
+    await removeHelmRepo('bitnami')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/repos/bitnami', { method: 'DELETE' })
+  })
+
+  it('refreshHelmRepo POSTs to the refresh endpoint', async () => {
+    const fetchMock = mockFetch(true)
+    await refreshHelmRepo('bitnami')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/repos/bitnami/refresh', { method: 'POST' })
+  })
+
+  it('helmSearch omits the query param when q is empty', async () => {
+    const fetchMock = mockFetch(true, [])
+    await helmSearch('')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/search')
+    await helmSearch('nginx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/search?q=nginx')
+  })
+
+  it('helmChartDetail includes version only when given one', async () => {
+    const fetchMock = mockFetch(true, { versions: [], defaultValues: '', readme: '' })
+    await helmChartDetail('bitnami', 'nginx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/charts/bitnami/nginx')
+    await helmChartDetail('bitnami', 'nginx', '1.2.3')
+    expect(fetchMock).toHaveBeenCalledWith('/api/helm/charts/bitnami/nginx?version=1.2.3')
   })
 })

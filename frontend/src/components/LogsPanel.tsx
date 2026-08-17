@@ -84,6 +84,7 @@ export function LogsPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: st
         <div className="flex items-center gap-1">
           {LEVELS.map((lv) => (
             <button
+              type="button"
               key={lv}
               onClick={() => toggleLevel(lv)}
               title={`${counts[lv]} ${lv}`}

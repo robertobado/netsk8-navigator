@@ -102,6 +102,7 @@ function DeleteAction({
   if (!confirming) {
     return (
       <button
+        type="button"
         onClick={() => setConfirming(true)}
         className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[color:var(--err)] transition-colors hover:bg-[color:var(--err)]/10"
       >
@@ -127,6 +128,7 @@ function DeleteAction({
         className="w-40 rounded-md border bg-background/50 px-2 py-1 font-mono text-xs outline-none"
       />
       <button
+        type="button"
         onClick={del}
         disabled={input !== name || busy}
         className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--err)]/90 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -134,7 +136,7 @@ function DeleteAction({
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
         {t('Confirm')}
       </button>
-      <button onClick={cancel} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <button type="button" onClick={cancel} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
         {t('Cancel')}
       </button>
       {error && <span className="w-full text-xs text-[color:var(--err)]">{error}</span>}
@@ -201,18 +203,20 @@ function ScaleAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionProp
         <>
           <span className="text-xs text-[color:var(--warn)]">{t('Apply this scale to the live cluster?')}</span>
           <button
+            type="button"
             onClick={scale}
             disabled={busy}
             className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
           >
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
           </button>
-          <button onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
             {t('Cancel')}
           </button>
         </>
       ) : (
         <button
+          type="button"
           onClick={() => setConfirming(true)}
           disabled={!dirty}
           className={cn(
@@ -264,13 +268,14 @@ function RestartAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionPr
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-[color:var(--warn)]">{t('Restart this rollout now?')}</span>
         <button
+          type="button"
           onClick={restart}
           disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
         >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
         </button>
-        <button onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
           {t('Cancel')}
         </button>
         {error && <span className="text-xs text-[color:var(--err)]">{error}</span>}
@@ -280,6 +285,7 @@ function RestartAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionPr
 
   return (
     <button
+      type="button"
       onClick={() => setConfirming(true)}
       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
@@ -329,13 +335,14 @@ function CordonAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionPro
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-[color:var(--warn)]">{schedulable ? t('Cordon this node now?') : t('Uncordon this node now?')}</span>
         <button
+          type="button"
           onClick={cordon}
           disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
         >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
         </button>
-        <button onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
           {t('Cancel')}
         </button>
         {error && <span className="text-xs text-[color:var(--err)]">{error}</span>}
@@ -345,6 +352,7 @@ function CordonAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionPro
 
   return (
     <button
+      type="button"
       onClick={() => setConfirming(true)}
       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
@@ -360,6 +368,7 @@ function HistoryAction({ ctx, namespace, name }: Readonly<ActionProps>) {
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >

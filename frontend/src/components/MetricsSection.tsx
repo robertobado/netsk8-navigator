@@ -425,6 +425,7 @@ function TimeSeries({
         <div className="flex gap-1 rounded-lg border bg-card/50 p-0.5">
           {RANGES.map((r) => (
             <button
+              type="button"
               key={r}
               onClick={() => setRange(r)}
               className={cn(

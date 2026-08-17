@@ -70,7 +70,7 @@ export function CreateResourceDialog({
       <div className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b px-5 py-3.5">
           <h2 className="text-sm font-semibold">{t('New resource')}</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             <X className="size-4" />
           </button>
         </div>
@@ -109,6 +109,7 @@ export function CreateResourceDialog({
         </div>
         <div className="flex items-center gap-3 border-t px-4 py-3">
           <button
+            type="button"
             onClick={create}
             disabled={busy || !!yamlError}
             className={cn(
@@ -120,7 +121,7 @@ export function CreateResourceDialog({
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
             {t('Create')}
           </button>
-          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
             {t('Cancel')}
           </button>
           {yamlError ? (

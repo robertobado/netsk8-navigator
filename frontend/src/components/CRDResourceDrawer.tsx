@@ -62,7 +62,11 @@ export function CRDResourceDrawer({
                 <h2 className="truncate text-base font-semibold">{item.name}</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">{item.namespace || 'cluster-scoped'}</p>
               </div>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
                 <X className="size-4" />
               </button>
             </header>
@@ -116,6 +120,7 @@ function CRDDetail({ ctx, rk, namespace, name }: Readonly<{ ctx: string; rk: CRD
 function TabButton({ active, onClick, icon: Icon, label }: Readonly<{ active: boolean; onClick: () => void; icon: typeof FileCode2; label: string }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',

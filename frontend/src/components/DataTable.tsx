@@ -71,6 +71,7 @@ function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T,
   return (
     <div className="relative inline-flex">
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation()
           setOpen((o) => !o)
@@ -87,6 +88,7 @@ function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T,
             {options.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('No values')}</div>}
             {selected.length > 0 && (
               <button
+                type="button"
                 onClick={() => column.setFilterValue(undefined)}
                 className="mb-1 w-full rounded px-2 py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
@@ -94,7 +96,12 @@ function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T,
               </button>
             )}
             {options.map((v) => (
-              <button key={v} onClick={() => toggle(v)} className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent">
+              <button
+                type="button"
+                key={v}
+                onClick={() => toggle(v)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent"
+              >
                 <span
                   className={cn(
                     'flex size-3.5 shrink-0 items-center justify-center rounded border',
@@ -221,7 +228,11 @@ export function DataTable<T extends RowData>({
                     className={cn('px-4 py-2.5 text-left text-xs font-medium text-muted-foreground', !hasExpand && i === 0 && 'sticky left-0 z-20 bg-card')}
                   >
                     <div className="inline-flex items-center gap-1">
-                      <button className="inline-flex items-center gap-1 transition-colors hover:text-foreground" onClick={h.column.getToggleSortingHandler()}>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                        onClick={h.column.getToggleSortingHandler()}
+                      >
                         {typeof h.column.columnDef.header === 'string' ? t(h.column.columnDef.header) : flexRender(h.column.columnDef.header, h.getContext())}
                         {h.column.getCanSort() && <ArrowUpDown className="size-3 opacity-40" />}
                       </button>

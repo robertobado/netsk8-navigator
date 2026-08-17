@@ -71,6 +71,7 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
               <div className="flex min-w-0 items-start gap-2">
                 {stack.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setStack((s) => s.slice(0, -1))}
                     title={t('Back')}
                     className="mt-0.5 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -84,7 +85,11 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
                   <p className="mt-0.5 text-xs text-muted-foreground">{cur.namespace || 'cluster-scoped'}</p>
                 </div>
               </div>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
                 <X className="size-4" />
               </button>
             </header>
@@ -147,6 +152,7 @@ export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: Draw
 function TabButton({ active, onClick, icon: Icon, label }: Readonly<{ active: boolean; onClick: () => void; icon: typeof FileCode2; label: string }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',

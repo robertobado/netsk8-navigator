@@ -75,7 +75,11 @@ export function PodDrawer({
                   {pod.namespace} · {pod.node || 'sem node'} · {pod.ip || 'sem IP'}
                 </p>
               </div>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
                 <X className="size-4" />
               </button>
             </header>
@@ -139,6 +143,7 @@ export function PodDrawer({
 function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof ScrollText; label: string }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',

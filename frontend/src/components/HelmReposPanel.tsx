@@ -64,6 +64,7 @@ export function HelmReposPanel({ ctx }: Readonly<{ ctx: string }>) {
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">{t('Helm repositories')}</h3>
           <button
+            type="button"
             onClick={() => setInstallOpen(true)}
             disabled={(reposQ.data?.length ?? 0) === 0}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -114,6 +115,7 @@ export function HelmReposPanel({ ctx }: Readonly<{ ctx: string }>) {
               <span className="shrink-0 font-medium text-sm">{r.name}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{r.url}</span>
               <button
+                type="button"
                 onClick={() => refresh(r.name)}
                 disabled={busyRepo === r.name}
                 title={t('Refresh')}
@@ -122,6 +124,7 @@ export function HelmReposPanel({ ctx }: Readonly<{ ctx: string }>) {
                 <RefreshCw className={cn('size-3.5', busyRepo === r.name && 'animate-spin')} />
               </button>
               <button
+                type="button"
                 onClick={() => remove(r.name)}
                 disabled={busyRepo === r.name}
                 title={t('Remove')}

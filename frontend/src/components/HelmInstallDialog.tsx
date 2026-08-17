@@ -99,7 +99,7 @@ export function HelmInstallDialog({ ctx, mode, open, namespace, existingRelease,
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <PackagePlus className="size-4" /> {mode === 'install' ? t('Install chart') : t('Upgrade release')}
           </h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             <X className="size-4" />
           </button>
         </div>
@@ -127,6 +127,7 @@ export function HelmInstallDialog({ ctx, mode, open, namespace, existingRelease,
               )}
               {searchQ.data?.map((c) => (
                 <button
+                  type="button"
                   key={`${c.repo}/${c.name}`}
                   onClick={() => setSelected(c)}
                   className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent"
@@ -143,6 +144,7 @@ export function HelmInstallDialog({ ctx, mode, open, namespace, existingRelease,
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
               <button
+                type="button"
                 onClick={() => setSelected(null)}
                 className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
@@ -213,6 +215,7 @@ export function HelmInstallDialog({ ctx, mode, open, namespace, existingRelease,
 
         <div className="flex items-center gap-3 border-t px-4 py-3">
           <button
+            type="button"
             onClick={submit}
             disabled={!canSubmit || busy}
             className={cn(
@@ -224,7 +227,7 @@ export function HelmInstallDialog({ ctx, mode, open, namespace, existingRelease,
             {busy ? <Loader2 className="size-4 animate-spin" /> : <PackagePlus className="size-4" />}
             {mode === 'install' ? t('Install') : t('Upgrade')}
           </button>
-          <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
             {t('Cancel')}
           </button>
           {yamlError ? (

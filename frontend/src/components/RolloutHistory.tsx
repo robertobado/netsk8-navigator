@@ -51,7 +51,7 @@ export function RolloutHistory({
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <History className="size-4" /> {t('Rollout history')}
           </h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             <X className="size-4" />
           </button>
         </div>
@@ -79,18 +79,20 @@ export function RolloutHistory({
                 (confirming === rev.revision ? (
                   <div className="flex shrink-0 items-center gap-1.5">
                     <button
+                      type="button"
                       onClick={() => undo(rev.revision)}
                       disabled={busy}
                       className="inline-flex items-center gap-1 rounded-lg bg-[color:var(--warn)]/90 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
                     >
                       {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
                     </button>
-                    <button onClick={() => setConfirming(null)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+                    <button type="button" onClick={() => setConfirming(null)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                       {t('Cancel')}
                     </button>
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => setConfirming(rev.revision)}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >

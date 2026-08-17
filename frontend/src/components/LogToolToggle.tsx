@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 export function LogToolToggle({ active, onClick, icon: Icon, title }: Readonly<{ active: boolean; onClick: () => void; icon: LucideIcon; title: string }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       title={title}
       className={cn(

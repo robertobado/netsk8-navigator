@@ -84,6 +84,7 @@ export function PortForwardPanel({ ctx, namespace, name }: Readonly<{ ctx: strin
               <div className="flex items-center gap-2">
                 <CopyableAddress address={`127.0.0.1:${sess.localPort}`} />
                 <button
+                  type="button"
                   onClick={() => stop(sess.id)}
                   disabled={busyKey === sess.id}
                   className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[color:var(--err)] transition-colors hover:bg-[color:var(--err)]/10 disabled:opacity-50"
@@ -94,6 +95,7 @@ export function PortForwardPanel({ ctx, namespace, name }: Readonly<{ ctx: strin
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => start(p.port)}
                 disabled={busyKey === p.port}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -122,6 +124,7 @@ function CopyableAddress({ address }: Readonly<{ address: string }>) {
   }
   return (
     <button
+      type="button"
       onClick={copy}
       className="inline-flex items-center gap-1.5 rounded-lg border bg-background/50 px-2.5 py-1.5 font-mono text-xs transition-colors hover:bg-accent"
     >

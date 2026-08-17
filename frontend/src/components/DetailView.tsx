@@ -127,6 +127,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
             {t('Controlled by')}:{' '}
             {ownerSlug && onOpenResource ? (
               <button
+                type="button"
                 onClick={() => onOpenResource({ kind: ownerSlug, namespace: d.namespace, name: d.ownerName })}
                 className="font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
                 title={t('Open owner')}
@@ -243,6 +244,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                 .filter((r) => r.group === group)
                 .map((r) => (
                   <button
+                    type="button"
                     key={`${r.kind}/${r.namespace}/${r.name}`}
                     onClick={() => onOpenResource({ kind: r.kind, namespace: r.namespace, name: r.name })}
                     className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
@@ -346,6 +348,7 @@ function WorkloadPods({
         <div className="space-y-0.5">
           {pods.map((p) => (
             <button
+              type="button"
               key={`${p.namespace}/${p.name}`}
               onClick={() => onOpen(p)}
               className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
@@ -381,6 +384,7 @@ function DataRow({ title, body, masked }: Readonly<{ title: string; body: string
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium">{title}</span>
           <button
+            type="button"
             onClick={() => setRevealed((r) => !r)}
             title={revealed ? t('Hide value') : t('Reveal value')}
             className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -412,7 +416,7 @@ function DataRow({ title, body, masked }: Readonly<{ title: string; body: string
   }
   return (
     <div className="py-1.5">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left">
         <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
         <span className="shrink-0 font-mono text-xs font-medium">{title}</span>
         {!open && <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted-foreground">{body.split('\n')[0]}</span>}

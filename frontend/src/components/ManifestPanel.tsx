@@ -57,6 +57,7 @@ function ManifestFooter({
           <AlertTriangle className="size-4" /> {t('Apply to the live cluster?')}
         </span>
         <button
+          type="button"
           onClick={onApply}
           disabled={applying}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[color:var(--err)]/90 px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -64,7 +65,7 @@ function ManifestFooter({
           {applying ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           {t('Confirm apply')}
         </button>
-        <button onClick={onBackToEdit} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onBackToEdit} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
           {t('Back to edit')}
         </button>
       </>
@@ -74,6 +75,7 @@ function ManifestFooter({
   return (
     <>
       <button
+        type="button"
         onClick={onPreview}
         disabled={!dirty || previewing || !!yamlError}
         className={cn(
@@ -86,7 +88,11 @@ function ManifestFooter({
         {t('Preview')}
       </button>
       {dirty && (
-        <button onClick={onDiscard} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
           <RotateCcw className="size-4" /> {t('Discard')}
         </button>
       )}
@@ -224,6 +230,7 @@ export function ManifestPanel({
         </span>
         {!confirming && (
           <button
+            type="button"
             onClick={copy}
             className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             title={t('Copy YAML')}

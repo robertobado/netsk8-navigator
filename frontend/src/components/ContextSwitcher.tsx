@@ -34,6 +34,7 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-3 rounded-xl border bg-card/70 px-3 py-2.5 text-left backdrop-blur-xl transition-colors hover:border-primary/40"
       >
@@ -63,6 +64,7 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
             {filtered.length === 0 && <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t('No context found.')}</p>}
             {filtered.map((c) => (
               <button
+                type="button"
                 key={c.name}
                 onClick={() => {
                   onSelect(c.name)
