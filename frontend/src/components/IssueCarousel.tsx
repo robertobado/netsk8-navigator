@@ -6,7 +6,8 @@ import { useT } from '@/lib/i18n'
 
 // Live-ticking relative age (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
-  const [, setTick] = useState(0)
+  const [tick, setTick] = useState(0)
+  void tick // re-render trigger only — age() recomputes from the current clock, not from tick's value
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(id)

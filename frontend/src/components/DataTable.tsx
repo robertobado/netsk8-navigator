@@ -53,6 +53,14 @@ const multiSelectFilter: FilterFn<LegacyFeatures, RowData> = (row, columnId, val
   return value.includes(String(row.getValue(columnId)))
 }
 
+// Facet values are cell data of unknown shape — only stringify the types that
+// have a meaningful String() form; anything else (objects included) becomes ''.
+function stringifyFacetValue(v: unknown): string {
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  return ''
+}
+
 // A per-column dropdown listing that column's distinct values as checkboxes.
 function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T, unknown> }>) {
   const t = useT()
@@ -61,7 +69,7 @@ function FacetFilter<T extends RowData>({ column }: Readonly<{ column: Column<T,
   // Cheap to recompute and only read while the dropdown is open, so no memo —
   // this also keeps the values fresh as the table's faceted data changes.
   const options = Array.from(column.getFacetedUniqueValues().keys())
-    .map((v) => (v == null || typeof v === 'object' ? '' : String(v)))
+    .map(stringifyFacetValue)
     .filter((v) => v !== '')
     .sort((a, b) => a.localeCompare(b))
   const toggle = (v: string) => {
