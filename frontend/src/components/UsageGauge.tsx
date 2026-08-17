@@ -31,7 +31,11 @@ export function MiniGauge({ g, kind }: Readonly<{ g?: Gauge; kind: 'cores' | 'by
   const total = g?.total ?? 0 // effective ceiling (limit→request)
   const frac = total > 0 ? Math.min(1, used / total) : 0
   let color = 'var(--muted-foreground)'
-  if (total > 0) color = frac >= 0.9 ? 'var(--err)' : frac >= 0.8 ? 'var(--warn)' : 'var(--ok)'
+  if (total > 0) {
+    if (frac >= 0.9) color = 'var(--err)'
+    else if (frac >= 0.8) color = 'var(--warn)'
+    else color = 'var(--ok)'
+  }
   const label = kind === 'cores' ? 'C' : 'M'
   let ceilTxt = t('no limit')
   if (total > 0) ceilTxt = `${(g?.limit ?? 0) > 0 ? fmt(g!.limit!) : fmt(g!.request ?? 0)} (${Math.round(frac * 100)}%)`

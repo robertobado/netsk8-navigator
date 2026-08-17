@@ -10,6 +10,7 @@ interface PodEvent {
 
 const key = (p: Pod) => `${p.namespace}/${p.name}`
 const enc = (s: string) => encodeURIComponent(s)
+const nsQuery = (namespace?: string) => (namespace ? `?namespace=${enc(namespace)}` : '')
 
 /**
  * Subscribes to the backend pod watch stream (SSE) and maintains a live map of
@@ -49,7 +50,7 @@ export function useLivePods(ctx?: string, namespace = '') {
       flushTimer ??= setTimeout(flush, FLUSH_MS)
     }
 
-    const url = `/api/contexts/${enc(ctx)}/watch/pods${namespace ? `?namespace=${enc(namespace)}` : ''}`
+    const url = `/api/contexts/${enc(ctx)}/watch/pods${nsQuery(namespace)}`
     const es = new EventSource(url)
 
     es.onopen = () => {

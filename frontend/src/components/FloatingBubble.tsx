@@ -26,14 +26,20 @@ function spawn() {
   const w = window.innerWidth
   const h = window.innerHeight
   const side = Math.floor(rand(0, 4))
-  const pos =
-    side === 0
-      ? { x: rand(0, w), y: -SPAWN_MARGIN } // above
-      : side === 1
-        ? { x: w + SPAWN_MARGIN, y: rand(0, h) } // right
-        : side === 2
-          ? { x: rand(0, w), y: h + SPAWN_MARGIN } // below
-          : { x: -SPAWN_MARGIN, y: rand(0, h) } // left
+  let pos: { x: number; y: number }
+  switch (side) {
+    case 0:
+      pos = { x: rand(0, w), y: -SPAWN_MARGIN } // above
+      break
+    case 1:
+      pos = { x: w + SPAWN_MARGIN, y: rand(0, h) } // right
+      break
+    case 2:
+      pos = { x: rand(0, w), y: h + SPAWN_MARGIN } // below
+      break
+    default:
+      pos = { x: -SPAWN_MARGIN, y: rand(0, h) } // left
+  }
   const heading = Math.atan2(h / 2 - pos.y, w / 2 - pos.x) + rand(-0.4, 0.4)
   return { pos, heading }
 }

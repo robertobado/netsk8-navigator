@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Bot, Check, Copy, Eye, EyeOff, Plus, RefreshCw, X } from 'lucide-react'
@@ -60,6 +60,52 @@ export function MCPControls() {
 
   const token = tokenQ.data?.token ?? ''
   const maskedToken = token ? `${token.slice(0, 6)}${'•'.repeat(Math.max(token.length - 6, 6))}` : ''
+
+  let allowWriteToggle: ReactNode
+  if (mcp.allowWrite) {
+    allowWriteToggle = (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={true}
+        aria-label={t('controls.mcpAllowWrite')}
+        onClick={disableWrite}
+        className="relative h-5 w-9 shrink-0 rounded-full bg-[color:var(--err)] transition-colors"
+      >
+        <span className="absolute top-0.5 left-[1.125rem] size-4 rounded-full bg-white shadow" />
+      </button>
+    )
+  } else if (confirmingWrite) {
+    allowWriteToggle = (
+      <div className="flex flex-col items-end gap-1.5">
+        {healthQ.data && !healthQ.data.authEnabled && (
+          <p className="max-w-full text-right text-[11px] text-[color:var(--err)]">{t('controls.mcpAllowWriteNoAuthWarning')}</p>
+        )}
+        <div className="flex items-center gap-1.5 rounded-lg border border-[color:var(--err)]/30 bg-[color:var(--err)]/5 px-2 py-1">
+          <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--err)]" />
+          <button type="button" onClick={confirmWrite} className="rounded-md bg-[color:var(--err)]/90 px-2 py-0.5 text-[11px] font-medium text-white">
+            {t('Confirm')}
+          </button>
+          <button type="button" onClick={() => setConfirmingWrite(false)} className="text-[11px] text-muted-foreground hover:text-foreground">
+            {t('Cancel')}
+          </button>
+        </div>
+      </div>
+    )
+  } else {
+    allowWriteToggle = (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={false}
+        aria-label={t('controls.mcpAllowWrite')}
+        onClick={() => setConfirmingWrite(true)}
+        className="relative h-5 w-9 shrink-0 rounded-full bg-muted transition-colors"
+      >
+        <span className="absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow" />
+      </button>
+    )
+  }
 
   return (
     <div className="space-y-3 rounded-xl border bg-background/40 p-3 backdrop-blur-xl">
@@ -148,44 +194,7 @@ export function MCPControls() {
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">{t('controls.mcpAllowWrite')}</span>
 
-            {mcp.allowWrite ? (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={true}
-                aria-label={t('controls.mcpAllowWrite')}
-                onClick={disableWrite}
-                className="relative h-5 w-9 shrink-0 rounded-full bg-[color:var(--err)] transition-colors"
-              >
-                <span className="absolute top-0.5 left-[1.125rem] size-4 rounded-full bg-white shadow" />
-              </button>
-            ) : confirmingWrite ? (
-              <div className="flex flex-col items-end gap-1.5">
-                {healthQ.data && !healthQ.data.authEnabled && (
-                  <p className="max-w-full text-right text-[11px] text-[color:var(--err)]">{t('controls.mcpAllowWriteNoAuthWarning')}</p>
-                )}
-                <div className="flex items-center gap-1.5 rounded-lg border border-[color:var(--err)]/30 bg-[color:var(--err)]/5 px-2 py-1">
-                  <AlertTriangle className="size-3.5 shrink-0 text-[color:var(--err)]" />
-                  <button type="button" onClick={confirmWrite} className="rounded-md bg-[color:var(--err)]/90 px-2 py-0.5 text-[11px] font-medium text-white">
-                    {t('Confirm')}
-                  </button>
-                  <button type="button" onClick={() => setConfirmingWrite(false)} className="text-[11px] text-muted-foreground hover:text-foreground">
-                    {t('Cancel')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={false}
-                aria-label={t('controls.mcpAllowWrite')}
-                onClick={() => setConfirmingWrite(true)}
-                className="relative h-5 w-9 shrink-0 rounded-full bg-muted transition-colors"
-              >
-                <span className="absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow" />
-              </button>
-            )}
+            {allowWriteToggle}
           </div>
 
           {mcp.allowWrite && (

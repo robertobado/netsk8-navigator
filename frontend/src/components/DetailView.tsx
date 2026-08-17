@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Eye, EyeOff, ExternalLink, Loader2, Plug } from 'lucide-react'
 import { api, getDetail, kindToSlug, type DetailChip, type DetailKV, type ManifestKind, type Pod, type ResourceDetail } from '@/lib/api'
@@ -336,38 +336,42 @@ function WorkloadPods({
     refetchInterval: 10_000,
   })
   const pods = q.data ?? []
-  return (
-    <Card title={`${t(label)} (${pods.length})`}>
-      {q.isLoading ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> {t('Loading pods...')}
-        </div>
-      ) : pods.length === 0 ? (
-        <div className="text-xs text-muted-foreground">{t('No pods.')}</div>
-      ) : (
-        <div className="space-y-0.5">
-          {pods.map((p) => (
-            <button
-              type="button"
-              key={`${p.namespace}/${p.name}`}
-              onClick={() => onOpen(p)}
-              className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
-              title={t('Open pod details')}
-            >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2">
-                {p.name}
-              </span>
-              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                {p.ready}/{p.total}
-              </span>
-              <StatusBadge status={p.reason || p.status} />
-              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70" />
-            </button>
-          ))}
-        </div>
-      )}
-    </Card>
-  )
+
+  let body: ReactNode
+  if (q.isLoading) {
+    body = (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> {t('Loading pods...')}
+      </div>
+    )
+  } else if (pods.length === 0) {
+    body = <div className="text-xs text-muted-foreground">{t('No pods.')}</div>
+  } else {
+    body = (
+      <div className="space-y-0.5">
+        {pods.map((p) => (
+          <button
+            type="button"
+            key={`${p.namespace}/${p.name}`}
+            onClick={() => onOpen(p)}
+            className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+            title={t('Open pod details')}
+          >
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--brand)] underline decoration-dotted underline-offset-2">
+              {p.name}
+            </span>
+            <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+              {p.ready}/{p.total}
+            </span>
+            <StatusBadge status={p.reason || p.status} />
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70" />
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  return <Card title={`${t(label)} (${pods.length})`}>{body}</Card>
 }
 
 // A ConfigMap-style key/value row: short scalars inline; long/multiline values

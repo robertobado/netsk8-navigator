@@ -460,6 +460,13 @@ async function get<T>(path: string): Promise<T> {
 const enc = (s: string) => encodeURIComponent(s)
 
 const nsQuery = (namespace?: string) => (namespace ? `?namespace=${enc(namespace)}` : '')
+// A single optional query param, e.g. qParam('kind', kind) → '?kind=x' or ''.
+const qParam = (name: string, value?: string) => (value ? `?${name}=${enc(value)}` : '')
+// The '?'-prefixed suffix for an already-built URLSearchParams, or '' when empty.
+const qsSuffix = (qs: URLSearchParams) => {
+  const s = qs.toString()
+  return s ? `?${s}` : ''
+}
 
 export const api = {
   health: () => get<Health>('/health'),
@@ -471,7 +478,7 @@ export const api = {
   pods: (ctx: string, ns?: string) => get<Pod[]>(`/contexts/${enc(ctx)}/pods${nsQuery(ns)}`),
   podPending: (ctx: string, ns: string, name: string) => get<PendingInfo>(`/contexts/${enc(ctx)}/pods/${enc(ns)}/${enc(name)}/pending`),
   events: (ctx: string, ns: string, name: string, kind?: string) =>
-    get<EventView[]>(`/contexts/${enc(ctx)}/events/${enc(ns)}/${enc(name)}${kind ? `?kind=${enc(kind)}` : ''}`),
+    get<EventView[]>(`/contexts/${enc(ctx)}/events/${enc(ns)}/${enc(name)}${qParam('kind', kind)}`),
   allEvents: (ctx: string, ns?: string) => get<EventView[]>(`/contexts/${enc(ctx)}/events${nsQuery(ns)}`),
   workloadPods: (ctx: string, kind: ManifestKind, ns: string, name: string) => get<Pod[]>(`/contexts/${enc(ctx)}/pods-of/${kind}/${enc(ns)}/${enc(name)}`),
   nodeWorkloads: (ctx: string, node: string) => get<NodeWorkloadGroup[]>(`/contexts/${enc(ctx)}/node-workloads/${enc(node)}`),
@@ -494,16 +501,14 @@ export const api = {
     const qs = new URLSearchParams()
     if (params?.namespace) qs.set('namespace', params.namespace)
     if (params?.name) qs.set('name', params.name)
-    const s = qs.toString()
-    return get<Usage>(`/contexts/${enc(ctx)}/usage/${scope}${s ? `?${s}` : ''}`)
+    return get<Usage>(`/contexts/${enc(ctx)}/usage/${scope}${qsSuffix(qs)}`)
   },
   metrics: (ctx: string, scope: 'cluster' | 'pod' | 'node', params?: { namespace?: string; name?: string; range?: string }) => {
-    const q = new URLSearchParams()
-    if (params?.namespace) q.set('namespace', params.namespace)
-    if (params?.name) q.set('name', params.name)
-    if (params?.range) q.set('range', params.range)
-    const qs = q.toString()
-    return get<Metrics>(`/contexts/${enc(ctx)}/metrics/${scope}${qs ? `?${qs}` : ''}`)
+    const qs = new URLSearchParams()
+    if (params?.namespace) qs.set('namespace', params.namespace)
+    if (params?.name) qs.set('name', params.name)
+    if (params?.range) qs.set('range', params.range)
+    return get<Metrics>(`/contexts/${enc(ctx)}/metrics/${scope}${qsSuffix(qs)}`)
   },
 }
 
@@ -1104,8 +1109,8 @@ export async function refreshHelmRepo(name: string) {
   await throwIfError(res)
 }
 export function helmSearch(q: string) {
-  return get<HelmChartSummary[]>(`/helm/search${q ? `?q=${enc(q)}` : ''}`)
+  return get<HelmChartSummary[]>(`/helm/search${qParam('q', q)}`)
 }
 export function helmChartDetail(repo: string, chart: string, version?: string) {
-  return get<HelmChartDetail>(`/helm/charts/${enc(repo)}/${enc(chart)}${version ? `?version=${enc(version)}` : ''}`)
+  return get<HelmChartDetail>(`/helm/charts/${enc(repo)}/${enc(chart)}${qParam('version', version)}`)
 }

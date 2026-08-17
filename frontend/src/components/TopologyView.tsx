@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 
 const KIND_ICON = { deployment: Layers, service: Network, pod: Boxes }
+const KIND_ICON_COLOR = { deployment: 'text-primary', service: 'text-[color:var(--ok)]', pod: 'text-muted-foreground' }
 const COLUMN_X = { deployment: 20, pod: 360, service: 720 }
 
 function statusTone(status: string): string {
@@ -31,9 +32,7 @@ function ResourceNode({ data }: NodeProps) {
       )}
     >
       <Handle type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-border" />
-      <Icon
-        className={cn('size-4 shrink-0', d.kind === 'deployment' ? 'text-primary' : d.kind === 'service' ? 'text-[color:var(--ok)]' : 'text-muted-foreground')}
-      />
+      <Icon className={cn('size-4 shrink-0', KIND_ICON_COLOR[d.kind])} />
       <div className="min-w-0">
         <div className="max-w-52 truncate text-xs font-medium">{d.name}</div>
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground">

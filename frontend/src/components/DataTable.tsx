@@ -254,7 +254,9 @@ export function DataTable<T extends RowData>({
               const sub = renderSubRow?.(row.original)
               const exp = expandable?.(row.original) ?? null
               const isOpen = expanded.has(row.id)
-              const clickable = exp ? () => toggleExpanded(row.id) : onRowClick ? () => onRowClick(row.original) : undefined
+              let clickable: (() => void) | undefined
+              if (exp) clickable = () => toggleExpanded(row.id)
+              else if (onRowClick) clickable = () => onRowClick(row.original)
               return (
                 <Fragment key={row.id}>
                   <tr

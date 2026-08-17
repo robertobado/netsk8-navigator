@@ -80,18 +80,18 @@ describe('ManifestPanel', () => {
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: Deployment\nspec:\n  replicas: 2\n' } })
     expect(screen.getByText('Discard')).toBeInTheDocument()
 
-    await act(async () => {
-      fireEvent.click(screen.getByText('Preview'))
-    })
+    fireEvent.click(screen.getByText('Preview'))
+    expect(await screen.findByTestId('diff-modified')).toHaveTextContent('replicas: 2')
     expect(applyManifestRefMock).toHaveBeenCalledWith('test', ref, 'default', 'web', 'kind: Deployment\nspec:\n  replicas: 2\n', { dryRun: true })
-    expect(screen.getByTestId('diff-modified')).toHaveTextContent('replicas: 2')
     expect(screen.getByText('Apply to the live cluster?')).toBeInTheDocument()
 
     applyManifestRefMock.mockResolvedValue(undefined)
     vi.useFakeTimers() // enabled before the click so the revert setTimeout(…, 3000) it schedules is fake
-    await act(async () => {
-      fireEvent.click(screen.getByText('Confirm apply'))
-    })
+    fireEvent.click(screen.getByText('Confirm apply'))
+    // findBy/waitFor poll on a (now-fake) timer, so flush the pending apply
+    // promise directly instead — same reason vi.advanceTimersByTime is used
+    // below rather than a real-timer-based query.
+    await act(async () => {})
     expect(applyManifestRefMock).toHaveBeenLastCalledWith('test', ref, 'default', 'web', 'kind: Deployment\nspec:\n  replicas: 2\n')
     expect(screen.getByText('Applied to cluster')).toBeInTheDocument()
 
@@ -108,10 +108,8 @@ describe('ManifestPanel', () => {
     expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: Deployment\nextra: true\n' } })
 
-    await act(async () => {
-      fireEvent.click(screen.getByText('Preview'))
-    })
-    expect(screen.getByText('Back to edit')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Preview'))
+    expect(await screen.findByText('Back to edit')).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Back to edit'))
     expect(applyManifestRefMock).toHaveBeenCalledTimes(1) // the dry run only — no apply
@@ -125,10 +123,8 @@ describe('ManifestPanel', () => {
     expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('yaml'), { target: { value: 'kind: Deployment\nextra: true\n' } })
 
-    await act(async () => {
-      fireEvent.click(screen.getByText('Preview'))
-    })
-    expect(screen.getByText('admission webhook denied the request')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Preview'))
+    expect(await screen.findByText('admission webhook denied the request')).toBeInTheDocument()
     expect(screen.queryByText('Apply to the live cluster?')).not.toBeInTheDocument()
   })
 
@@ -156,9 +152,8 @@ describe('ManifestPanel', () => {
     expect(await screen.findByLabelText('yaml')).toBeInTheDocument()
 
     vi.useFakeTimers() // enabled before the click so the revert setTimeout(…, 1500) it schedules is fake
-    await act(async () => {
-      fireEvent.click(screen.getByTitle('Copy YAML'))
-    })
+    fireEvent.click(screen.getByTitle('Copy YAML'))
+    await act(async () => {}) // flush the pending clipboard-write promise (see the Confirm apply case above)
     expect(writeTextMock).toHaveBeenCalledWith('kind: Deployment\n')
     expect(screen.getByText('Copied')).toBeInTheDocument()
 

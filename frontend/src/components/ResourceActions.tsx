@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Ban, Check, CheckCircle2, History, Loader2, RefreshCw, Scaling, Trash2 } from 'lucide-react'
 import {
@@ -180,6 +180,46 @@ function ScaleAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionProp
     }
   }
 
+  let scaleControl: ReactNode
+  if (done) {
+    scaleControl = (
+      <span className="inline-flex items-center gap-1 text-xs text-[color:var(--ok)]">
+        <Check className="size-3.5" /> {t('Scaled')}
+      </span>
+    )
+  } else if (confirming) {
+    scaleControl = (
+      <>
+        <span className="text-xs text-[color:var(--warn)]">{t('Apply this scale to the live cluster?')}</span>
+        <button
+          type="button"
+          onClick={scale}
+          disabled={busy}
+          className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
+        </button>
+        <button type="button" onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
+          {t('Cancel')}
+        </button>
+      </>
+    )
+  } else {
+    scaleControl = (
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        disabled={!dirty}
+        className={cn(
+          'rounded-lg px-2.5 py-1 text-xs font-medium',
+          dirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
+        )}
+      >
+        {t('Scale')}
+      </button>
+    )
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Scaling className="size-4 text-muted-foreground" />
@@ -195,38 +235,7 @@ function ScaleAction({ ctx, kind, namespace, name, onDone }: Readonly<ActionProp
         aria-label={t('Replicas')}
         className="w-16 rounded-md border bg-background/50 px-2 py-1 text-sm outline-none"
       />
-      {done ? (
-        <span className="inline-flex items-center gap-1 text-xs text-[color:var(--ok)]">
-          <Check className="size-3.5" /> {t('Scaled')}
-        </span>
-      ) : confirming ? (
-        <>
-          <span className="text-xs text-[color:var(--warn)]">{t('Apply this scale to the live cluster?')}</span>
-          <button
-            type="button"
-            onClick={scale}
-            disabled={busy}
-            className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : t('Confirm')}
-          </button>
-          <button type="button" onClick={() => setConfirming(false)} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
-            {t('Cancel')}
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          disabled={!dirty}
-          className={cn(
-            'rounded-lg px-2.5 py-1 text-xs font-medium',
-            dirty ? 'bg-primary text-primary-foreground hover:opacity-90' : 'cursor-not-allowed bg-muted text-muted-foreground',
-          )}
-        >
-          {t('Scale')}
-        </button>
-      )}
+      {scaleControl}
       {error && <span className="text-xs text-[color:var(--err)]">{error}</span>}
     </div>
   )

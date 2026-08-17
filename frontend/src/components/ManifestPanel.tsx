@@ -221,12 +221,17 @@ export function ManifestPanel({
     )
   if (state === 'error') return <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[color:var(--err)]">{error}</div>
 
+  let headerLabel: string
+  if (confirming) headerLabel = t('Reviewing changes')
+  else if (editable) headerLabel = 'YAML'
+  else headerLabel = `YAML · ${t('read-only')}`
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {!editable && <Lock className="size-3" />}
-          {confirming ? t('Reviewing changes') : editable ? 'YAML' : `YAML · ${t('read-only')}`}
+          {headerLabel}
         </span>
         {!confirming && (
           <button
