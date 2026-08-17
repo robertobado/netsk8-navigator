@@ -83,7 +83,7 @@ export function NamespaceSelect({ namespaces, selected, onSelect }: Readonly<Pro
   )
 }
 
-function Item({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function Item({ label, active, onClick }: Readonly<{ label: string; active: boolean; onClick: () => void }>) {
   return (
     <button
       type="button"

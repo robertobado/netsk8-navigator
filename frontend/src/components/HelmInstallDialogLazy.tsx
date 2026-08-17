@@ -18,7 +18,7 @@ interface Props {
   onDone: (release: HelmRelease) => void
 }
 
-export function HelmInstallDialogLazy(props: Props) {
+export function HelmInstallDialogLazy(props: Readonly<Props>) {
   const t = useT()
   if (!props.open) return null
   return (

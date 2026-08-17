@@ -6,7 +6,7 @@ import { execURL } from '@/lib/api'
 import { useT } from '@/lib/i18n'
 
 // Interactive shell into a pod container: xterm.js <-> WebSocket <-> SPDY exec.
-export function TerminalPanel({ ctx, namespace, pod, container }: { ctx: string; namespace: string; pod: string; container?: string }) {
+export function TerminalPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: string; namespace: string; pod: string; container?: string }>) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)
 

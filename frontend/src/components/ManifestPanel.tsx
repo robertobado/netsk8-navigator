@@ -27,7 +27,7 @@ function ManifestFooter({
   onApply,
   onBackToEdit,
   onDiscard,
-}: {
+}: Readonly<{
   applied: boolean
   confirming: boolean
   dirty: boolean
@@ -39,7 +39,7 @@ function ManifestFooter({
   onApply: () => void
   onBackToEdit: () => void
   onDiscard: () => void
-}) {
+}>) {
   const t = useT()
 
   if (applied) {
@@ -119,13 +119,13 @@ export function ManifestPanel({
   namespace,
   name,
   editable,
-}: {
+}: Readonly<{
   ctx: string
   kind: ResourceRef
   namespace: string
   name: string
   editable: boolean
-}) {
+}>) {
   const t = useT()
   const [state, setState] = useState<State>('loading')
   const [error, setError] = useState('')

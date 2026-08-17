@@ -16,7 +16,7 @@ interface Props {
   editable: boolean
 }
 
-export function ManifestPanelLazy(props: Props) {
+export function ManifestPanelLazy(props: Readonly<Props>) {
   const t = useT()
   return (
     <Suspense

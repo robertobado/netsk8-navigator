@@ -135,7 +135,7 @@ export function DataTable<T extends RowData>({
   facets,
   expandable,
   virtualize,
-}: DataTableProps<T>) {
+}: Readonly<DataTableProps<T>>) {
   const t = useT()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const toggleExpanded = (id: string) =>

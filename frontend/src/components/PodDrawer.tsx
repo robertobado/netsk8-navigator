@@ -21,12 +21,12 @@ export function PodDrawer({
   ctx,
   onClose,
   onOpenResource,
-}: {
+}: Readonly<{
   pod: Pod | null
   ctx: string
   onClose: () => void
   onOpenResource?: (t: DrawerTarget) => void
-}) {
+}>) {
   const t = useT()
   const [tab, setTab] = useState<Tab>('detail')
   const [container, setContainer] = useState<string | undefined>()
@@ -140,7 +140,7 @@ export function PodDrawer({
   )
 }
 
-function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof ScrollText; label: string }) {
+function TabButton({ active, onClick, icon: Icon, label }: Readonly<{ active: boolean; onClick: () => void; icon: typeof ScrollText; label: string }>) {
   return (
     <button
       type="button"

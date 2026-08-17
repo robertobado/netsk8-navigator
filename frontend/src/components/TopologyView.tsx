@@ -48,7 +48,7 @@ function ResourceNode({ data }: NodeProps) {
 
 const nodeTypes = { resource: ResourceNode }
 
-export function TopologyView({ ctx, ns }: { ctx: string; ns: string }) {
+export function TopologyView({ ctx, ns }: Readonly<{ ctx: string; ns: string }>) {
   const t = useT()
   const q = useQuery({
     queryKey: ['topology', ctx, ns],

@@ -213,12 +213,12 @@ function ReadOnlyContextsPicker({
   readOnlyContexts,
   onAdd,
   onRemove,
-}: {
+}: Readonly<{
   contexts: ContextInfo[]
   readOnlyContexts: string[]
   onAdd: (name: string) => void
   onRemove: (name: string) => void
-}) {
+}>) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')

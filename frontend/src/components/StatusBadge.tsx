@@ -16,7 +16,7 @@ const styles: Record<string, string> = {
   muted: 'bg-muted text-muted-foreground ring-border',
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: Readonly<{ status: string }>) {
   const t = tone(status)
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', styles[t])}>

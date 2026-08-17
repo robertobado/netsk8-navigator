@@ -55,12 +55,12 @@ export function NavigatorLoader({
   state = 'connecting',
   label,
   sky = 'navy',
-}: {
+}: Readonly<{
   size?: number
   state?: 'connecting' | 'ready'
   label?: string
   sky?: 'navy' | 'green'
-}) {
+}>) {
   const t = useT()
   const cls = ['nk', state === 'ready' && 'nk--ready'].filter(Boolean).join(' ')
   const wheel = wheelVerts(60, 89, 14) // Kubernetes helm below the horizon (handle tips)
@@ -209,7 +209,7 @@ const TRAIL: Record<string, { head: string; tail: string }> = {
 // A comet drawn as a string of dots along its offset-path, so the tail hugs the
 // curve (a rigid straight trail would "whip" on a curved path and read as zigzag).
 // Dot 0 is the bright hexagonal head; the rest are fading round tail dots.
-function CometTail({ comet, dots, headR }: { comet: Readonly<Comet>; dots: number; headR: number }) {
+function CometTail({ comet, dots, headR }: Readonly<{ comet: Readonly<Comet>; dots: number; headR: number }>) {
   return (
     <>
       {Array.from({ length: dots }, (_, i) => {

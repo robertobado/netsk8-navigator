@@ -10,7 +10,7 @@ interface Props {
   onSelect: (name: string) => void
 }
 
-export function ContextSwitcher({ contexts, selected, onSelect }: Props) {
+export function ContextSwitcher({ contexts, selected, onSelect }: Readonly<Props>) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')

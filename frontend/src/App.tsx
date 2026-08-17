@@ -277,7 +277,7 @@ function AppMain() {
   )
 }
 
-function LivePods({ ctx, ns }: { ctx: string; ns: string }) {
+function LivePods({ ctx, ns }: Readonly<{ ctx: string; ns: string }>) {
   const { pods, state } = useLivePods(ctx, ns)
   const [selected, setSelected] = useState<Pod | null>(null)
   const [target, setTarget] = useState<DrawerTarget | null>(null)
@@ -306,13 +306,13 @@ function OverviewPanel({
   overview,
   loading,
   error,
-}: {
+}: Readonly<{
   ctx?: string
   ns: string
   overview?: import('@/lib/api').Overview
   loading: boolean
   error: Error | null
-}) {
+}>) {
   const t = useT()
   const [pod, setPod] = useState<Pod | null>(null)
   const [nodeTarget, setNodeTarget] = useState<DrawerTarget | null>(null)
@@ -359,7 +359,7 @@ function OverviewPanel({
   )
 }
 
-function ErrorBanner({ message }: { message: string }) {
+function ErrorBanner({ message }: Readonly<{ message: string }>) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-[color:var(--err)]/30 bg-[color:var(--err)]/10 px-4 py-3 text-sm">
       <CircleAlert className="mt-0.5 size-4 shrink-0 text-[color:var(--err)]" />

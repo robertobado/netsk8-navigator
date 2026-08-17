@@ -17,7 +17,7 @@ interface Props {
   onCreated: (result: CreatedResource) => void
 }
 
-export function CreateResourceDialogLazy(props: Props) {
+export function CreateResourceDialogLazy(props: Readonly<Props>) {
   const t = useT()
   if (!props.open) return null
   return (
