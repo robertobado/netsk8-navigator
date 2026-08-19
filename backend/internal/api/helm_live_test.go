@@ -98,87 +98,112 @@ func newHelmSecretBridge(t *testing.T, client kubernetes.Interface) *httptest.Se
 		}
 		writeJSONSecretList(w, list)
 	})
-	mux.HandleFunc("/api/v1/namespaces/", func(w http.ResponseWriter, r *http.Request) {
-		// Path shapes handled: .../namespaces/{ns}/secrets and .../namespaces/{ns}/secrets/{name}.
-		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/namespaces/"), "/")
-		if len(parts) < 2 || parts[1] != "secrets" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		ns := parts[0]
-		ctx := r.Context()
-		switch {
-		case len(parts) == 2 && r.Method == http.MethodGet:
-			list, err := client.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{LabelSelector: r.URL.Query().Get("labelSelector")})
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			writeJSONSecretList(w, list)
-
-		case len(parts) == 2 && r.Method == http.MethodPost:
-			sec, err := decodeSecret(r)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			sec.Namespace = ns
-			created, err := client.CoreV1().Secrets(ns).Create(ctx, sec, metav1.CreateOptions{})
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			// Content-Type must be set (inside writeJSONSecret) before any
-			// WriteHeader call — net/http silently drops headers set after the
-			// status line is written, so this relies on the 200 default rather
-			// than an explicit 201.
-			writeJSONSecret(w, created)
-
-		case len(parts) == 3 && r.Method == http.MethodGet:
-			sec, err := client.CoreV1().Secrets(ns).Get(ctx, parts[2], metav1.GetOptions{})
-			if err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				_ = json.NewEncoder(w).Encode(statusNotFound)
-				return
-			}
-			writeJSONSecret(w, sec)
-
-		case len(parts) == 3 && r.Method == http.MethodPut:
-			sec, err := decodeSecret(r)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			sec.Namespace = ns
-			// Helm's driver builds a fresh object with no resourceVersion; carry
-			// over whatever the fake tracker currently has so Update doesn't
-			// look like a stale write.
-			if existing, err := client.CoreV1().Secrets(ns).Get(ctx, sec.Name, metav1.GetOptions{}); err == nil {
-				sec.ResourceVersion = existing.ResourceVersion
-			}
-			updated, err := client.CoreV1().Secrets(ns).Update(ctx, sec, metav1.UpdateOptions{})
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			writeJSONSecret(w, updated)
-
-		case len(parts) == 3 && r.Method == http.MethodDelete:
-			if err := client.CoreV1().Secrets(ns).Delete(ctx, parts[2], metav1.DeleteOptions{}); err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				_ = json.NewEncoder(w).Encode(statusNotFound)
-				return
-			}
-			_ = json.NewEncoder(w).Encode(metav1.Status{TypeMeta: metav1.TypeMeta{Kind: "Status", APIVersion: "v1"}, Status: metav1.StatusSuccess})
-
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	})
+	nsh := &namespacedSecretsHandler{client: client, statusNotFound: statusNotFound}
+	mux.HandleFunc("/api/v1/namespaces/", nsh.serveHTTP)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// namespacedSecretsHandler serves the .../namespaces/{ns}/secrets[/{name}]
+// shapes of newHelmSecretBridge — split out to a method-per-verb so each verb
+// reads as its own small function rather than one large switch.
+type namespacedSecretsHandler struct {
+	client         kubernetes.Interface
+	statusNotFound metav1.Status
+}
+
+func (h *namespacedSecretsHandler) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/namespaces/"), "/")
+	if len(parts) < 2 || parts[1] != "secrets" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	ns, ctx := parts[0], r.Context()
+
+	switch {
+	case len(parts) == 2 && r.Method == http.MethodGet:
+		h.list(w, r, ctx, ns)
+	case len(parts) == 2 && r.Method == http.MethodPost:
+		h.create(w, r, ctx, ns)
+	case len(parts) == 3 && r.Method == http.MethodGet:
+		h.get(w, ctx, ns, parts[2])
+	case len(parts) == 3 && r.Method == http.MethodPut:
+		h.update(w, r, ctx, ns)
+	case len(parts) == 3 && r.Method == http.MethodDelete:
+		h.delete(w, ctx, ns, parts[2])
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func (h *namespacedSecretsHandler) list(w http.ResponseWriter, r *http.Request, ctx context.Context, ns string) {
+	list, err := h.client.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{LabelSelector: r.URL.Query().Get("labelSelector")})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeJSONSecretList(w, list)
+}
+
+func (h *namespacedSecretsHandler) create(w http.ResponseWriter, r *http.Request, ctx context.Context, ns string) {
+	sec, err := decodeSecret(r)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sec.Namespace = ns
+	created, err := h.client.CoreV1().Secrets(ns).Create(ctx, sec, metav1.CreateOptions{})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	// Content-Type must be set (inside writeJSONSecret) before any
+	// WriteHeader call — net/http silently drops headers set after the
+	// status line is written, so this relies on the 200 default rather
+	// than an explicit 201.
+	writeJSONSecret(w, created)
+}
+
+func (h *namespacedSecretsHandler) get(w http.ResponseWriter, ctx context.Context, ns, name string) {
+	sec, err := h.client.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(h.statusNotFound)
+		return
+	}
+	writeJSONSecret(w, sec)
+}
+
+func (h *namespacedSecretsHandler) update(w http.ResponseWriter, r *http.Request, ctx context.Context, ns string) {
+	sec, err := decodeSecret(r)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sec.Namespace = ns
+	// Helm's driver builds a fresh object with no resourceVersion; carry over
+	// whatever the fake tracker currently has so Update doesn't look like a
+	// stale write.
+	if existing, err := h.client.CoreV1().Secrets(ns).Get(ctx, sec.Name, metav1.GetOptions{}); err == nil {
+		sec.ResourceVersion = existing.ResourceVersion
+	}
+	updated, err := h.client.CoreV1().Secrets(ns).Update(ctx, sec, metav1.UpdateOptions{})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeJSONSecret(w, updated)
+}
+
+func (h *namespacedSecretsHandler) delete(w http.ResponseWriter, ctx context.Context, ns, name string) {
+	if err := h.client.CoreV1().Secrets(ns).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(h.statusNotFound)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(metav1.Status{TypeMeta: metav1.TypeMeta{Kind: "Status", APIVersion: "v1"}, Status: metav1.StatusSuccess})
 }
 
 func decodeSecret(r *http.Request) (*corev1.Secret, error) {
