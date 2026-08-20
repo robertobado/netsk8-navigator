@@ -178,8 +178,8 @@ func TestMCPHandler_ListToolsAndCallReadTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools.Tools) != 14 {
-		t.Errorf("got %d tools, want 14 (10 read + 4 write)", len(tools.Tools))
+	if len(tools.Tools) != 18 {
+		t.Errorf("got %d tools, want 18 (14 read + 4 write)", len(tools.Tools))
 	}
 	for _, tool := range tools.Tools {
 		if tool.Annotations == nil {
@@ -606,8 +606,8 @@ func TestServer_RunStdioServesToolsOverAnyPersistentTransport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools.Tools) != 14 {
-		t.Errorf("got %d tools, want 14", len(tools.Tools))
+	if len(tools.Tools) != 18 {
+		t.Errorf("got %d tools, want 18", len(tools.Tools))
 	}
 
 	if err := session.Close(); err != nil {

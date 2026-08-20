@@ -356,19 +356,25 @@ The trade-off between the two: stdio has no shared cache with the GUI
 (each client spawns its own process), HTTP depends on the app already
 running. Both stay available — use whichever fits.
 
-**Tools:** 10 read tools (list contexts/namespaces/nodes/pods/resources,
-get resource detail/manifest/logs/overview/issues) plus 4 write tools
-(apply manifest, delete resource, scale, restart rollout), every one a
-thin adapter over the same REST handlers the UI itself uses. Each is
-tagged with MCP annotations (`readOnlyHint`/`destructiveHint`/
-`idempotentHint`) so a client can tell read from write without guessing,
-and `context` arguments are constrained to your kubeconfig's actual
-context names — a typo is rejected immediately as a schema-validation
-error instead of round-tripping through a failed API call. `list_pods`,
-`list_resources`, and `get_issues` accept an optional `limit` (and
-`since` on the two that have a meaningful timestamp to filter on) to keep
-responses small on a busy cluster; `get_issues` always includes a
-`summary` grouping every issue by cause, computed before any truncation.
+**Tools:** 14 read tools (list contexts/namespaces/nodes/pods/resources,
+get resource detail/manifest/logs/overview/issues, plus list CRD
+kinds/resources and get CRD detail/manifest) plus 4 write tools (apply
+manifest, delete resource, scale, restart rollout), every one a thin
+adapter over the same REST handlers the UI itself uses. Each is tagged
+with MCP annotations (`readOnlyHint`/`destructiveHint`/`idempotentHint`)
+so a client can tell read from write without guessing, and `context`
+arguments are constrained to your kubeconfig's actual context names — a
+typo is rejected immediately as a schema-validation error instead of
+round-tripping through a failed API call. `list_pods`, `list_resources`,
+and `get_issues` accept an optional `limit` (and `since` on the two that
+have a meaningful timestamp to filter on) to keep responses small on a
+busy cluster; `get_issues` always includes a `summary` grouping every
+issue by cause, computed before any truncation. `list_resources`/
+`get_resource_detail`/`get_manifest` only know the built-in Kubernetes
+kinds — for a CustomResourceDefinition (Gateway API route, cert-manager
+Certificate, etc.), `list_crd_kinds` finds its exact group/version/
+resource, then `list_crd_resources`/`get_crd_detail`/`get_crd_manifest`
+address it by that instead of a fixed kind slug.
 
 **Write access is a second, separate gate.** Turning MCP on only exposes
 the read tools — the same data the UI already shows. A write tool call is

@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -244,5 +246,66 @@ func TestMCPHandler_CallGetResourceDetailAndManifest(t *testing.T) {
 	text, ok := manifest.Content[0].(*mcp.TextContent)
 	if !ok || text.Text == "" {
 		t.Fatalf("get_manifest content = %+v, want non-empty manifest text", manifest.Content)
+	}
+}
+
+// TestMCPHandler_CRDToolsRoundTrip covers the gap a real MCP client hit: none
+// of list_resources/get_resource_detail/get_manifest can reach a CRD (they
+// only know the fixed built-in catalog/manifest-slug map), so an agent asking
+// about e.g. a SecretProviderClass got a bare 404 with no path forward. These
+// four tools are the fix — addressed by group/version/resource from
+// list_crd_kinds instead of a fixed kind slug.
+func TestMCPHandler_CRDToolsRoundTrip(t *testing.T) {
+	crd := apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "secretproviderclasses.secrets-store.csi.x-k8s.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "secrets-store.csi.x-k8s.io", Scope: apiextensionsv1.NamespaceScoped,
+			Names:    apiextensionsv1.CustomResourceDefinitionNames{Kind: "SecretProviderClass", Plural: "secretproviderclasses"},
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{Name: "v1", Served: true, Storage: true}},
+		},
+	}
+	instance := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "secrets-store.csi.x-k8s.io/v1", "kind": "SecretProviderClass",
+		"metadata": map[string]any{"name": "azure-kv", "namespace": "prod"},
+	}}
+	s := newTestServerWithCRDs(t, []apiextensionsv1.CustomResourceDefinition{crd}, instance)
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+	ctx := t.Context()
+
+	kinds, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_crd_kinds", Arguments: map[string]any{"context": "test"}})
+	if err != nil || kinds.IsError {
+		t.Fatalf("CallTool list_crd_kinds: err=%v result=%+v", err, kinds)
+	}
+	kindsText, ok := kinds.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(kindsText.Text, "SecretProviderClass") {
+		t.Fatalf("list_crd_kinds content = %+v, want it to include SecretProviderClass", kinds.Content)
+	}
+
+	crdArgs := map[string]any{"context": "test", "group": "secrets-store.csi.x-k8s.io", "version": "v1", "resource": "secretproviderclasses"}
+
+	list, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_crd_resources", Arguments: crdArgs})
+	if err != nil || list.IsError {
+		t.Fatalf("CallTool list_crd_resources: err=%v result=%+v", err, list)
+	}
+	listText, ok := list.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(listText.Text, "azure-kv") {
+		t.Fatalf("list_crd_resources content = %+v, want it to include azure-kv", list.Content)
+	}
+
+	getArgs := map[string]any{"context": "test", "group": "secrets-store.csi.x-k8s.io", "version": "v1", "resource": "secretproviderclasses", "namespace": "prod", "name": "azure-kv"}
+
+	detail, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_crd_detail", Arguments: getArgs})
+	if err != nil || detail.IsError {
+		t.Fatalf("CallTool get_crd_detail: err=%v result=%+v", err, detail)
+	}
+
+	manifest, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_crd_manifest", Arguments: getArgs})
+	if err != nil || manifest.IsError {
+		t.Fatalf("CallTool get_crd_manifest: err=%v result=%+v", err, manifest)
+	}
+	manifestText, ok := manifest.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(manifestText.Text, "azure-kv") {
+		t.Fatalf("get_crd_manifest content = %+v, want it to include azure-kv", manifest.Content)
 	}
 }

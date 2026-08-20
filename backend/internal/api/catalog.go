@@ -283,7 +283,7 @@ func nodeRow(n *corev1.Node) nodeView {
 func (s *Server) handleResourceList(w http.ResponseWriter, r *http.Request) {
 	entry, ok := resourceCatalog[r.PathValue("resource")]
 	if !ok {
-		writeError(w, http.StatusNotFound, fmt.Errorf("unknown resource %q", r.PathValue("resource")))
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown resource %q (not in the built-in catalog — for a CRD, list kinds via GET .../crdkinds and instances via GET .../crd/{group}/{version}/{resource})", r.PathValue("resource")))
 		return
 	}
 	res, err := s.mgr.ResolveResource(r.PathValue("ctx"), entry.resource)

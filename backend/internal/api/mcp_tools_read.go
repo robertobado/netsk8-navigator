@@ -35,6 +35,27 @@ type resourceKindArgs struct {
 	Name      string `json:"name" jsonschema:"resource name"`
 }
 
+// crdListArgs/crdGetArgs address a CRD instance by its GVR straight from
+// list_crd_kinds, instead of the fixed manifest-kind slug resourceKindArgs
+// uses — that slug catalog only covers built-in kinds, never CRDs.
+type crdListArgs struct {
+	Context   string `json:"context" jsonschema:"kubeconfig context name"`
+	Group     string `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
+	Version   string `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
+	Resource  string `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
+	Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+}
+
+type crdGetArgs struct {
+	Context   string `json:"context" jsonschema:"kubeconfig context name"`
+	Group     string `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
+	Version   string `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
+	Resource  string `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
+	Namespace string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for a cluster-scoped kind"`
+	Name      string `json:"name" jsonschema:"resource name"`
+}
+
 // readOnly always sets IdempotentHint true alongside ReadOnlyHint: a read
 // is idempotent by definition (repeating it can't change anything), so
 // leaving IdempotentHint at its Go zero value (false) would read as a
@@ -78,6 +99,25 @@ func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name
 	})
 }
 
+// registerCRDGetTool registers a read-only tool whose handler is a GET to
+// /api/contexts/{context}/crd/{group}/{version}/{resource}/{namespace}/{name}/{urlSuffix}
+// — the CRD-addressed counterpart to registerResourceGetTool, for kinds
+// list_resources/get_resource_detail/get_manifest can't reach (any CRD, since
+// those three only know the fixed built-in catalog/manifest-slug map).
+func registerCRDGetTool(srv *mcp.Server, s *Server, contexts []string, name, description, urlSuffix string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[crdGetArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdGetArgs) (*mcp.CallToolResult, any, error) {
+		suffix := fmt.Sprintf("crd/%s/%s/%s/%s/%s/%s",
+			url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource),
+			url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name), urlSuffix)
+		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil))
+	})
+}
+
 func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_contexts",
@@ -109,7 +149,7 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_resources",
-		Description: "List resources of a given kind (e.g. deployments, services, configmaps, jobs, secrets, ingresses) in a cluster context, optionally filtered by namespace. limit keeps the response small on a busy cluster.",
+		Description: "List resources of a given built-in kind (e.g. deployments, services, configmaps, jobs, secrets, ingresses) in a cluster context, optionally filtered by namespace. limit keeps the response small on a busy cluster. This only knows a fixed set of built-in Kubernetes kinds — for a CustomResourceDefinition (CRD), e.g. SecretProviderClass, use list_crd_kinds then list_crd_resources instead.",
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[struct {
 			Context   string `json:"context" jsonschema:"kubeconfig context name"`
@@ -135,8 +175,38 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
 	})
 
-	registerResourceGetTool(srv, s, contexts, "get_resource_detail", "Get structured detail (status, conditions, images, related resources, etc.) for a single resource by kind/namespace/name.", "detail")
-	registerResourceGetTool(srv, s, contexts, "get_manifest", "Get a resource's current manifest as YAML — read this before apply_manifest to edit the live version rather than guessing its shape.", "manifest")
+	registerResourceGetTool(srv, s, contexts, "get_resource_detail", "Get structured detail (status, conditions, images, related resources, etc.) for a single built-in resource by kind/namespace/name. For a CRD instance, use get_crd_detail instead.", "detail")
+	registerResourceGetTool(srv, s, contexts, "get_manifest", "Get a built-in resource's current manifest as YAML — read this before apply_manifest to edit the live version rather than guessing its shape. For a CRD instance, use get_crd_manifest instead.", "manifest")
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_crd_kinds",
+		Description: "List every CustomResourceDefinition (CRD) this cluster has registered — group, version, plural resource name, kind, and whether it's namespaced. Call this first to find a CRD's exact group/version/resource before list_crd_resources, get_crd_detail, or get_crd_manifest — list_resources/get_resource_detail/get_manifest only know built-in Kubernetes kinds, never CRDs.",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[ctxArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
+		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, "crdkinds"), nil))
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_crd_resources",
+		Description: "List instances of a CRD kind (group/version/resource from list_crd_kinds), optionally filtered by namespace. limit keeps the response small on a busy cluster.",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[crdListArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdListArgs) (*mcp.CallToolResult, any, error) {
+		suffix := fmt.Sprintf("crd/%s/%s/%s", url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource))
+		path := contextPath(args.Context, suffix)
+		if args.Namespace != "" {
+			path += "?namespace=" + url.QueryEscape(args.Namespace)
+		}
+		status, body := s.callREST(ctx, "GET", path, nil)
+		if status < 200 || status >= 300 {
+			return toolResult(status, body)
+		}
+		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
+	})
+
+	registerCRDGetTool(srv, s, contexts, "get_crd_detail", "Get structured detail for a single CRD instance by group/version/resource/namespace/name (from list_crd_kinds).", "detail")
+	registerCRDGetTool(srv, s, contexts, "get_crd_manifest", "Get a CRD instance's current manifest as YAML, by group/version/resource/namespace/name (from list_crd_kinds).", "manifest")
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "get_logs",
