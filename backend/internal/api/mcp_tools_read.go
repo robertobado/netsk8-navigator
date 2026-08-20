@@ -70,6 +70,15 @@ func contextPath(context, suffix string) string {
 	return "/api/contexts/" + url.PathEscape(context) + "/" + suffix
 }
 
+// withNamespaceQuery appends an optional ?namespace= query param — the shape
+// list_pods/list_resources/list_crd_resources all share.
+func withNamespaceQuery(path, namespace string) string {
+	if namespace == "" {
+		return path
+	}
+	return path + "?namespace=" + url.QueryEscape(namespace)
+}
+
 // registerSimpleGetTool registers a read-only tool whose handler is nothing
 // but a GET to a fixed sub-path under /api/contexts/{context}/ — the shape
 // list_namespaces, list_nodes, and get_overview all share exactly.
@@ -118,6 +127,113 @@ func registerCRDGetTool(srv *mcp.Server, s *Server, contexts []string, name, des
 	})
 }
 
+type listResourcesArgs struct {
+	Context   string `json:"context" jsonschema:"kubeconfig context name"`
+	Resource  string `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
+	Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+}
+
+type getLogsArgs struct {
+	Context   string `json:"context" jsonschema:"kubeconfig context name"`
+	Namespace string `json:"namespace" jsonschema:"pod namespace"`
+	Name      string `json:"name" jsonschema:"pod name"`
+	Container string `json:"container,omitempty" jsonschema:"container name; omit for a single-container pod"`
+	TailLines int64  `json:"tailLines,omitempty" jsonschema:"number of most recent lines to return (default 200, max 2000)"`
+}
+
+type getIssuesArgs struct {
+	Context string `json:"context" jsonschema:"kubeconfig context name"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned per section; omit for no limit"`
+	Since   string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items since this are returned"`
+}
+
+// registerListPodsTool, registerListResourcesTool, registerListCRDResourcesTool,
+// registerGetLogsTool, and registerGetIssuesTool are each pulled out of
+// registerReadTools (rather than inlined like list_contexts/list_crd_kinds)
+// specifically because they post-process the REST response — the extra
+// branching pushed registerReadTools itself over the cognitive-complexity
+// limit when it was all inlined.
+
+func registerListPodsTool(srv *mcp.Server, s *Server, contexts []string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_pods",
+		Description: "List pods in a cluster context, optionally filtered by namespace. limit/since keep the response small on a busy cluster.",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[namespaceScopedListArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args namespaceScopedListArgs) (*mcp.CallToolResult, any, error) {
+		path := withNamespaceQuery(contextPath(args.Context, "pods"), args.Namespace)
+		status, body := s.callREST(ctx, "GET", path, nil)
+		if status < 200 || status >= 300 {
+			return toolResult(status, body)
+		}
+		return toolResult(status, shapeItemList(body, args.Limit, args.Since, "age"))
+	})
+}
+
+func registerListResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_resources",
+		Description: "List resources of a given built-in kind (e.g. deployments, services, configmaps, jobs, secrets, ingresses) in a cluster context, optionally filtered by namespace. limit keeps the response small on a busy cluster. This only knows a fixed set of built-in Kubernetes kinds — for a CustomResourceDefinition (CRD), e.g. SecretProviderClass, use list_crd_kinds then list_crd_resources instead.",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[listResourcesArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args listResourcesArgs) (*mcp.CallToolResult, any, error) {
+		path := withNamespaceQuery(contextPath(args.Context, "resources/"+url.PathEscape(args.Resource)), args.Namespace)
+		status, body := s.callREST(ctx, "GET", path, nil)
+		if status < 200 || status >= 300 {
+			return toolResult(status, body)
+		}
+		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
+	})
+}
+
+func registerListCRDResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_crd_resources",
+		Description: "List instances of a CRD kind (group/version/resource from list_crd_kinds), optionally filtered by namespace. limit keeps the response small on a busy cluster.",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[crdListArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdListArgs) (*mcp.CallToolResult, any, error) {
+		suffix := fmt.Sprintf("crd/%s/%s/%s", url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource))
+		path := withNamespaceQuery(contextPath(args.Context, suffix), args.Namespace)
+		status, body := s.callREST(ctx, "GET", path, nil)
+		if status < 200 || status >= 300 {
+			return toolResult(status, body)
+		}
+		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
+	})
+}
+
+func registerGetLogsTool(srv *mcp.Server, s *Server, contexts []string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "get_logs",
+		Description: "Get the most recent log lines from a pod container (bounded, non-streaming — not a live tail).",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[getLogsArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args getLogsArgs) (*mcp.CallToolResult, any, error) {
+		logs, err := s.fetchBoundedPodLogs(ctx, args.Context, args.Namespace, args.Name, args.Container, args.TailLines)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: logs}}}, nil, nil
+	})
+}
+
+func registerGetIssuesTool(srv *mcp.Server, s *Server, contexts []string) {
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "get_issues",
+		Description: "Get the same unhealthy-resource feed the app's overview page shows: pending pods, failed/crash-looping pods, and not-ready nodes, each with a reason and message, plus a summary grouped by cause. The best starting point for triaging what's wrong in a cluster. limit/since keep the response small on a busy cluster; the summary always reflects the true total even when the lists are capped.",
+		Annotations: readOnly(),
+		InputSchema: contextInputSchema[getIssuesArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args getIssuesArgs) (*mcp.CallToolResult, any, error) {
+		status, body := s.callREST(ctx, "GET", contextPath(args.Context, "issues"), nil)
+		if status < 200 || status >= 300 {
+			return toolResult(status, body)
+		}
+		return toolResult(status, shapeIssues(body, args.Limit, args.Since))
+	})
+}
+
 func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_contexts",
@@ -129,51 +245,8 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 
 	registerSimpleGetTool(srv, s, contexts, "list_namespaces", "List namespaces in a cluster context.", "namespaces")
 	registerSimpleGetTool(srv, s, contexts, "list_nodes", "List nodes in a cluster context, with readiness, roles, version, and capacity.", "nodes")
-
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_pods",
-		Description: "List pods in a cluster context, optionally filtered by namespace. limit/since keep the response small on a busy cluster.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[namespaceScopedListArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args namespaceScopedListArgs) (*mcp.CallToolResult, any, error) {
-		path := contextPath(args.Context, "pods")
-		if args.Namespace != "" {
-			path += "?namespace=" + url.QueryEscape(args.Namespace)
-		}
-		status, body := s.callREST(ctx, "GET", path, nil)
-		if status < 200 || status >= 300 {
-			return toolResult(status, body)
-		}
-		return toolResult(status, shapeItemList(body, args.Limit, args.Since, "age"))
-	})
-
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_resources",
-		Description: "List resources of a given built-in kind (e.g. deployments, services, configmaps, jobs, secrets, ingresses) in a cluster context, optionally filtered by namespace. limit keeps the response small on a busy cluster. This only knows a fixed set of built-in Kubernetes kinds — for a CustomResourceDefinition (CRD), e.g. SecretProviderClass, use list_crd_kinds then list_crd_resources instead.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[struct {
-			Context   string `json:"context" jsonschema:"kubeconfig context name"`
-			Resource  string `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
-			Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-			Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
-		}](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args struct {
-		Context   string `json:"context" jsonschema:"kubeconfig context name"`
-		Resource  string `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
-		Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-		Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
-	},
-	) (*mcp.CallToolResult, any, error) {
-		path := contextPath(args.Context, "resources/"+url.PathEscape(args.Resource))
-		if args.Namespace != "" {
-			path += "?namespace=" + url.QueryEscape(args.Namespace)
-		}
-		status, body := s.callREST(ctx, "GET", path, nil)
-		if status < 200 || status >= 300 {
-			return toolResult(status, body)
-		}
-		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
-	})
+	registerListPodsTool(srv, s, contexts)
+	registerListResourcesTool(srv, s, contexts)
 
 	registerResourceGetTool(srv, s, contexts, "get_resource_detail", "Get structured detail (status, conditions, images, related resources, etc.) for a single built-in resource by kind/namespace/name. For a CRD instance, use get_crd_detail instead.", "detail")
 	registerResourceGetTool(srv, s, contexts, "get_manifest", "Get a built-in resource's current manifest as YAML — read this before apply_manifest to edit the live version rather than guessing its shape. For a CRD instance, use get_crd_manifest instead.", "manifest")
@@ -186,78 +259,13 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
 		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, "crdkinds"), nil))
 	})
-
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_crd_resources",
-		Description: "List instances of a CRD kind (group/version/resource from list_crd_kinds), optionally filtered by namespace. limit keeps the response small on a busy cluster.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[crdListArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdListArgs) (*mcp.CallToolResult, any, error) {
-		suffix := fmt.Sprintf("crd/%s/%s/%s", url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource))
-		path := contextPath(args.Context, suffix)
-		if args.Namespace != "" {
-			path += "?namespace=" + url.QueryEscape(args.Namespace)
-		}
-		status, body := s.callREST(ctx, "GET", path, nil)
-		if status < 200 || status >= 300 {
-			return toolResult(status, body)
-		}
-		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
-	})
-
+	registerListCRDResourcesTool(srv, s, contexts)
 	registerCRDGetTool(srv, s, contexts, "get_crd_detail", "Get structured detail for a single CRD instance by group/version/resource/namespace/name (from list_crd_kinds).", "detail")
 	registerCRDGetTool(srv, s, contexts, "get_crd_manifest", "Get a CRD instance's current manifest as YAML, by group/version/resource/namespace/name (from list_crd_kinds).", "manifest")
 
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_logs",
-		Description: "Get the most recent log lines from a pod container (bounded, non-streaming — not a live tail).",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[struct {
-			Context   string `json:"context" jsonschema:"kubeconfig context name"`
-			Namespace string `json:"namespace" jsonschema:"pod namespace"`
-			Name      string `json:"name" jsonschema:"pod name"`
-			Container string `json:"container,omitempty" jsonschema:"container name; omit for a single-container pod"`
-			TailLines int64  `json:"tailLines,omitempty" jsonschema:"number of most recent lines to return (default 200, max 2000)"`
-		}](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args struct {
-		Context   string `json:"context" jsonschema:"kubeconfig context name"`
-		Namespace string `json:"namespace" jsonschema:"pod namespace"`
-		Name      string `json:"name" jsonschema:"pod name"`
-		Container string `json:"container,omitempty" jsonschema:"container name; omit for a single-container pod"`
-		TailLines int64  `json:"tailLines,omitempty" jsonschema:"number of most recent lines to return (default 200, max 2000)"`
-	},
-	) (*mcp.CallToolResult, any, error) {
-		logs, err := s.fetchBoundedPodLogs(ctx, args.Context, args.Namespace, args.Name, args.Container, args.TailLines)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: logs}}}, nil, nil
-	})
-
+	registerGetLogsTool(srv, s, contexts)
 	registerSimpleGetTool(srv, s, contexts, "get_overview", "Get cluster-wide counts: node/pod/namespace totals, ready nodes, and pods by phase (running/pending/failed).", "overview")
-
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_issues",
-		Description: "Get the same unhealthy-resource feed the app's overview page shows: pending pods, failed/crash-looping pods, and not-ready nodes, each with a reason and message, plus a summary grouped by cause. The best starting point for triaging what's wrong in a cluster. limit/since keep the response small on a busy cluster; the summary always reflects the true total even when the lists are capped.",
-		Annotations: readOnly(),
-		InputSchema: contextInputSchema[struct {
-			Context string `json:"context" jsonschema:"kubeconfig context name"`
-			Limit   int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned per section; omit for no limit"`
-			Since   string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items since this are returned"`
-		}](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args struct {
-		Context string `json:"context" jsonschema:"kubeconfig context name"`
-		Limit   int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned per section; omit for no limit"`
-		Since   string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items since this are returned"`
-	},
-	) (*mcp.CallToolResult, any, error) {
-		path := contextPath(args.Context, "issues")
-		status, body := s.callREST(ctx, "GET", path, nil)
-		if status < 200 || status >= 300 {
-			return toolResult(status, body)
-		}
-		return toolResult(status, shapeIssues(body, args.Limit, args.Since))
-	})
+	registerGetIssuesTool(srv, s, contexts)
 }
 
 // shapeItemList post-processes a bare-array (or {"items":[...]}) REST
