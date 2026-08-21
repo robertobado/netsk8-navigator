@@ -11,6 +11,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -152,6 +153,26 @@ func TestToPodView(t *testing.T) {
 	}
 }
 
+func TestToPodView_OwnerReference(t *testing.T) {
+	t.Run("skips non-controller refs, uses the controller one", func(t *testing.T) {
+		p := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{OwnerReferences: []metav1.OwnerReference{
+			{Kind: "ConfigMap", Name: "irrelevant"},                        // Controller nil — skipped
+			{Controller: boolPtr(false), Kind: "Ignored", Name: "ignored"}, // explicitly not the controller
+			{Controller: boolPtr(true), Kind: "ReplicaSet", Name: "web-abc123"},
+		}}}
+		v := ToPodView(p)
+		if v.OwnerKind != "ReplicaSet" || v.OwnerName != "web-abc123" {
+			t.Errorf("got OwnerKind=%q OwnerName=%q", v.OwnerKind, v.OwnerName)
+		}
+	})
+	t.Run("no controller ref leaves owner fields empty", func(t *testing.T) {
+		v := ToPodView(&corev1.Pod{})
+		if v.OwnerKind != "" || v.OwnerName != "" {
+			t.Errorf("got OwnerKind=%q OwnerName=%q, want both empty", v.OwnerKind, v.OwnerName)
+		}
+	})
+}
+
 func TestToPodView_DeletedAtAccountsForGracePeriod(t *testing.T) {
 	deadline := time.Date(2026, 1, 1, 12, 0, 30, 0, time.UTC)
 	grace := int64(30)
@@ -214,6 +235,18 @@ func TestToDeploymentView_Status(t *testing.T) {
 				},
 			},
 			"Available", "3/3",
+		},
+		{
+			"Progressing condition False with no Reason falls back to ProgressDeadlineExceeded",
+			&appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{Replicas: replicas(3)},
+				Status: appsv1.DeploymentStatus{
+					Conditions: []appsv1.DeploymentCondition{
+						{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionFalse},
+					},
+				},
+			},
+			"ProgressDeadlineExceeded", "0/3",
 		},
 	}
 	for _, tt := range tests {
@@ -334,6 +367,17 @@ func TestFormatSubjects(t *testing.T) {
 	}
 }
 
+// TestFormatSubjects_NoNamespaceAndNoDefault covers the case a
+// ClusterRoleBinding's subjects hit: a ServiceAccount with no Namespace of
+// its own and "" as defaultNS (ToClusterRoleBindingView's own call), where
+// the rendered subject can't be prefixed with a namespace at all.
+func TestFormatSubjects_NoNamespaceAndNoDefault(t *testing.T) {
+	got := formatSubjects([]rbacv1.Subject{{Kind: "ServiceAccount", Name: "web"}}, "")
+	if len(got) != 1 || got[0] != "web" {
+		t.Errorf("got %v, want [\"web\"] (no namespace prefix possible)", got)
+	}
+}
+
 func TestToReplicaSetView_Current(t *testing.T) {
 	replicas := func(n int32) *int32 { return &n }
 	tests := []struct {
@@ -423,5 +467,64 @@ func TestToPVCView_CapacityFallsBackToRequest(t *testing.T) {
 	}
 	if got := ToPVCView(c).Capacity; got != "5Gi" {
 		t.Errorf("Capacity = %q, want 5Gi", got)
+	}
+}
+
+func TestToPVCView_CapacityPrefersStatusOverRequest(t *testing.T) {
+	sc := "fast"
+	c := &corev1.PersistentVolumeClaim{
+		Spec: corev1.PersistentVolumeClaimSpec{
+			StorageClassName: &sc,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("5Gi")},
+			},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Capacity: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("8Gi")},
+		},
+	}
+	v := ToPVCView(c)
+	if v.Capacity != "8Gi" {
+		t.Errorf("Capacity = %q, want the bound status capacity (8Gi) over the requested amount", v.Capacity)
+	}
+	if v.StorageClass != "fast" {
+		t.Errorf("StorageClass = %q, want %q", v.StorageClass, "fast")
+	}
+}
+
+func TestToPVView_Capacity(t *testing.T) {
+	p := &corev1.PersistentVolume{
+		Spec: corev1.PersistentVolumeSpec{Capacity: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")}},
+	}
+	if got := ToPVView(p).Capacity; got != "10Gi" {
+		t.Errorf("Capacity = %q, want 10Gi", got)
+	}
+}
+
+func TestToStorageClassView_ReclaimAndBindingModes(t *testing.T) {
+	retain := corev1.PersistentVolumeReclaimRetain
+	waitForConsumer := storagev1.VolumeBindingWaitForFirstConsumer
+	sc := &storagev1.StorageClass{
+		ObjectMeta:        metav1.ObjectMeta{Name: "fast"},
+		ReclaimPolicy:     &retain,
+		VolumeBindingMode: &waitForConsumer,
+	}
+	v := ToStorageClassView(sc)
+	if v.Reclaim != string(retain) {
+		t.Errorf("Reclaim = %q, want %q", v.Reclaim, retain)
+	}
+	if v.Binding != string(waitForConsumer) {
+		t.Errorf("Binding = %q, want %q", v.Binding, waitForConsumer)
+	}
+}
+
+func TestToHPAView_ExplicitMinReplicas(t *testing.T) {
+	min := int32(3)
+	h := &autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+		MinReplicas: &min,
+		MaxReplicas: 10,
+	}}
+	if got := ToHPAView(h).MinPods; got != 3 {
+		t.Errorf("MinPods = %d, want the explicit 3, not the default", got)
 	}
 }

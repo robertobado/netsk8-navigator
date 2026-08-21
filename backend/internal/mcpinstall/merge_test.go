@@ -130,3 +130,64 @@ func TestConfigDirIfExists(t *testing.T) {
 		t.Errorf("path = %q, want %q", path, want)
 	}
 }
+
+func TestConfigDirIfExists_EmptyBase(t *testing.T) {
+	if _, ok := configDirIfExists("", "sub", "config.json"); ok {
+		t.Error("want ok=false when base is empty")
+	}
+}
+
+// TestLoadFlatConfig_StatErrorNotNotExist covers loadFlatConfig's os.Stat
+// error branch that isn't a plain "doesn't exist" — a path with a regular
+// file (not a directory) as one of its parent components reliably produces
+// ENOTDIR rather than ENOENT.
+func TestLoadFlatConfig_StatErrorNotNotExist(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(blocker, "config.json")
+
+	r := installFlatConfig("Test", path, Entry{Command: "/exe"})
+	if r.Status == "installed" {
+		t.Fatalf("want a failure status, got %q", r.Status)
+	}
+}
+
+func TestLoadFlatConfig_EmptyFileTreatedAsEmptyObject(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r := installFlatConfig("Test", path, Entry{Command: "/exe", Args: []string{"--mcp-stdio"}})
+	if r.Status != "installed" {
+		t.Fatalf("status = %q, want installed for a pre-existing but empty file", r.Status)
+	}
+}
+
+// TestInstallFlatConfig_WriteFails covers installFlatConfig's own
+// writeAtomicPreservingMode-error branch: a parent directory that doesn't
+// exist makes the temp-file write fail.
+func TestInstallFlatConfig_WriteFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-parent", "config.json")
+	r := installFlatConfig("Test", path, Entry{Command: "/exe"})
+	if r.Status == "installed" {
+		t.Fatalf("want a failure status when the parent directory doesn't exist, got %q", r.Status)
+	}
+}
+
+func TestWriteAtomicPreservingMode_RenameFails(t *testing.T) {
+	// path is an existing directory — a regular file can never be renamed
+	// onto it, so the final os.Rename in writeAtomicPreservingMode fails.
+	dir := t.TempDir()
+	target := filepath.Join(dir, "adir")
+	if err := os.Mkdir(target, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtomicPreservingMode(target, []byte("{}"), 0o600); err == nil {
+		t.Error("expected an error renaming a file onto an existing directory")
+	}
+}

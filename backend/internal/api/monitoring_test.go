@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,6 +16,8 @@ import (
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	ktesting "k8s.io/client-go/testing"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
 // erroringResponseWrapper simulates a ProxyGet against a Service with no
@@ -175,6 +180,218 @@ func TestHandleMetrics_UnreachableSourceReportsUnavailable(t *testing.T) {
 	}
 	if _, ok := body["cpu"]; ok {
 		t.Errorf("body should not carry a cpu series when unavailable, got %v", body)
+	}
+}
+
+// successResponseWrapper simulates a ProxyGet against a real Prometheus,
+// returning body on DoRaw instead of erroringResponseWrapper's failure.
+type successResponseWrapper struct{ body string }
+
+func (s successResponseWrapper) DoRaw(context.Context) ([]byte, error) {
+	return []byte(s.body), nil
+}
+func (s successResponseWrapper) Stream(context.Context) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestPromQueryRange(t *testing.T) {
+	src := &promSource{Kind: "prometheus", Namespace: "monitoring", Service: "prometheus", Port: 9090, Supported: true}
+	start, end := time.Unix(1620000000, 0), time.Unix(1620000030, 0)
+
+	t.Run("parses points from a successful response", func(t *testing.T) {
+		client := kubernetesfake.NewSimpleClientset()
+		client.PrependProxyReactor("services", func(ktesting.Action) (bool, rest.ResponseWrapper, error) {
+			return true, successResponseWrapper{`{"data":{"result":[{"values":[[1620000000,"1.5"],[1620000015,"2.5"]]}]}}`}, nil
+		})
+		points, err := (&Server{}).promQueryRange(context.Background(), client, src, "up", start, end, 15*time.Second)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(points) != 2 || points[0].V != 1.5 || points[1].V != 2.5 {
+			t.Errorf("got %+v", points)
+		}
+	})
+
+	t.Run("no result rows yields an empty (non-nil) slice", func(t *testing.T) {
+		client := kubernetesfake.NewSimpleClientset()
+		client.PrependProxyReactor("services", func(ktesting.Action) (bool, rest.ResponseWrapper, error) {
+			return true, successResponseWrapper{`{"data":{"result":[]}}`}, nil
+		})
+		points, err := (&Server{}).promQueryRange(context.Background(), client, src, "up", start, end, 15*time.Second)
+		if err != nil || points == nil || len(points) != 0 {
+			t.Errorf("got points=%+v err=%v, want an empty non-nil slice", points, err)
+		}
+	})
+
+	t.Run("malformed JSON is an error", func(t *testing.T) {
+		client := kubernetesfake.NewSimpleClientset()
+		client.PrependProxyReactor("services", func(ktesting.Action) (bool, rest.ResponseWrapper, error) {
+			return true, successResponseWrapper{"not json"}, nil
+		})
+		if _, err := (&Server{}).promQueryRange(context.Background(), client, src, "up", start, end, 15*time.Second); err == nil {
+			t.Error("want an error for malformed JSON")
+		}
+	})
+}
+
+func TestHandleMonitoring(t *testing.T) {
+	t.Run("ClientFor error", func(t *testing.T) {
+		cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+		s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
+	})
+
+	t.Run("neither Prometheus nor metrics-server available", func(t *testing.T) {
+		s := newTestServerWithMetrics(t, metricsRoundTripper{responses: map[string]string{}})
+		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+		if rec.Code != 200 {
+			t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+		}
+		var body map[string]any
+		mustUnmarshalRec(t, rec, &body)
+		if body["available"] != false || body["metricsServer"] != false {
+			t.Errorf("got %+v", body)
+		}
+		if _, ok := body["kind"]; ok {
+			t.Errorf("no kind expected when no source was discovered, got %+v", body)
+		}
+	})
+
+	t.Run("metrics-server available, no Prometheus", func(t *testing.T) {
+		rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
+		s := newTestServerWithMetrics(t, rt)
+		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+		var body map[string]any
+		mustUnmarshalRec(t, rec, &body)
+		if body["available"] != false || body["metricsServer"] != true {
+			t.Errorf("got %+v", body)
+		}
+	})
+
+	t.Run("supported Prometheus source found, plus metrics-server", func(t *testing.T) {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
+			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
+		}
+		rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
+		s := newTestServerWithMetrics(t, rt, svc)
+		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+		var body map[string]any
+		mustUnmarshalRec(t, rec, &body)
+		if body["available"] != true || body["kind"] != "prometheus" || body["namespace"] != "monitoring" ||
+			body["service"] != "prometheus" || body["metricsServer"] != true {
+			t.Errorf("got %+v", body)
+		}
+	})
+
+	t.Run("unsupported source (InfluxDB) reports available:false but still identifies it", func(t *testing.T) {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "influxdb", Namespace: "monitoring"},
+			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8086}}},
+		}
+		rt := metricsRoundTripper{responses: map[string]string{}}
+		s := newTestServerWithMetrics(t, rt, svc)
+		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+		var body map[string]any
+		mustUnmarshalRec(t, rec, &body)
+		if body["available"] != false || body["kind"] != "influxdb" {
+			t.Errorf("got %+v", body)
+		}
+	})
+}
+
+func mustUnmarshalRec(t *testing.T, rec *httptest.ResponseRecorder, v any) {
+	t.Helper()
+	if err := json.Unmarshal(rec.Body.Bytes(), v); err != nil {
+		t.Fatalf("unmarshal: %v, body=%s", err, rec.Body.String())
+	}
+}
+
+func TestHandleMetrics_EndToEnd(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
+	}
+	s := newTestServer(t, svc)
+	fakeClient(t, s).PrependProxyReactor("services", func(ktesting.Action) (bool, rest.ResponseWrapper, error) {
+		return true, successResponseWrapper{`{"data":{"result":[{"values":[[1620000000,"1.5"]]}]}}`}, nil
+	})
+
+	rec := doRequest(t, s, "GET", "/api/contexts/test/metrics/cluster", "")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Available bool         `json:"available"`
+		Source    string       `json:"source"`
+		CPU       metricSeries `json:"cpu"`
+		Memory    metricSeries `json:"memory"`
+	}
+	mustUnmarshalRec(t, rec, &body)
+	if !body.Available || body.Source != "prometheus" {
+		t.Fatalf("got %+v", body)
+	}
+	if len(body.CPU.Points) != 1 || body.CPU.Points[0].V != 1.5 || body.CPU.Unit != "cores" {
+		t.Errorf("cpu series = %+v", body.CPU)
+	}
+	if body.Memory.Unit != "bytes" {
+		t.Errorf("memory series = %+v", body.Memory)
+	}
+}
+
+func TestHandleMetrics_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/metrics/cluster", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleMetrics_NoSourceAvailable(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/metrics/cluster", "")
+	var body map[string]any
+	mustUnmarshalRec(t, rec, &body)
+	if body["available"] != false {
+		t.Errorf("got %+v, want available:false when no source is discovered", body)
+	}
+}
+
+func TestHandleMetrics_BadScope(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
+	}
+	s := newTestServer(t, svc)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/metrics/pod", "") // pod scope with no namespace/name
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleMetrics_MemoryQueryFails(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
+	}
+	s := newTestServer(t, svc)
+	calls := 0
+	fakeClient(t, s).PrependProxyReactor("services", func(ktesting.Action) (bool, rest.ResponseWrapper, error) {
+		calls++
+		if calls == 1 { // cpu query succeeds
+			return true, successResponseWrapper{`{"data":{"result":[]}}`}, nil
+		}
+		return true, erroringResponseWrapper{}, nil // memory query fails
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/metrics/cluster", "")
+	var body map[string]any
+	mustUnmarshalRec(t, rec, &body)
+	if body["available"] != false {
+		t.Errorf("got %+v, want available:false when the memory query fails", body)
 	}
 }
 

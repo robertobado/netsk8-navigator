@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DetailBody, DetailView } from './DetailView'
 import type { Pod, ResourceDetail } from '@/lib/api'
@@ -201,6 +201,158 @@ describe('DetailView', () => {
     renderWithClient(<DetailView ctx="c" kind="pod" namespace="prod" name="web-1" />)
     expect(await screen.findByText('statusCode')).toBeInTheDocument()
     expect(getDetailMock).toHaveBeenCalledWith('c', 'pod', 'prod', 'web-1')
+  })
+})
+
+describe('DetailBody — status tiles', () => {
+  it('renders each status tile label and value', () => {
+    const d = detail([])
+    d.status = [
+      { label: 'Ready', value: '2/2', tone: 'ok' },
+      { label: 'Phase', value: 'Running', tone: 'muted' },
+    ]
+    render(<DetailBody d={d} ctx="c" kind="deployment" namespace="prod" name="web" />)
+    expect(screen.getByText('Ready')).toBeInTheDocument()
+    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(screen.getByText('Phase')).toBeInTheDocument()
+    expect(screen.getByText('Running')).toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — owner link', () => {
+  it('renders the owner as a clickable link when the owner kind maps to a known slug', () => {
+    const d = detail([])
+    d.ownerKind = 'Deployment'
+    d.ownerName = 'web'
+    d.namespace = 'prod'
+    const onOpenResource = vi.fn()
+    render(<DetailBody d={d} ctx="c" kind="replicaset" namespace="prod" name="web-abc123" onOpenResource={onOpenResource} />)
+    const link = screen.getByRole('button', { name: 'Deployment/web' })
+    link.click()
+    expect(onOpenResource).toHaveBeenCalledWith({ kind: 'deployment', namespace: 'prod', name: 'web' })
+  })
+
+  it('renders the owner as plain text when no onOpenResource is given', () => {
+    const d = detail([])
+    d.ownerKind = 'Deployment'
+    d.ownerName = 'web'
+    render(<DetailBody d={d} ctx="c" kind="replicaset" namespace="prod" name="web-abc123" />)
+    expect(screen.queryByRole('button', { name: 'Deployment/web' })).not.toBeInTheDocument()
+    expect(screen.getByText('Deployment/web')).toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — hosts', () => {
+  it('renders a wildcard host as plain text and a concrete host as an outbound link', () => {
+    const d = detail([])
+    d.hosts = ['*.example.com', 'api.example.com']
+    render(<DetailBody d={d} ctx="c" kind="ingress" namespace="prod" name="web" />)
+    expect(screen.getByText('*.example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '*.example.com' })).not.toBeInTheDocument()
+    const link = screen.getByRole('link', { name: 'api.example.com' })
+    expect(link).toHaveAttribute('href', 'https://api.example.com')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+})
+
+describe('DetailBody — images', () => {
+  it('renders each image label/value pair', () => {
+    const d = detail([])
+    d.images = [{ label: 'app', value: 'nginx:1.25' }]
+    render(<DetailBody d={d} ctx="c" kind="configmap" namespace="prod" name="web-1" />)
+    expect(screen.getByText('app')).toBeInTheDocument()
+    expect(screen.getByText('nginx:1.25')).toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — ports', () => {
+  it('renders a port pill with name, port, protocol and extra', () => {
+    const d = detail([])
+    d.ports = [{ name: 'http', port: '80', protocol: 'TCP', extra: '→ 8080' }]
+    render(<DetailBody d={d} ctx="c" kind="service" namespace="prod" name="web" />)
+    expect(screen.getByText('http')).toBeInTheDocument()
+    expect(screen.getByText('80')).toBeInTheDocument()
+    expect(screen.getByText('TCP')).toBeInTheDocument()
+    expect(screen.getByText('→ 8080')).toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — cross-link refs', () => {
+  it('groups refs by group into cards and opens the clicked one', () => {
+    const d = detail([])
+    d.refs = [{ group: 'Backends', kind: 'service', namespace: 'prod', name: 'backend', note: 'not ready · demo' }]
+    const onOpenResource = vi.fn()
+    render(<DetailBody d={d} ctx="c" kind="ingress" namespace="prod" name="web" onOpenResource={onOpenResource} />)
+    expect(screen.getByText('Backends')).toBeInTheDocument()
+    expect(screen.getByText('backend')).toBeInTheDocument()
+    expect(screen.getByText('not ready · demo')).toBeInTheDocument()
+    screen.getByText('backend').closest('button')!.click()
+    expect(onOpenResource).toHaveBeenCalledWith({ kind: 'service', namespace: 'prod', name: 'backend' })
+  })
+
+  it('renders no cross-link cards when onOpenResource is not given', () => {
+    const d = detail([])
+    d.refs = [{ group: 'Backends', kind: 'service', namespace: 'prod', name: 'backend' }]
+    render(<DetailBody d={d} ctx="c" kind="ingress" namespace="prod" name="web" />)
+    expect(screen.queryByText('Backends')).not.toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — content blocks (DataRow)', () => {
+  it('renders a short scalar block inline', () => {
+    const d = detail([])
+    d.blocks = [{ title: 'PORT', body: '8080' }]
+    render(<DetailBody d={d} ctx="c" kind="configmap" namespace="prod" name="cfg" />)
+    expect(screen.getByText('PORT')).toBeInTheDocument()
+    expect(screen.getByText('8080')).toBeInTheDocument()
+  })
+
+  it('expands and collapses a multiline block on click', () => {
+    const d = detail([])
+    d.blocks = [{ title: 'nginx.conf', body: 'line one\nline two\nline three' }]
+    render(<DetailBody d={d} ctx="c" kind="configmap" namespace="prod" name="cfg" />)
+    expect(screen.getByText('line one')).toBeInTheDocument()
+    expect(screen.queryByText(/line two/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('nginx.conf').closest('button')!)
+    expect(screen.getByText(/line two/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('nginx.conf').closest('button')!)
+    expect(screen.queryByText(/line two/)).not.toBeInTheDocument()
+  })
+
+  it('keeps a masked block hidden until revealed, then re-hides it', () => {
+    const d = detail([])
+    d.blocks = [{ title: 'API_KEY', body: 'super-secret', masked: true }]
+    render(<DetailBody d={d} ctx="c" kind="secret" namespace="prod" name="creds" />)
+    expect(screen.queryByText('super-secret')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTitle('Reveal value'))
+    expect(screen.getByText('super-secret')).toBeInTheDocument()
+    fireEvent.click(screen.getByTitle('Hide value'))
+    expect(screen.queryByText('super-secret')).not.toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — conditions, selector, labels', () => {
+  it('renders condition pills with label and value', () => {
+    const d = detail([])
+    d.conditions = [{ label: 'Available', value: 'True', tone: 'ok' }]
+    render(<DetailBody d={d} ctx="c" kind="deployment" namespace="prod" name="web" />)
+    expect(screen.getByText('Available')).toBeInTheDocument()
+    expect(screen.getByText('True')).toBeInTheDocument()
+  })
+
+  it('renders selector entries as key=value chips', () => {
+    const d = detail([])
+    d.selector = { app: 'web' }
+    render(<DetailBody d={d} ctx="c" kind="service" namespace="prod" name="web" />)
+    expect(screen.getByText('app=web')).toBeInTheDocument()
+  })
+
+  it('renders label entries as key=value chips, or bare key when the value is empty', () => {
+    const d = detail([])
+    d.labels = { team: 'platform', 'feature-flag': '' }
+    render(<DetailBody d={d} ctx="c" kind="configmap" namespace="prod" name="web-1" />)
+    expect(screen.getByText('team=platform')).toBeInTheDocument()
+    expect(screen.getByText('feature-flag')).toBeInTheDocument()
   })
 })
 

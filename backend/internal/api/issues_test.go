@@ -3,11 +3,14 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
 func TestRfc3339(t *testing.T) {
@@ -199,5 +202,18 @@ func TestHandleIssues(t *testing.T) {
 	}
 	if len(out.NodesNotReady) != 1 || out.NodesNotReady[0].Name != "node-1" || out.NodesNotReady[0].Reason != "KubeletNotReady" {
 		t.Errorf("nodesNotReady = %+v", out.NodesNotReady)
+	}
+}
+
+// TestHandleIssues_ClientForError covers handleIssues' own ClientFor error
+// branch — fakeManager's ClientFor never errors, so newTestServer alone
+// can't reach it; reuses portforward_test.go's clientForErrManager (same
+// package, same established pattern for this exact gap).
+func TestHandleIssues_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/issues", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }

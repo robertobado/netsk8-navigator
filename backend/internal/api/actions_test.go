@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -175,6 +176,89 @@ func TestHandleRestartRollout_ResourceNotFound(t *testing.T) {
 	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-restart/deployment/prod/web", "")
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502 (resource doesn't exist)", rec.Code)
+	}
+}
+
+func TestHandleDeleteResource_DynamicForError(t *testing.T) {
+	mgr := &countedFailManager{fakeManager: newFakeManager(), dynamicForFailAt: 1}
+	s := NewServer(mgr, testConfigStore(t), "")
+	rec := doRequest(t, s, "DELETE", "/api/contexts/test/manifest/deployment/prod/web", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleScaleResource_BodyReadError(t *testing.T) {
+	s := newTestServer(t)
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest("PUT", "/api/contexts/test/scale/deployment/prod/web", errReader{})
+	s.Routes().ServeHTTP(rec, r)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestHandleScaleResource_DynamicForError needs a resource to exist so
+// getUnstructured's own DynamicFor call (the first) succeeds, isolating the
+// handler's second DynamicFor call (for the Update) as the one that fails.
+func TestHandleScaleResource_DynamicForError(t *testing.T) {
+	mgr := &countedFailManager{
+		fakeManager: newFakeManager(&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+			Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+		}),
+		dynamicForFailAt: 2,
+	}
+	s := NewServer(mgr, testConfigStore(t), "")
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/scale/deployment/prod/web", `{"replicas":5}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestHandleScaleResource_ResolveSlugError isolates handleScaleResource's own
+// resolveSlug call (the second — the first is inside getUnstructured) as the
+// one that fails.
+func TestHandleScaleResource_ResolveSlugError(t *testing.T) {
+	mgr := (&countedFailManager{
+		fakeManager: newFakeManager(&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+			Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+		}),
+	}).withResolveResourceFailAt(2)
+	s := NewServer(mgr, testConfigStore(t), "")
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/scale/deployment/prod/web", `{"replicas":5}`)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleRestartRollout_DynamicForError(t *testing.T) {
+	mgr := &countedFailManager{
+		fakeManager: newFakeManager(&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+			Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+		}),
+		dynamicForFailAt: 2,
+	}
+	s := NewServer(mgr, testConfigStore(t), "")
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-restart/deployment/prod/web", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleRestartRollout_ResolveSlugError(t *testing.T) {
+	mgr := (&countedFailManager{
+		fakeManager: newFakeManager(&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+			Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+		}),
+	}).withResolveResourceFailAt(2)
+	s := NewServer(mgr, testConfigStore(t), "")
+	rec := doRequest(t, s, "POST", "/api/contexts/test/rollout-restart/deployment/prod/web", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
 	}
 }
 

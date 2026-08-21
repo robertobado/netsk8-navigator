@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   addHelmRepo,
+  api,
   applyManifest,
   applyManifestRef,
   blankManifestYAML,
@@ -12,6 +13,7 @@ import {
   deleteResource,
   deleteResourceRef,
   execURL,
+  getDetail,
   getManifestRef,
   helmChartDetail,
   helmRepos,
@@ -458,5 +460,157 @@ describe('helm', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/helm/charts/bitnami/nginx')
     await helmChartDetail('bitnami', 'nginx', '1.2.3')
     expect(fetchMock).toHaveBeenCalledWith('/api/helm/charts/bitnami/nginx?version=1.2.3')
+  })
+})
+
+describe('get() error handling (shared by every api.* GET call)', () => {
+  it('resolves the parsed JSON body on success', async () => {
+    mockFetch(true, { status: 'ok' })
+    await expect(api.health()).resolves.toEqual({ status: 'ok' })
+  })
+
+  it('throws the backend error message on a non-ok JSON response', async () => {
+    mockFetch(false, { error: 'unauthorized' }, 401, 'Unauthorized')
+    await expect(api.health()).rejects.toThrow('unauthorized')
+  })
+
+  it('falls back to the status line when the error body is not JSON', async () => {
+    const fn = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      json: async () => {
+        throw new Error('not json')
+      },
+    })
+    vi.stubGlobal('fetch', fn)
+    await expect(api.health()).rejects.toThrow('503 Service Unavailable')
+  })
+})
+
+describe('api.* GET endpoints — URL building', () => {
+  it('health/updateCheck/contexts/mcpToken hit their fixed endpoints', async () => {
+    const fetchMock = mockFetch(true, {})
+    await api.health()
+    expect(fetchMock).toHaveBeenCalledWith('/api/health')
+    await api.updateCheck()
+    expect(fetchMock).toHaveBeenCalledWith('/api/update-check')
+    await api.contexts()
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts')
+    await api.mcpToken()
+    expect(fetchMock).toHaveBeenCalledWith('/api/mcp/token')
+  })
+
+  it('overview/namespaces/monitoring/issues/routeKinds/crdKinds/nodesUsage are scoped to a context', async () => {
+    const fetchMock = mockFetch(true, {})
+    await api.overview('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/overview')
+    await api.namespaces('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/namespaces')
+    await api.monitoring('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/monitoring')
+    await api.issues('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/issues')
+    await api.routeKinds('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/routekinds')
+    await api.crdKinds('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crdkinds')
+    await api.nodesUsage('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/nodeusage')
+  })
+
+  it('pods/allEvents/list/podsUsage/deploymentsUsage add a namespace query param only when given one', async () => {
+    const fetchMock = mockFetch(true, [])
+    await api.pods('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/pods')
+    await api.pods('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/pods?namespace=prod')
+
+    await api.allEvents('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/events')
+    await api.allEvents('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/events?namespace=prod')
+
+    await api.list('my-ctx', 'deployments')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/resources/deployments')
+    await api.list('my-ctx', 'deployments', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/resources/deployments?namespace=prod')
+
+    await api.podsUsage('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/podusage')
+    await api.podsUsage('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/podusage?namespace=prod')
+
+    await api.deploymentsUsage('my-ctx')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/deploymentusage')
+    await api.deploymentsUsage('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/deploymentusage?namespace=prod')
+  })
+
+  it('podPending/events/workloadPods/nodeWorkloads/namespaceSummary/serviceAccountUsage/consumers build namespaced+named paths', async () => {
+    const fetchMock = mockFetch(true, {})
+    await api.podPending('my-ctx', 'prod', 'web-1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/pods/prod/web-1/pending')
+
+    await api.events('my-ctx', 'prod', 'web-1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/events/prod/web-1')
+    await api.events('my-ctx', 'prod', 'web-1', 'Pod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/events/prod/web-1?kind=Pod')
+
+    await api.workloadPods('my-ctx', 'deployment', 'prod', 'web')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/pods-of/deployment/prod/web')
+
+    await api.nodeWorkloads('my-ctx', 'node-1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/node-workloads/node-1')
+
+    await api.namespaceSummary('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/namespace-summary/prod')
+
+    await api.serviceAccountUsage('my-ctx', 'prod', 'deployer')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/serviceaccount-usage/prod/deployer')
+
+    await api.consumers('my-ctx', 'configmap', 'prod', 'cfg')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/consumers/configmap/prod/cfg')
+  })
+
+  it('topology always includes the namespace query param', async () => {
+    const fetchMock = mockFetch(true, { nodes: [], edges: [] })
+    await api.topology('my-ctx', 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/topology?namespace=prod')
+  })
+
+  it('crdList builds the GVR path and adds a namespace query param only when given one', async () => {
+    const fetchMock = mockFetch(true, [])
+    const rk: CRDRef = { group: 'example.com', version: 'v1', resource: 'widgets' }
+    await api.crdList('my-ctx', rk)
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets')
+    await api.crdList('my-ctx', rk, 'prod')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/crd/example.com/v1/widgets?namespace=prod')
+  })
+
+  it('usage builds a query string from namespace/name, omitting params that are not given', async () => {
+    const fetchMock = mockFetch(true, { available: true })
+    await api.usage('my-ctx', 'cluster')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/usage/cluster')
+    await api.usage('my-ctx', 'pod', { namespace: 'prod', name: 'web-1' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/usage/pod?namespace=prod&name=web-1')
+  })
+
+  it('metrics builds a query string from namespace/name/range, omitting params that are not given', async () => {
+    const fetchMock = mockFetch(true, { available: true })
+    await api.metrics('my-ctx', 'cluster')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/metrics/cluster')
+    await api.metrics('my-ctx', 'node', { name: 'node-1', range: '6h' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/metrics/node?name=node-1&range=6h')
+  })
+})
+
+describe('getDetail', () => {
+  it('fetches the detail endpoint, defaulting the namespace segment to "-" for cluster-scoped kinds', async () => {
+    const fetchMock = mockFetch(true, { kind: 'Node' })
+    await getDetail('my-ctx', 'node', '', 'node-1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/detail/node/-/node-1')
+    await getDetail('my-ctx', 'pod', 'prod', 'web-1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/contexts/my-ctx/detail/pod/prod/web-1')
   })
 })

@@ -2,12 +2,18 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
 func TestToEventView(t *testing.T) {
@@ -85,6 +91,81 @@ func TestHandleEvents(t *testing.T) {
 	}
 	if out[0].Reason != "Newer" {
 		t.Errorf("expected most-recent-first ordering, got %+v", out)
+	}
+}
+
+func TestHandleEvents_KindFilter(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "e1", Namespace: "prod"},
+			InvolvedObject: corev1.ObjectReference{Name: "web-1", Kind: "Pod"},
+			Reason:         "AsPod",
+		},
+		&corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "e2", Namespace: "prod"},
+			InvolvedObject: corev1.ObjectReference{Name: "web-1", Kind: "Deployment"},
+			Reason:         "AsDeployment",
+		},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/events/prod/web-1?kind=Deployment", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []eventView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Reason != "AsDeployment" {
+		t.Errorf("got %+v, want only the Deployment-kind event", out)
+	}
+}
+
+// TestHandleEvents_ClientForError and TestHandleAllEvents_ClientForError
+// cover both handlers' ClientFor error branch — fakeManager's ClientFor
+// never errors, so newTestServer alone can't reach it; reuses
+// portforward_test.go's clientForErrManager (same package, same
+// established pattern for this exact gap).
+func TestHandleEvents_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/events/prod/web-1", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleAllEvents_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/events", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestHandleEvents_ListError and TestHandleAllEvents_ListError cover both
+// handlers' client.CoreV1().Events(...).List error branch via a reactor
+// that fails every "list"/"events" call, the same PrependReactor pattern
+// actions_test.go/manifest_test.go use for update failures.
+func TestHandleEvents_ListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "events", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("boom")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/events/prod/web-1", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleAllEvents_ListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "events", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("boom")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/events", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
 	}
 }
 

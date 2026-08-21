@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -184,6 +185,57 @@ func TestServe_PlainHTTP(t *testing.T) {
 
 	if err := serve(&http.Server{Addr: blocker.Addr().String(), ReadHeaderTimeout: 10 * time.Second}); err == nil {
 		t.Error("expected an error from ListenAndServe against an already-bound address")
+	}
+}
+
+// TestMustInit_Success exercises mustInit's happy path directly — it's
+// otherwise only reached through main(), which this package's tests
+// deliberately never call for the default server-start path (it blocks
+// forever serving). The error branches (log.Fatalf) aren't reachable from an
+// in-process test at all, since they'd terminate the test binary.
+func TestMustInit_Success(t *testing.T) {
+	stubKubeconfig(t)
+	t.Setenv("HOME", t.TempDir()) // keep config.NewStore() off the developer's real prefs file
+
+	mgr, cfg := mustInit()
+	if mgr == nil {
+		t.Error("expected a non-nil *kube.Manager")
+	}
+	if cfg == nil {
+		t.Error("expected a non-nil *config.Store")
+	}
+}
+
+// TestMain_VersionAndHelp exercises the arg-dispatch switch in main() for the
+// branches that print and return without side effects (no os.Exit, no server
+// start) — --mcp-stdio/mcp/unrecognized all either block on stdin or exit the
+// process, so they aren't safe to run in-process here.
+func TestMain_VersionAndHelp(t *testing.T) {
+	origArgs := os.Args
+	defer func() { os.Args = origArgs }()
+
+	for _, arg := range []string{"--version", "-version", "--help", "-help", "-h"} {
+		t.Run(arg, func(t *testing.T) {
+			os.Args = []string{"netsk8-navigator", arg}
+
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			origStdout := os.Stdout
+			os.Stdout = w
+			main()
+			_ = w.Close()
+			os.Stdout = origStdout
+
+			out, err := io.ReadAll(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(out) == 0 {
+				t.Errorf("%s: expected output, got none", arg)
+			}
+		})
 	}
 }
 

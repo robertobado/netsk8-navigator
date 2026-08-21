@@ -3,9 +3,11 @@ package mcpinstall
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -166,6 +168,95 @@ func TestInstallAll_EverySkippedWhenNothingIsInstalled(t *testing.T) {
 		if r.Status != statusSkippedNotInstalled {
 			t.Errorf("%s: status = %q, want %q", r.Client, r.Status, statusSkippedNotInstalled)
 		}
+	}
+}
+
+// writeFakeClaudeCLI puts an executable "claude" script on a t.TempDir(),
+// prepended to PATH, so installClaudeCode's "CLI on PATH" branch runs
+// against a controlled fake instead of the real `claude mcp add`.
+func writeFakeClaudeCLI(t *testing.T, exitCode int, stdout string) {
+	t.Helper()
+	dir := t.TempDir()
+	// PATH is overridden to just dir (below), so the script can't shell out to
+	// an external `cat`/`echo` binary — printf is a shell builtin, and one
+	// call per line keeps embedded newlines real instead of literal "\n".
+	script := "#!/bin/sh\n"
+	for _, line := range strings.Split(stdout, "\n") {
+		// Callers only ever pass plain text with no single quotes, so a bare
+		// single-quoted wrap is safe shell-quoting here.
+		script += fmt.Sprintf("printf '%%s\\n' '%s'\n", line)
+	}
+	script += fmt.Sprintf("exit %d\n", exitCode)
+	path := filepath.Join(dir, "claude")
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil { //nolint:gosec // deliberately executable — this is a fake CLI stand-in
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+func TestInstallClaudeCode_ViaCLI_Success(t *testing.T) {
+	writeFakeClaudeCLI(t, 0, "")
+	r := installClaudeCode(Entry{Command: "/exe", Args: []string{"--mcp-stdio"}})
+	if r.Client != clientClaudeCode || r.Status != "installed" {
+		t.Errorf("got %+v, want installed via the CLI", r)
+	}
+}
+
+func TestInstallClaudeCode_ViaCLI_Failure(t *testing.T) {
+	writeFakeClaudeCLI(t, 1, "boom: something went wrong\nextra detail line")
+	r := installClaudeCode(Entry{Command: "/exe", Args: []string{"--mcp-stdio"}})
+	if r.Status != "failed: boom: something went wrong" {
+		t.Errorf("status = %q, want the first line of the CLI's output", r.Status)
+	}
+}
+
+func TestClaudeCodeConfigPath_EmptyHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", "")
+	}
+	if _, ok := claudeCodeConfigPath(); ok {
+		t.Error("want ok=false when HOME (or USERPROFILE on windows) is unset")
+	}
+}
+
+// TestInstallAll_InstallsIntoEveryClientThatsPresent covers InstallAll's
+// "client is installed" branches for Claude Desktop and Cursor — the
+// all-skipped test above only exercises the "not installed" branches.
+func TestInstallAll_InstallsIntoEveryClientThatsPresent(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no `claude` CLI — installClaudeCode falls through to its own skip/file logic
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", home)
+	t.Setenv("USERPROFILE", home)
+
+	var desktopDir string
+	switch runtime.GOOS {
+	case "darwin":
+		desktopDir = filepath.Join(home, "Library/Application Support/Claude")
+	case "windows":
+		desktopDir = filepath.Join(home, "Claude")
+	default:
+		desktopDir = filepath.Join(home, ".config/Claude")
+	}
+	cursorDir := filepath.Join(home, ".cursor")
+	if err := os.MkdirAll(desktopDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cursorDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	results := InstallAll(Entry{Command: "/exe", Args: []string{"--mcp-stdio"}})
+	byClient := map[string]Result{}
+	for _, r := range results {
+		byClient[r.Client] = r
+	}
+	if byClient["Claude Desktop"].Status != "installed" {
+		t.Errorf("Claude Desktop = %+v, want installed", byClient["Claude Desktop"])
+	}
+	if byClient["Cursor"].Status != "installed" {
+		t.Errorf("Cursor = %+v, want installed", byClient["Cursor"])
 	}
 }
 

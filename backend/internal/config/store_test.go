@@ -165,3 +165,98 @@ func TestNewStore_FallsBackWithoutHOME(t *testing.T) {
 		t.Errorf("App() = %s, want {}", got)
 	}
 }
+
+// randomToken's `if _, err := rand.Read(b); err != nil` branch (and the two
+// MCPToken/RegenerateMCPToken branches around it) can't be exercised: as of
+// Go 1.24, crypto/rand.Read no longer returns a normal error on a failed
+// system-entropy read — it calls runtime.fatal and crashes the process (see
+// https://go.dev/issue/66821), even with rand.Reader swapped out. Confirmed
+// by trying exactly that override; it took the whole test binary down
+// instead of returning an error. Left uncovered as genuinely unreachable in
+// the current Go toolchain, not skipped for convenience.
+
+// TestStore_MCPToken_SaveError and TestStore_RegenerateMCPToken_SaveError
+// cover the save()-error branch in both token methods: a parent directory
+// that can't be created (a file sits where a directory component needs to
+// be) makes save's os.MkdirAll fail.
+func TestStore_MCPToken_SaveError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{path: filepath.Join(blocker, "sub", "config.json"), data: fileData{Clusters: map[string]json.RawMessage{}}}
+	if _, err := s.MCPToken(); err == nil {
+		t.Error("expected an error when save()'s MkdirAll fails")
+	}
+}
+
+func TestStore_RegenerateMCPToken_SaveError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{path: filepath.Join(blocker, "sub", "config.json"), data: fileData{Clusters: map[string]json.RawMessage{}}}
+	if _, err := s.RegenerateMCPToken(); err == nil {
+		t.Error("expected an error when save()'s MkdirAll fails")
+	}
+}
+
+// TestStore_Save_MkdirAllError is the same MkdirAll failure exercised
+// directly through SetApp, for save()'s own branch coverage independent of
+// the MCPToken callers above.
+func TestStore_Save_MkdirAllError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{path: filepath.Join(blocker, "sub", "config.json"), data: fileData{Clusters: map[string]json.RawMessage{}}}
+	if err := s.SetApp(json.RawMessage(`{}`)); err == nil {
+		t.Error("expected an error when the config dir's parent can't be created")
+	}
+}
+
+// TestStore_Save_MarshalError covers save()'s json.MarshalIndent error
+// branch: an App payload that isn't actually valid JSON (SetApp doesn't
+// validate — callers are expected to pass json.Valid bodies, but save()
+// must still handle it) makes json.RawMessage's MarshalJSON fail.
+func TestStore_Save_MarshalError(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetApp(json.RawMessage("not valid json")); err == nil {
+		t.Error("expected save() to fail marshaling an invalid App payload")
+	}
+}
+
+// TestStore_Save_WriteFileError covers save()'s os.WriteFile error branch:
+// a directory already occupying the ".tmp" path makes the write fail.
+func TestStore_Save_WriteFileError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.Mkdir(path+".tmp", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{path: path, data: fileData{Clusters: map[string]json.RawMessage{}}}
+	if err := s.SetApp(json.RawMessage(`{}`)); err == nil {
+		t.Error("expected an error when the .tmp path is already a directory")
+	}
+}
+
+// TestNewStoreAt_NullClustersInFileResetToEmptyMap covers the nil-Clusters
+// recovery branch: an explicit "clusters": null in a loaded file overwrites
+// NewStoreAt's pre-seeded empty map with nil, which must be re-initialized
+// rather than left nil (a nil map panics on the write side of Cluster/SetCluster).
+func TestNewStoreAt_NullClustersInFileResetToEmptyMap(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"clusters": null}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStoreAt(path)
+	if got := s.Cluster("prod"); string(got) != "{}" {
+		t.Errorf("Cluster(prod) = %s, want {}", got)
+	}
+	if err := s.SetCluster("prod", json.RawMessage(`{"ns":"default"}`)); err != nil {
+		t.Fatalf("SetCluster panicked/errored on a nil Clusters map: %v", err)
+	}
+}

@@ -3,14 +3,20 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
 func TestNodePeak(t *testing.T) {
@@ -211,6 +217,126 @@ func TestHandleUsage_Scopes(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
 		}
 	})
+}
+
+func TestHandleUsage_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/usage/cluster", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleUsage_UpstreamError(t *testing.T) {
+	// metricsAPIPath itself answers (so hasMetricsServer is true), but the
+	// specific node lookup 404s, the way a stale/renamed node would.
+	rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
+	s := newTestServerWithMetrics(t, rt, testNode)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/usage/node?name=node-1", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlePodsUsage_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/podusage", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandlePodsUsage_UpstreamError(t *testing.T) {
+	rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}} // /pods left unmapped -> 404
+	s := newTestServerWithMetrics(t, rt, testPod)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/podusage", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleNodesUsage_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/nodeusage", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleNodesUsage_UpstreamError(t *testing.T) {
+	rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}} // /nodes left unmapped -> 404
+	s := newTestServerWithMetrics(t, rt, testNode)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/nodeusage", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleNodesUsage_MalformedJSON(t *testing.T) {
+	rt := metricsRoundTripper{responses: map[string]string{
+		metricsAPIPath:            "{}",
+		metricsAPIPath + "/nodes": "not json",
+	}}
+	s := newTestServerWithMetrics(t, rt, testNode)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/nodeusage", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleDeploymentsUsage_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/deploymentusage", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleDeploymentsUsage_UpstreamError(t *testing.T) {
+	rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}} // /pods left unmapped -> 404
+	s := newTestServerWithMetrics(t, rt, testPod)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/deploymentusage", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReplicaSetOwners_ListError(t *testing.T) {
+	client := kubernetesfake.NewSimpleClientset()
+	client.PrependReactor("list", "replicasets", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("boom")
+	})
+	got := replicaSetOwners(context.Background(), client, "")
+	if len(got) != 0 {
+		t.Errorf("got %+v, want an empty map when the list call fails", got)
+	}
+}
+
+func TestAggregateDeploymentUsage_ListError(t *testing.T) {
+	client := kubernetesfake.NewSimpleClientset()
+	client.PrependReactor("list", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("boom")
+	})
+	got := aggregateDeploymentUsage(context.Background(), client, "", map[string]string{}, nil, nil)
+	if len(got) != 0 {
+		t.Errorf("got %+v, want an empty map when the list call fails", got)
+	}
+}
+
+func TestAddPodRequestsLimits_ListError(t *testing.T) {
+	client := kubernetesfake.NewSimpleClientset()
+	client.PrependReactor("list", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("boom")
+	})
+	items := map[string]podUsageEntry{}
+	addPodRequestsLimits(context.Background(), client, "", items) // must not panic; leaves items untouched
+	if len(items) != 0 {
+		t.Errorf("got %+v", items)
+	}
 }
 
 func TestHandleDeploymentsUsage(t *testing.T) {

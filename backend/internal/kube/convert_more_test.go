@@ -203,6 +203,14 @@ func TestToPriorityClassView(t *testing.T) {
 	}
 }
 
+func TestToPriorityClassView_ExplicitPreemptionPolicy(t *testing.T) {
+	never := corev1.PreemptNever
+	p := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "no-preempt"}, PreemptionPolicy: &never}
+	if got := ToPriorityClassView(p).Preemption; got != string(corev1.PreemptNever) {
+		t.Errorf("Preemption = %q, want the explicit policy (%q), not the default", got, corev1.PreemptNever)
+	}
+}
+
 func TestToRuntimeClassView(t *testing.T) {
 	rc := &nodev1.RuntimeClass{ObjectMeta: metav1.ObjectMeta{Name: "gvisor"}, Handler: "runsc"}
 	if v := ToRuntimeClassView(rc); v.Handler != "runsc" {

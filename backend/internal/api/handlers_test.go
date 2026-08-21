@@ -2,18 +2,32 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 
+	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
 )
 
 func replicas(n int32) *int32 { return &n }
+
+// testConfigStore builds a disposable preferences store, the same way
+// newTestServer does internally — for tests that construct a *Server by hand
+// (e.g. wrapping the manager in an error-injecting type) instead of going
+// through newTestServer.
+func testConfigStore(t *testing.T) *config.Store {
+	t.Helper()
+	return config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+}
 
 func TestHandleHealth(t *testing.T) {
 	s := newTestServer(t)
@@ -354,6 +368,142 @@ func TestHandleNamespaceSummary(t *testing.T) {
 	}
 	if len(groups) != 1 || groups[0].Kind != "Deployment" || len(groups[0].Items) != 2 {
 		t.Errorf("got %+v", groups)
+	}
+}
+
+func TestHandleNamespaces_ClientForError(t *testing.T) {
+	s := NewServer(clientForErrManager{newFakeManager()}, testConfigStore(t), "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/namespaces", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleNamespaces_ListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "namespaces", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/namespaces", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleNodes_ClientForError(t *testing.T) {
+	s := NewServer(clientForErrManager{newFakeManager()}, testConfigStore(t), "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/nodes", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleNodes_ListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "nodes", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/nodes", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+// TestHandleNodes_WithRoleLabel covers nodeRoles' label-matching branch —
+// TestHandleNodes' node has no node-role.kubernetes.io/* label, so it only
+// ever exercises the "<none>" fallback.
+func TestHandleNodes_WithRoleLabel(t *testing.T) {
+	s := newTestServer(t, &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "control-1",
+			Labels: map[string]string{"node-role.kubernetes.io/control-plane": ""},
+		},
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/nodes", "")
+	var out []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	roles, ok := out[0]["roles"].([]any)
+	if !ok || len(roles) != 1 || roles[0] != "control-plane" {
+		t.Errorf("roles = %+v, want [control-plane]", out[0]["roles"])
+	}
+}
+
+func TestHandlePods_ClientForError(t *testing.T) {
+	s := NewServer(clientForErrManager{newFakeManager()}, testConfigStore(t), "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/pods", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandlePods_ListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/pods", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleOverview_ClientForError(t *testing.T) {
+	s := NewServer(clientForErrManager{newFakeManager()}, testConfigStore(t), "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/overview", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleOverview_NodesListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "nodes", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/overview", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleOverview_PodsListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/overview", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+func TestHandleOverview_NamespacesListError(t *testing.T) {
+	s := newTestServer(t)
+	fakeClient(t, s).PrependReactor("list", "namespaces", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("etcd unavailable")
+	})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/overview", "")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+}
+
+// TestHandleOverview_FailedPod covers the "Failed" arm of handleOverview's
+// phase-tally switch — the existing TestHandleOverview only exercises
+// Running/Pending.
+func TestHandleOverview_FailedPod(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "crashed", Namespace: "default"}, Status: corev1.PodStatus{Phase: corev1.PodFailed}},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/overview", "")
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["failed"] != float64(1) {
+		t.Errorf("failed = %v, want 1", out["failed"])
 	}
 }
 
