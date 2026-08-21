@@ -121,6 +121,7 @@ func buildMux() http.Handler {
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, "")
 	srv.Version = version
+	srv.StartUpdateChecker(version) // see backend/main.go's buildMux — the desktop app never called this, so its update bubble never had anything to show
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
 	mux.Handle("/mcp", srv.MCPHandler()) // see backend/main.go's buildMux for the rationale
