@@ -208,6 +208,16 @@ func main() {
 	app := NewApp()
 	appMenu := menu.NewMenu()
 	fileMenu := appMenu.AddSubmenu("File")
+	// The window has no direct Go-side handle the frontend can query, and this
+	// app has no other Go->JS bridge (see app.go's doc comment) — so this is
+	// the first one, deliberately kept to this single fire-and-forget event
+	// rather than growing into a general-purpose IPC channel. The frontend
+	// listens via Wails' auto-injected window.runtime.EventsOn, guarded so it
+	// no-ops in the plain browser build (see App.tsx).
+	fileMenu.AddText("About Netsk8 Navigator", nil, func(_ *menu.CallbackData) {
+		runtime.EventsEmit(app.ctx, "show-about")
+	})
+	fileMenu.AddSeparator()
 	fileMenu.AddText("Open in Browser", nil, func(_ *menu.CallbackData) {
 		runtime.BrowserOpenURL(app.ctx, url)
 	})

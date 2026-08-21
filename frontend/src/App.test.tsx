@@ -215,6 +215,24 @@ describe('App', () => {
     expect(screen.getByTestId('preferences-dialog-stub')).toBeInTheDocument()
   })
 
+  it('shows the running version next to the sidebar logo and opens the About dialog when clicked', async () => {
+    localStorage.setItem('netsk8s.ctx', 'prod')
+    contextsMock.mockResolvedValue([ctxInfo({ name: 'prod', current: true })])
+    healthMock.mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: '1.2.3', authEnabled: true })
+    const user = userEvent.setup()
+    renderApp()
+    await screen.findByText('3 ready')
+
+    const versionBadge = await screen.findByText('v1.2.3')
+    // level: 3 disambiguates the About dialog's own title from the sidebar's
+    // "Netsk8 Navigator" <h1>, which is also present (and also an implicit
+    // "heading" role) throughout this test.
+    expect(screen.queryByRole('heading', { name: 'Netsk8 Navigator', level: 3 })).not.toBeInTheDocument()
+
+    await user.click(versionBadge)
+    expect(screen.getByRole('heading', { name: 'Netsk8 Navigator', level: 3 })).toBeInTheDocument()
+  })
+
   it('switching context via ContextSwitcher persists the new ctx and resets the namespace', async () => {
     localStorage.setItem('netsk8s.ctx', 'prod')
     localStorage.setItem('netsk8s.ns', 'kube-system')

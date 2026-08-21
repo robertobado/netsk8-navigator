@@ -27,6 +27,7 @@ import { VantaBackground } from '@/components/VantaBackground'
 import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
 import { PreferencesDialog } from '@/components/PreferencesDialog'
+import { AboutDialog } from '@/components/AboutDialog'
 import { useT } from '@/lib/i18n'
 import { IssueCarousel } from '@/components/IssueCarousel'
 import type { IssueItem, Pod } from '@/lib/api'
@@ -73,6 +74,7 @@ function AppMain() {
   // Off-canvas below `lg`; the sidebar is always visible at `lg` and above.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const vanta = useVantaSettings()
   const t = useT()
 
@@ -86,6 +88,17 @@ function AppMain() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Native desktop app only: the "About" menu item (cmd/desktop/main.go) has
+  // no direct hook into the React tree, so it emits a show-about event over
+  // Wails' injected window.runtime bridge instead, and this just opens the
+  // same dialog the sidebar version badge does. window.runtime doesn't exist
+  // in the plain browser build, so this is a no-op there.
+  useEffect(() => {
+    const rt = (window as unknown as { runtime?: { EventsOn: (event: string, cb: () => void) => () => void } }).runtime
+    if (!rt) return
+    return rt.EventsOn('show-about', () => setAboutOpen(true))
   }, [])
 
   const contextsQ = useQuery({ queryKey: ['contexts'], queryFn: api.contexts, refetchInterval: false })
@@ -173,7 +186,22 @@ function AppMain() {
               <h1 className="text-sm font-semibold leading-tight tracking-tight">
                 Nets<span className="text-[color:var(--brand)]">k8</span> Navigator
               </h1>
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{t('app.subtitle')}</p>
+              <p className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                {t('app.subtitle')}
+                {healthQ.data?.version && (
+                  <>
+                    <span className="text-border">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setAboutOpen(true)}
+                      className="font-mono normal-case tracking-normal text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                      title={t('about.title')}
+                    >
+                      {healthQ.data.version === 'dev' ? healthQ.data.version : `v${healthQ.data.version}`}
+                    </button>
+                  </>
+                )}
+              </p>
             </div>
           </div>
 
@@ -264,6 +292,7 @@ function AppMain() {
         />
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
         <PreferencesDialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} vanta={vanta} />
+        <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} version={healthQ.data?.version} update={updateQ.data} />
       </div>
       {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}
       {updateQ.data?.available && (
