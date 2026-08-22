@@ -167,6 +167,192 @@ func TestHandleResourceList_PVCs_EnrichesMountedBy(t *testing.T) {
 // not already covered above by seeding one object of that kind and checking
 // the projected row shape — it's the project (and, where relevant, enrich)
 // closure that matters here, not exhaustively re-verifying kube.To*View.
+func verifyServicesRow(t *testing.T, body []byte) {
+	var out []kube.ServiceView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Type != "ClusterIP" || out[0].ClusterIP != "10.0.0.5" || out[0].Ports != "80/TCP" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyIngressesRow(t *testing.T, body []byte) {
+	var out []kube.IngressView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Class != "nginx" || out[0].Hosts != "example.com" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyStatefulsetsRow(t *testing.T, body []byte) {
+	var out []kube.StatefulSetView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Ready != "2/3" || out[0].Service != "db-svc" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyDaemonsetsRow(t *testing.T, body []byte) {
+	var out []kube.DaemonSetView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Ready != "3/4" || out[0].UpToDate != 3 || out[0].Available != 3 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyReplicasetsRow(t *testing.T, body []byte) {
+	var out []kube.ReplicaSetView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Ready != "2/2" || out[0].OwnerKind != "Deployment" || out[0].OwnerName != "web" ||
+		out[0].Revision != "2" || !out[0].Current {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyCronjobsRow(t *testing.T, body []byte) {
+	var out []kube.CronJobView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Schedule != "0 0 * * *" || out[0].Active != 1 || out[0].Suspend {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifySecretsRow(t *testing.T, body []byte) {
+	var out []kube.SecretView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Type != "Opaque" || out[0].Keys != 1 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyServiceaccountsRow(t *testing.T, body []byte) {
+	var out []kube.ServiceAccountView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Secrets != 1 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyPersistentvolumesRow(t *testing.T, body []byte) {
+	var out []kube.PVView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Capacity != "10Gi" || out[0].AccessModes != "RWO" ||
+		out[0].Reclaim != "Retain" || out[0].Status != "Available" || out[0].StorageClass != "standard" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyStorageclassesRow(t *testing.T, body []byte) {
+	var out []kube.StorageClassView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || !out[0].Default || out[0].Provisioner != "kubernetes.io/aws-ebs" ||
+		out[0].Reclaim != "Delete" || out[0].Binding != "WaitForFirstConsumer" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyHorizontalpodautoscalersRow(t *testing.T, body []byte) {
+	var out []kube.HPAView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Reference != "Deployment/web" || out[0].MinPods != 1 || out[0].MaxPods != 5 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyEndpointslicesRow(t *testing.T, body []byte) {
+	var out []kube.EndpointSliceView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Service != "web" || out[0].Ready != 1 || out[0].Total != 1 || out[0].Ports != "http:80/TCP" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyNetworkpoliciesRow(t *testing.T, body []byte) {
+	var out []kube.NetworkPolicyView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].PolicyTypes != "Ingress" || out[0].PodSelector != "all" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyIngressclassesRow(t *testing.T, body []byte) {
+	var out []kube.IngressClassView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Controller != "k8s.io/ingress-nginx" || !out[0].Default {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyRolesRow(t *testing.T, body []byte) {
+	var out []kube.RoleView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Namespace != "prod" || out[0].Rules != 1 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyClusterrolesRow(t *testing.T, body []byte) {
+	var out []kube.RoleView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Namespace != "" || out[0].Rules != 1 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyRolebindingsRow(t *testing.T, body []byte) {
+	var out []kube.RoleBindingView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Role != "Role/pod-reader" || len(out[0].Subjects) != 1 || out[0].Subjects[0] != "prod/default" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyClusterrolebindingsRow(t *testing.T, body []byte) {
+	var out []kube.RoleBindingView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Role != "ClusterRole/admin" || len(out[0].Subjects) != 1 || out[0].Subjects[0] != "user:alice" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyResourcequotasRow(t *testing.T, body []byte) {
+	var out []kube.ResourceQuotaView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Name != "compute-quota" || out[0].Namespace != "prod" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyLimitrangesRow(t *testing.T, body []byte) {
+	var out []kube.LimitRangeView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Name != "limits" || out[0].Namespace != "prod" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyPoddisruptionbudgetsRow(t *testing.T, body []byte) {
+	var out []kube.PDBView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Criteria != "min 1" || out[0].Current != 2 || out[0].Desired != 2 || out[0].Allowed != 0 {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyPriorityclassesRow(t *testing.T, body []byte) {
+	var out []kube.PriorityClassView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Value != 1000 || out[0].GlobalDefault || out[0].Preemption != "PreemptLowerPriority" {
+		t.Errorf("got %+v", out)
+	}
+}
+
+func verifyRuntimeclassesRow(t *testing.T, body []byte) {
+	var out []kube.RuntimeClassView
+	mustUnmarshal(t, body, &out)
+	if len(out) != 1 || out[0].Handler != "runsc" {
+		t.Errorf("got %+v", out)
+	}
+}
 func TestHandleResourceList_CatalogEntries(t *testing.T) {
 	trueVal := true
 	falseVal := false
@@ -195,13 +381,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 					Ports:     []corev1.ServicePort{{Port: 80, Protocol: corev1.ProtocolTCP}},
 				},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.ServiceView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Type != "ClusterIP" || out[0].ClusterIP != "10.0.0.5" || out[0].Ports != "80/TCP" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyServicesRow,
 		},
 		{
 			label: "ingresses",
@@ -213,13 +393,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 					Rules:            []networkingv1.IngressRule{{Host: "example.com"}},
 				},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.IngressView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Class != "nginx" || out[0].Hosts != "example.com" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyIngressesRow,
 		},
 		{
 			label: "statefulsets",
@@ -229,13 +403,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				Spec:       appsv1.StatefulSetSpec{ServiceName: "db-svc", Replicas: int32Ptr(3)},
 				Status:     appsv1.StatefulSetStatus{ReadyReplicas: 2},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.StatefulSetView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Ready != "2/3" || out[0].Service != "db-svc" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyStatefulsetsRow,
 		},
 		{
 			label: "daemonsets",
@@ -246,13 +414,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 					NumberReady: 3, DesiredNumberScheduled: 4, UpdatedNumberScheduled: 3, NumberAvailable: 3,
 				},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.DaemonSetView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Ready != "3/4" || out[0].UpToDate != 3 || out[0].Available != 3 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyDaemonsetsRow,
 		},
 		{
 			label: "replicasets",
@@ -266,14 +428,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				Spec:   appsv1.ReplicaSetSpec{Replicas: int32Ptr(2)},
 				Status: appsv1.ReplicaSetStatus{ReadyReplicas: 2},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.ReplicaSetView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Ready != "2/2" || out[0].OwnerKind != "Deployment" || out[0].OwnerName != "web" ||
-					out[0].Revision != "2" || !out[0].Current {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyReplicasetsRow,
 		},
 		{
 			label: "cronjobs",
@@ -283,13 +438,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				Spec:       batchv1.CronJobSpec{Schedule: "0 0 * * *", Suspend: &falseVal},
 				Status:     batchv1.CronJobStatus{Active: []corev1.ObjectReference{{Name: "nightly-1"}}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.CronJobView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Schedule != "0 0 * * *" || out[0].Active != 1 || out[0].Suspend {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyCronjobsRow,
 		},
 		{
 			label: "secrets",
@@ -299,13 +448,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				Type:       corev1.SecretTypeOpaque,
 				Data:       map[string][]byte{"password": []byte("x")},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.SecretView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Type != "Opaque" || out[0].Keys != 1 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifySecretsRow,
 		},
 		{
 			label: "serviceaccounts",
@@ -314,13 +457,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "prod"},
 				Secrets:    []corev1.ObjectReference{{Name: "default-token"}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.ServiceAccountView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Secrets != 1 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyServiceaccountsRow,
 		},
 		{
 			label: "persistentvolumes",
@@ -335,14 +472,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				},
 				Status: corev1.PersistentVolumeStatus{Phase: corev1.VolumeAvailable},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.PVView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Capacity != "10Gi" || out[0].AccessModes != "RWO" ||
-					out[0].Reclaim != "Retain" || out[0].Status != "Available" || out[0].StorageClass != "standard" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyPersistentvolumesRow,
 		},
 		{
 			label: "storageclasses",
@@ -353,14 +483,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ReclaimPolicy:     &reclaimDelete,
 				VolumeBindingMode: &bindingMode,
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.StorageClassView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || !out[0].Default || out[0].Provisioner != "kubernetes.io/aws-ebs" ||
-					out[0].Reclaim != "Delete" || out[0].Binding != "WaitForFirstConsumer" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyStorageclassesRow,
 		},
 		{
 			label: "horizontalpodautoscalers",
@@ -372,13 +495,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 					MaxReplicas:    5,
 				},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.HPAView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Reference != "Deployment/web" || out[0].MinPods != 1 || out[0].MaxPods != 5 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyHorizontalpodautoscalersRow,
 		},
 		{
 			label: "endpointslices",
@@ -392,13 +509,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				}},
 				Ports: []discoveryv1.EndpointPort{{Name: &portName, Port: &port, Protocol: &proto}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.EndpointSliceView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Service != "web" || out[0].Ready != 1 || out[0].Total != 1 || out[0].Ports != "http:80/TCP" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyEndpointslicesRow,
 		},
 		{
 			label: "networkpolicies",
@@ -407,13 +518,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "deny-all", Namespace: "prod"},
 				Spec:       networkingv1.NetworkPolicySpec{PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.NetworkPolicyView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].PolicyTypes != "Ingress" || out[0].PodSelector != "all" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyNetworkpoliciesRow,
 		},
 		{
 			label: "ingressclasses",
@@ -422,13 +527,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx", Annotations: map[string]string{"ingressclass.kubernetes.io/is-default-class": "true"}},
 				Spec:       networkingv1.IngressClassSpec{Controller: "k8s.io/ingress-nginx"},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.IngressClassView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Controller != "k8s.io/ingress-nginx" || !out[0].Default {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyIngressclassesRow,
 		},
 		{
 			label: "roles",
@@ -437,13 +536,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pod-reader", Namespace: "prod"},
 				Rules:      []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list"}}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.RoleView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Namespace != "prod" || out[0].Rules != 1 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyRolesRow,
 		},
 		{
 			label: "clusterroles",
@@ -452,13 +545,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "admin"},
 				Rules:      []rbacv1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.RoleView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Namespace != "" || out[0].Rules != 1 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyClusterrolesRow,
 		},
 		{
 			label: "rolebindings",
@@ -468,13 +555,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: "pod-reader"},
 				Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "default"}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.RoleBindingView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Role != "Role/pod-reader" || len(out[0].Subjects) != 1 || out[0].Subjects[0] != "prod/default" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyRolebindingsRow,
 		},
 		{
 			label: "clusterrolebindings",
@@ -484,13 +565,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: "admin"},
 				Subjects:   []rbacv1.Subject{{Kind: "User", Name: "alice"}},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.RoleBindingView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Role != "ClusterRole/admin" || len(out[0].Subjects) != 1 || out[0].Subjects[0] != "user:alice" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyClusterrolebindingsRow,
 		},
 		{
 			label: "resourcequotas",
@@ -498,13 +573,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 			objs: []runtime.Object{&corev1.ResourceQuota{
 				ObjectMeta: metav1.ObjectMeta{Name: "compute-quota", Namespace: "prod"},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.ResourceQuotaView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Name != "compute-quota" || out[0].Namespace != "prod" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyResourcequotasRow,
 		},
 		{
 			label: "limitranges",
@@ -512,13 +581,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 			objs: []runtime.Object{&corev1.LimitRange{
 				ObjectMeta: metav1.ObjectMeta{Name: "limits", Namespace: "prod"},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.LimitRangeView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Name != "limits" || out[0].Namespace != "prod" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyLimitrangesRow,
 		},
 		{
 			label: "poddisruptionbudgets",
@@ -528,13 +591,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				Spec:       policyv1.PodDisruptionBudgetSpec{MinAvailable: &minAvail},
 				Status:     policyv1.PodDisruptionBudgetStatus{CurrentHealthy: 2, DesiredHealthy: 2, DisruptionsAllowed: 0},
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.PDBView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Criteria != "min 1" || out[0].Current != 2 || out[0].Desired != 2 || out[0].Allowed != 0 {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyPoddisruptionbudgetsRow,
 		},
 		{
 			label: "priorityclasses",
@@ -543,13 +600,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "high"},
 				Value:      1000,
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.PriorityClassView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Value != 1000 || out[0].GlobalDefault || out[0].Preemption != "PreemptLowerPriority" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyPriorityclassesRow,
 		},
 		{
 			label: "runtimeclasses",
@@ -558,13 +609,7 @@ func TestHandleResourceList_CatalogEntries(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "gvisor"},
 				Handler:    "runsc",
 			}},
-			verify: func(t *testing.T, body []byte) {
-				var out []kube.RuntimeClassView
-				mustUnmarshal(t, body, &out)
-				if len(out) != 1 || out[0].Handler != "runsc" {
-					t.Errorf("got %+v", out)
-				}
-			},
+			verify: verifyRuntimeclassesRow,
 		},
 	}
 

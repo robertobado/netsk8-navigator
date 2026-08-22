@@ -234,73 +234,82 @@ func TestPromQueryRange(t *testing.T) {
 	})
 }
 
+// TestHandleMonitoring's five cases are each their own top-level func (rather
+// than t.Run closures) so their combined branching doesn't all accumulate
+// onto one function's cognitive-complexity score.
 func TestHandleMonitoring(t *testing.T) {
-	t.Run("ClientFor error", func(t *testing.T) {
-		cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
-		s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
-		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("status = %d, want 400", rec.Code)
-		}
-	})
+	t.Run("ClientFor error", testHandleMonitoring_ClientForError)
+	t.Run("neither Prometheus nor metrics-server available", testHandleMonitoring_NoSourceAvailable)
+	t.Run("metrics-server available, no Prometheus", testHandleMonitoring_MetricsServerOnly)
+	t.Run("supported Prometheus source found, plus metrics-server", testHandleMonitoring_PrometheusAndMetricsServer)
+	t.Run("unsupported source (InfluxDB) reports available:false but still identifies it", testHandleMonitoring_UnsupportedSource)
+}
 
-	t.Run("neither Prometheus nor metrics-server available", func(t *testing.T) {
-		s := newTestServerWithMetrics(t, metricsRoundTripper{responses: map[string]string{}})
-		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
-		if rec.Code != 200 {
-			t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
-		}
-		var body map[string]any
-		mustUnmarshalRec(t, rec, &body)
-		if body["available"] != false || body["metricsServer"] != false {
-			t.Errorf("got %+v", body)
-		}
-		if _, ok := body["kind"]; ok {
-			t.Errorf("no kind expected when no source was discovered, got %+v", body)
-		}
-	})
+func testHandleMonitoring_ClientForError(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	s := NewServer(clientForErrManager{newFakeManager()}, cfg, "")
+	rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
 
-	t.Run("metrics-server available, no Prometheus", func(t *testing.T) {
-		rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
-		s := newTestServerWithMetrics(t, rt)
-		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
-		var body map[string]any
-		mustUnmarshalRec(t, rec, &body)
-		if body["available"] != false || body["metricsServer"] != true {
-			t.Errorf("got %+v", body)
-		}
-	})
+func testHandleMonitoring_NoSourceAvailable(t *testing.T) {
+	s := newTestServerWithMetrics(t, metricsRoundTripper{responses: map[string]string{}})
+	rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	mustUnmarshalRec(t, rec, &body)
+	if body["available"] != false || body["metricsServer"] != false {
+		t.Errorf("got %+v", body)
+	}
+	if _, ok := body["kind"]; ok {
+		t.Errorf("no kind expected when no source was discovered, got %+v", body)
+	}
+}
 
-	t.Run("supported Prometheus source found, plus metrics-server", func(t *testing.T) {
-		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
-			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
-		}
-		rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
-		s := newTestServerWithMetrics(t, rt, svc)
-		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
-		var body map[string]any
-		mustUnmarshalRec(t, rec, &body)
-		if body["available"] != true || body["kind"] != "prometheus" || body["namespace"] != "monitoring" ||
-			body["service"] != "prometheus" || body["metricsServer"] != true {
-			t.Errorf("got %+v", body)
-		}
-	})
+func testHandleMonitoring_MetricsServerOnly(t *testing.T) {
+	rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
+	s := newTestServerWithMetrics(t, rt)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+	var body map[string]any
+	mustUnmarshalRec(t, rec, &body)
+	if body["available"] != false || body["metricsServer"] != true {
+		t.Errorf("got %+v", body)
+	}
+}
 
-	t.Run("unsupported source (InfluxDB) reports available:false but still identifies it", func(t *testing.T) {
-		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "influxdb", Namespace: "monitoring"},
-			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8086}}},
-		}
-		rt := metricsRoundTripper{responses: map[string]string{}}
-		s := newTestServerWithMetrics(t, rt, svc)
-		rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
-		var body map[string]any
-		mustUnmarshalRec(t, rec, &body)
-		if body["available"] != false || body["kind"] != "influxdb" {
-			t.Errorf("got %+v", body)
-		}
-	})
+func testHandleMonitoring_PrometheusAndMetricsServer(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "prometheus", Namespace: "monitoring"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http-web", Port: 9090}}},
+	}
+	rt := metricsRoundTripper{responses: map[string]string{metricsAPIPath: "{}"}}
+	s := newTestServerWithMetrics(t, rt, svc)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+	var body map[string]any
+	mustUnmarshalRec(t, rec, &body)
+	if body["available"] != true || body["kind"] != "prometheus" || body["namespace"] != "monitoring" ||
+		body["service"] != "prometheus" || body["metricsServer"] != true {
+		t.Errorf("got %+v", body)
+	}
+}
+
+func testHandleMonitoring_UnsupportedSource(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "influxdb", Namespace: "monitoring"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8086}}},
+	}
+	rt := metricsRoundTripper{responses: map[string]string{}}
+	s := newTestServerWithMetrics(t, rt, svc)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/monitoring", "")
+	var body map[string]any
+	mustUnmarshalRec(t, rec, &body)
+	if body["available"] != false || body["kind"] != "influxdb" {
+		t.Errorf("got %+v", body)
+	}
 }
 
 func mustUnmarshalRec(t *testing.T, rec *httptest.ResponseRecorder, v any) {
