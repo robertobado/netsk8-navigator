@@ -28,12 +28,15 @@ systemctl restart netsk8-navigator
 systemctl is-active netsk8-demo-cluster netsk8-demo-seed netsk8-navigator
 
 # This VPS is resource-constrained enough that startup latency varies a lot
-# under load (observed anywhere from ~1s to ~11s) — poll instead of a fixed
-# sleep, or a deploy fails the job despite the service coming up moments
-# later.
-for i in $(seq 1 30); do
+# under load (observed anywhere from ~1s to ~11s normally, but restarting
+# netsk8-demo-seed and netsk8-navigator back to back can make them contend
+# for the same limited CPU/RAM and push well past that — a v0.0.25 deploy
+# took >30s despite the service coming up fine moments later) — poll instead
+# of a fixed sleep, or a deploy fails the job despite the service coming up
+# moments later.
+for i in $(seq 1 90); do
   curl -fsS http://localhost/api/health && exit 0
   sleep 1
 done
-echo "netsk8-navigator did not become healthy within 30s" >&2
+echo "netsk8-navigator did not become healthy within 90s" >&2
 exit 1
