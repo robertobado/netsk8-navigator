@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Boxes, CircleAlert, CircleDot, Layers, Menu, Server, Settings2 } from 'lucide-react'
+import { Activity, Boxes, CircleAlert, CircleDot, KeyRound, Layers, Menu, Server, Settings2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useLivePods } from '@/lib/useLivePods'
 import { cn, shortContext } from '@/lib/utils'
@@ -28,6 +28,7 @@ import { useVantaSettings } from '@/lib/vanta'
 import { MetricsControls } from '@/components/MetricsControls'
 import { PreferencesDialog } from '@/components/PreferencesDialog'
 import { AboutDialog } from '@/components/AboutDialog'
+import { KubeconfigManagerDialog } from '@/components/KubeconfigManagerDialog'
 import { useT } from '@/lib/i18n'
 import { IssueCarousel } from '@/components/IssueCarousel'
 import type { IssueItem, Pod } from '@/lib/api'
@@ -75,6 +76,7 @@ function AppMain() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [kubeconfigOpen, setKubeconfigOpen] = useState(false)
   const vanta = useVantaSettings()
   const t = useT()
 
@@ -205,7 +207,22 @@ function AppMain() {
             </div>
           </div>
 
-          <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={updateCtx} />
+          <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={updateCtx} />
+            </div>
+            {healthQ.data?.kubeconfigEditable !== false && (
+              <button
+                type="button"
+                onClick={() => setKubeconfigOpen(true)}
+                className="shrink-0 rounded-xl border bg-card/70 p-2.5 text-muted-foreground backdrop-blur-xl transition-colors hover:border-primary/40 hover:text-foreground"
+                aria-label={t('kubeconfig.title', 'Manage kubeconfig')}
+                title={t('kubeconfig.title', 'Manage kubeconfig')}
+              >
+                <KeyRound className="size-4" />
+              </button>
+            )}
+          </div>
           {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={updateNs} />}
 
           <div className="min-h-0 flex-1 overflow-y-auto pt-1">
@@ -293,6 +310,7 @@ function AppMain() {
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
         <PreferencesDialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} vanta={vanta} />
         <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} version={healthQ.data?.version} update={updateQ.data} />
+        <KubeconfigManagerDialog open={kubeconfigOpen} onClose={() => setKubeconfigOpen(false)} activeCtx={ctx} onSelectContext={updateCtx} />
       </div>
       {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}
       {updateQ.data?.available && (

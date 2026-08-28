@@ -214,6 +214,7 @@ func (f *fakeManager) ExecInfoFor(contextName string) (command, profile string, 
 	}
 	return info[0], info[1], true
 }
+func (f *fakeManager) Reload() error { return nil }
 
 // newTestServer builds a Server wired to a fakeManager seeded with objs, and a
 // real (but hermetic — never written to unless a preferences endpoint is hit)

@@ -16,6 +16,7 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/api"
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
+	"github.com/robertobado/netsk8-navigator/backend/internal/kubeconfig"
 	"github.com/robertobado/netsk8-navigator/backend/internal/mcpinstall"
 	"github.com/robertobado/netsk8-navigator/backend/internal/web"
 )
@@ -54,6 +55,7 @@ func main() {
 	srv := api.NewServer(mgr, cfg, os.Getenv("CORS_ORIGIN"))
 	srv.Version = version
 	srv.AuthEnabled = os.Getenv("AUTH_PASSWORD") != ""
+	wireKubeconfigEditor(srv, mgr)
 	if os.Getenv("DEMO_MODE") == "true" {
 		srv.DemoMode = true
 		log.Print("DEMO_MODE enabled — pod exec and port-forward are disabled")
@@ -125,6 +127,23 @@ func mustInit() (*kube.Manager, *config.Store) {
 	}
 	log.Printf("preferences at %s", cfg.Path())
 	return mgr, cfg
+}
+
+// wireKubeconfigEditor installs a kubeconfig.Editor on srv when there's a
+// real kubeconfig file to edit (mgr.InCluster() is false — running off a pod
+// service account has no file at all). A failure here is non-fatal: the app
+// still works in read-only kubeconfig mode, same as if this were never
+// called (see Server.kcfg's doc comment).
+func wireKubeconfigEditor(srv *api.Server, mgr *kube.Manager) {
+	if mgr.InCluster() {
+		return
+	}
+	editor, err := kubeconfig.NewEditor()
+	if err != nil {
+		log.Printf("kubeconfig editing unavailable: %v", err)
+		return
+	}
+	srv.SetKubeconfigEditor(editor)
 }
 
 // buildMux wires the API under /api/ and, when present, the embedded frontend

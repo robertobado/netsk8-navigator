@@ -11,10 +11,11 @@ import (
 // deliberately separate from Server so it can be constructed before the
 // Server exists and later re-derived from a preferences write.
 type MCPFlags struct {
-	mu               sync.RWMutex
-	enabled          bool
-	allowWrite       bool
-	readOnlyContexts map[string]bool
+	mu                   sync.RWMutex
+	enabled              bool
+	allowWrite           bool
+	readOnlyContexts     map[string]bool
+	readDisabledContexts map[string]bool
 }
 
 // Enabled reports whether /mcp should serve requests at all.
@@ -43,10 +44,20 @@ func (f *MCPFlags) WriteAllowedFor(contextName string) bool {
 	return f.allowWrite && !f.readOnlyContexts[contextName]
 }
 
-func (f *MCPFlags) set(enabled, allowWrite bool, readOnlyContexts map[string]bool) {
+// ReadAllowedFor reports whether a read-only tool may act against
+// contextName: the global /mcp enabled gate, minus any context explicitly
+// disabled for MCP reads (e.g. a cluster the operator doesn't want an agent
+// looking at, even read-only). Mirrors WriteAllowedFor's shape.
+func (f *MCPFlags) ReadAllowedFor(contextName string) bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.enabled && !f.readDisabledContexts[contextName]
+}
+
+func (f *MCPFlags) set(enabled, allowWrite bool, readOnlyContexts, readDisabledContexts map[string]bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.enabled, f.allowWrite, f.readOnlyContexts = enabled, allowWrite, readOnlyContexts
+	f.enabled, f.allowWrite, f.readOnlyContexts, f.readDisabledContexts = enabled, allowWrite, readOnlyContexts, readDisabledContexts
 }
 
 // applyFromAppPrefs re-derives the flags from a raw AppPreferences payload —
@@ -63,22 +74,29 @@ func (f *MCPFlags) applyFromAppPrefs(raw json.RawMessage) {
 		} `json:"mcp"`
 	}
 	_ = json.Unmarshal(raw, &wrapper) // best-effort; zero value = disabled
-	f.set(wrapper.MCP.Enabled, wrapper.MCP.Enabled && wrapper.MCP.AllowWrite, parseReadOnlyContexts(raw))
+	readOnly, readDisabled := parseContextSets(raw)
+	f.set(wrapper.MCP.Enabled, wrapper.MCP.Enabled && wrapper.MCP.AllowWrite, readOnly, readDisabled)
 }
 
-// parseReadOnlyContexts pulls mcp.readOnlyContexts out of a raw AppPreferences
-// payload. Split out of applyFromAppPrefs so newStdioMCPFlags can reuse it
-// without also picking up the enabled/allowWrite fields, which stdio mode
-// sources from a launch flag instead (see newStdioMCPFlags).
-func parseReadOnlyContexts(raw json.RawMessage) map[string]bool {
+// parseContextSets pulls mcp.readOnlyContexts and mcp.readDisabledContexts
+// (each a []string of context names) out of a raw AppPreferences payload
+// into lookup sets. Split out of applyFromAppPrefs so newStdioMCPFlags can
+// reuse it without also picking up the enabled/allowWrite fields, which
+// stdio mode sources from a launch flag instead (see newStdioMCPFlags).
+func parseContextSets(raw json.RawMessage) (readOnly, readDisabled map[string]bool) {
 	var wrapper struct {
 		MCP struct {
-			ReadOnlyContexts []string `json:"readOnlyContexts"`
+			ReadOnlyContexts     []string `json:"readOnlyContexts"`
+			ReadDisabledContexts []string `json:"readDisabledContexts"`
 		} `json:"mcp"`
 	}
 	_ = json.Unmarshal(raw, &wrapper)
-	set := make(map[string]bool, len(wrapper.MCP.ReadOnlyContexts))
-	for _, c := range wrapper.MCP.ReadOnlyContexts {
+	return toSet(wrapper.MCP.ReadOnlyContexts), toSet(wrapper.MCP.ReadDisabledContexts)
+}
+
+func toSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, c := range names {
 		set[c] = true
 	}
 	return set
@@ -87,12 +105,14 @@ func parseReadOnlyContexts(raw json.RawMessage) map[string]bool {
 // newStdioMCPFlags builds the flags for `--mcp-stdio`: always enabled (the
 // process only exists because it was spawned as an MCP server), allowWrite
 // from the launch-time --mcp-allow-write flag (there's no running UI to
-// toggle it live), but readOnlyContexts still sourced from the persisted
-// preferences — a context pinned read-only stays read-only regardless of
-// which transport is talking to it.
+// toggle it live), but readOnlyContexts/readDisabledContexts still sourced
+// from the persisted preferences — a context pinned read-only or
+// read-disabled stays that way regardless of which transport is talking to
+// it.
 func newStdioMCPFlags(appPrefs json.RawMessage, allowWrite bool) *MCPFlags {
 	f := &MCPFlags{}
-	f.set(true, allowWrite, parseReadOnlyContexts(appPrefs))
+	readOnly, readDisabled := parseContextSets(appPrefs)
+	f.set(true, allowWrite, readOnly, readDisabled)
 	return f
 }
 

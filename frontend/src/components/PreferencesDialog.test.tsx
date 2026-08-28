@@ -39,7 +39,7 @@ function vantaProps(overrides: Partial<VantaSettings> = {}): VantaSettings {
 
 beforeEach(() => {
   localStorage.clear()
-  setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [] } })
+  setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] } })
   mcpTokenMock.mockReset().mockResolvedValue({ token: 'abcdef1234567890token' })
   contextsMock.mockReset().mockResolvedValue([])
   healthMock.mockReset().mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: 'test', authEnabled: true })

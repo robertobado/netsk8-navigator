@@ -4,8 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Bot, Check, Copy, Eye, EyeOff, Plus, RefreshCw, X } from 'lucide-react'
 import { api, type ContextInfo, regenerateMCPToken } from '@/lib/api'
 import { useAppPrefs, setAppPrefs } from '@/lib/preferences'
-import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
+import { Switch } from '@/components/Switch'
 
 export function MCPControls() {
   const t = useT()
@@ -63,18 +63,7 @@ export function MCPControls() {
 
   let allowWriteToggle: ReactNode
   if (mcp.allowWrite) {
-    allowWriteToggle = (
-      <button
-        type="button"
-        role="switch"
-        aria-checked={true}
-        aria-label={t('controls.mcpAllowWrite')}
-        onClick={disableWrite}
-        className="relative h-5 w-9 shrink-0 rounded-full bg-[color:var(--err)] transition-colors"
-      >
-        <span className="absolute top-0.5 left-[1.125rem] size-4 rounded-full bg-white shadow" />
-      </button>
-    )
+    allowWriteToggle = <Switch checked={true} onChange={disableWrite} label={t('controls.mcpAllowWrite')} activeClassName="bg-[color:var(--err)]" />
   } else if (confirmingWrite) {
     allowWriteToggle = (
       <div className="flex flex-col items-end gap-1.5">
@@ -93,18 +82,7 @@ export function MCPControls() {
       </div>
     )
   } else {
-    allowWriteToggle = (
-      <button
-        type="button"
-        role="switch"
-        aria-checked={false}
-        aria-label={t('controls.mcpAllowWrite')}
-        onClick={() => setConfirmingWrite(true)}
-        className="relative h-5 w-9 shrink-0 rounded-full bg-muted transition-colors"
-      >
-        <span className="absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow" />
-      </button>
-    )
+    allowWriteToggle = <Switch checked={false} onChange={() => setConfirmingWrite(true)} label={t('controls.mcpAllowWrite')} />
   }
 
   return (
@@ -113,16 +91,7 @@ export function MCPControls() {
         <span className="flex items-center gap-1.5 text-xs font-medium">
           <Bot className="size-3.5 text-[color:var(--brand)]" /> {t('controls.mcp')}
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={mcp.enabled}
-          aria-label={t('controls.mcp')}
-          onClick={toggleEnabled}
-          className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', mcp.enabled ? 'bg-[color:var(--brand)]' : 'bg-muted')}
-        >
-          <span className={cn('absolute top-0.5 size-4 rounded-full bg-white shadow transition-all', mcp.enabled ? 'left-[1.125rem]' : 'left-0.5')} />
-        </button>
+        <Switch checked={mcp.enabled} onChange={toggleEnabled} label={t('controls.mcp')} />
       </div>
 
       {mcp.enabled && (

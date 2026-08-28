@@ -24,7 +24,13 @@ export interface AppPreferences {
   // more sensitive gate on top: enabled alone only exposes read tools.
   // readOnlyContexts pins specific contexts (e.g. prod) read-only
   // regardless of allowWrite — the backend ANDs both gates together.
-  mcp: { enabled: boolean; allowWrite: boolean; readOnlyContexts: string[] }
+  // readDisabledContexts excludes specific contexts from MCP reads
+  // entirely, independent of the global enabled toggle — for a cluster an
+  // operator doesn't want an agent looking at at all, even read-only.
+  mcp: { enabled: boolean; allowWrite: boolean; readOnlyContexts: string[]; readDisabledContexts: string[] }
+  // Contexts starred in the kubeconfig manager / context switcher — purely
+  // a client-side convenience, never sent to the backend beyond this blob.
+  contexts: { favorites: string[] }
 }
 
 const DEFAULTS: AppPreferences = {
@@ -32,7 +38,8 @@ const DEFAULTS: AppPreferences = {
   metricsRefreshMs: 15_000,
   background: { enabled: false, effect: 'net', opacity: 0.6 },
   theme: 'dark', // the app predates light mode — keep existing users on dark by default
-  mcp: { enabled: false, allowWrite: false, readOnlyContexts: [] }, // off by default — opt-in
+  mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] }, // off by default — opt-in
+  contexts: { favorites: [] },
 }
 
 // Reflects the theme choice onto <html data-theme> so index.css can key off
@@ -57,14 +64,25 @@ function sanitizeBackground(raw: unknown): AppPreferences['background'] | undefi
   }
 }
 
+function sanitizeStringArray(raw: unknown, fallback: string[]): string[] {
+  return Array.isArray(raw) ? raw.filter((c): c is string => typeof c === 'string') : fallback
+}
+
 function sanitizeMcp(raw: unknown): AppPreferences['mcp'] | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
   const m = raw as Record<string, unknown>
   return {
     enabled: typeof m.enabled === 'boolean' ? m.enabled : DEFAULTS.mcp.enabled,
     allowWrite: typeof m.allowWrite === 'boolean' ? m.allowWrite : DEFAULTS.mcp.allowWrite,
-    readOnlyContexts: Array.isArray(m.readOnlyContexts) ? m.readOnlyContexts.filter((c): c is string => typeof c === 'string') : DEFAULTS.mcp.readOnlyContexts,
+    readOnlyContexts: sanitizeStringArray(m.readOnlyContexts, DEFAULTS.mcp.readOnlyContexts),
+    readDisabledContexts: sanitizeStringArray(m.readDisabledContexts, DEFAULTS.mcp.readDisabledContexts),
   }
+}
+
+function sanitizeContexts(raw: unknown): AppPreferences['contexts'] | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const c = raw as Record<string, unknown>
+  return { favorites: sanitizeStringArray(c.favorites, DEFAULTS.contexts.favorites) }
 }
 
 // Picks only the known, correctly-typed fields out of an arbitrary value before
@@ -82,14 +100,25 @@ function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
   if (background) out.background = background
   const mcp = sanitizeMcp(r.mcp)
   if (mcp) out.mcp = mcp
+  const contexts = sanitizeContexts(r.contexts)
+  if (contexts) out.contexts = contexts
   return out
+}
+
+function mergeDefaults(safe: Partial<AppPreferences>): AppPreferences {
+  return {
+    ...DEFAULTS,
+    ...safe,
+    background: { ...DEFAULTS.background, ...safe.background },
+    mcp: { ...DEFAULTS.mcp, ...safe.mcp },
+    contexts: { ...DEFAULTS.contexts, ...safe.contexts },
+  }
 }
 
 function load(): AppPreferences {
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}')
-    const safe = sanitizePrefs(raw)
-    return { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background }, mcp: { ...DEFAULTS.mcp, ...safe.mcp } }
+    return mergeDefaults(sanitizePrefs(raw))
   } catch {
     return DEFAULTS
   }
@@ -128,8 +157,7 @@ export function hydrateAppPrefs() {
     .then((r) => (r.ok ? r.json() : null))
     .then((remote) => {
       if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
-        const safe = sanitizePrefs(remote)
-        state = { ...DEFAULTS, ...safe, background: { ...DEFAULTS.background, ...safe.background }, mcp: { ...DEFAULTS.mcp, ...safe.mcp } }
+        state = mergeDefaults(sanitizePrefs(remote))
         localStorage.setItem(LS_KEY, JSON.stringify(state))
         emit()
       } else {

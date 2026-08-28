@@ -263,6 +263,7 @@ func (m *liveHelmManager) PodWatcherFor(string) (*kube.PodWatcher, error) {
 func (m *liveHelmManager) ExecInfoFor(string) (command, profile string, ok bool) {
 	return "", "", false
 }
+func (m *liveHelmManager) Reload() error { return nil }
 
 var _ clusterManager = (*liveHelmManager)(nil)
 

@@ -56,6 +56,17 @@ type crdGetArgs struct {
 	Name      string `json:"name" jsonschema:"resource name"`
 }
 
+// readBlockedFor is the error every context-targeted read tool returns when
+// this specific context has been disabled for MCP reads (independent of the
+// global /mcp enabled toggle — see MCPFlags.ReadAllowedFor). Mirrors
+// writeBlockedFor's role in mcp_tools_write.go.
+func (s *Server) readBlockedFor(contextName string) error {
+	if s.mcpFlags.ReadAllowedFor(contextName) {
+		return nil
+	}
+	return fmt.Errorf("read operations are disabled for context %q (disabled in netsk8-navigator's kubeconfig manager)", contextName)
+}
+
 // readOnly always sets IdempotentHint true alongside ReadOnlyHint: a read
 // is idempotent by definition (repeating it can't change anything), so
 // leaving IdempotentHint at its Go zero value (false) would read as a
@@ -89,6 +100,9 @@ func registerSimpleGetTool(srv *mcp.Server, s *Server, contexts []string, name, 
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[ctxArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, subpath), nil))
 	})
 }
@@ -103,6 +117,9 @@ func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[resourceKindArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		suffix := fmt.Sprintf("%s/%s/%s/%s", urlSegment, url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
 		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil))
 	})
@@ -120,6 +137,9 @@ func registerCRDGetTool(srv *mcp.Server, s *Server, contexts []string, name, des
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[crdGetArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdGetArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		suffix := fmt.Sprintf("crd/%s/%s/%s/%s/%s/%s",
 			url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource),
 			url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name), urlSuffix)
@@ -162,6 +182,9 @@ func registerListPodsTool(srv *mcp.Server, s *Server, contexts []string) {
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[namespaceScopedListArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args namespaceScopedListArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		path := withNamespaceQuery(contextPath(args.Context, "pods"), args.Namespace)
 		status, body := s.callREST(ctx, "GET", path, nil)
 		if status < 200 || status >= 300 {
@@ -178,6 +201,9 @@ func registerListResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[listResourcesArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args listResourcesArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		path := withNamespaceQuery(contextPath(args.Context, "resources/"+url.PathEscape(args.Resource)), args.Namespace)
 		status, body := s.callREST(ctx, "GET", path, nil)
 		if status < 200 || status >= 300 {
@@ -194,6 +220,9 @@ func registerListCRDResourcesTool(srv *mcp.Server, s *Server, contexts []string)
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[crdListArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdListArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		suffix := fmt.Sprintf("crd/%s/%s/%s", url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource))
 		path := withNamespaceQuery(contextPath(args.Context, suffix), args.Namespace)
 		status, body := s.callREST(ctx, "GET", path, nil)
@@ -211,6 +240,9 @@ func registerGetLogsTool(srv *mcp.Server, s *Server, contexts []string) {
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[getLogsArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args getLogsArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		logs, err := s.fetchBoundedPodLogs(ctx, args.Context, args.Namespace, args.Name, args.Container, args.TailLines)
 		if err != nil {
 			return nil, nil, err
@@ -226,6 +258,9 @@ func registerGetIssuesTool(srv *mcp.Server, s *Server, contexts []string) {
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[getIssuesArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args getIssuesArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		status, body := s.callREST(ctx, "GET", contextPath(args.Context, "issues"), nil)
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
@@ -257,6 +292,9 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[ctxArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args ctxArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.readBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
 		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, "crdkinds"), nil))
 	})
 	registerListCRDResourcesTool(srv, s, contexts)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
+	"github.com/robertobado/netsk8-navigator/backend/internal/kubeconfig"
 )
 
 // clusterManager is the subset of *kube.Manager the API layer depends on, kept
@@ -40,6 +41,7 @@ type clusterManager interface {
 	RESTMapperFor(contextName string) (apimeta.RESTMapper, error)
 	PodWatcherFor(contextName string) (*kube.PodWatcher, error)
 	ExecInfoFor(contextName string) (command, profile string, ok bool)
+	Reload() error
 }
 
 // Server wires the kube manager and preferences store into an http.Handler.
@@ -81,6 +83,20 @@ type Server struct {
 	// mcpFlags gates the /mcp endpoint (enabled) and its mutating tools
 	// (allowWrite) — see mcpflags.go and mcp.go.
 	mcpFlags *MCPFlags
+
+	// kcfg edits the user's real kubeconfig — nil when running in-cluster
+	// (no kubeconfig file to edit) or when internal/kubeconfig.NewEditor
+	// failed to even read the file. See kubeconfig.go.
+	kcfg *kubeconfig.Editor
+}
+
+// SetKubeconfigEditor installs the kubeconfig-editing backend for
+// /api/kubeconfig/*, mirroring SetMCPFlags — kept as a setter rather than a
+// NewServer parameter so every existing call site (real and test) keeps
+// compiling unchanged. Leave unset (nil) to keep /api/kubeconfig/* read-only
+// (501).
+func (s *Server) SetKubeconfigEditor(e *kubeconfig.Editor) {
+	s.kcfg = e
 }
 
 // NewServer wires a Server. corsOrigin is the one extra origin (besides the
@@ -119,6 +135,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/contexts/{ctx}/preferences", s.handlePutClusterPrefs)
 	mux.HandleFunc("GET /api/mcp/token", s.handleGetMCPToken)
 	mux.HandleFunc("POST /api/mcp/token/regenerate", s.handleRegenerateMCPToken)
+	mux.HandleFunc("GET /api/kubeconfig", s.handleKubeconfigView)
+	mux.HandleFunc("PUT /api/kubeconfig/current-context", s.handleKubeconfigSetCurrentContext)
+	mux.HandleFunc("PUT /api/kubeconfig/contexts/{name}", s.handleKubeconfigEditContext)
+	mux.HandleFunc("POST /api/kubeconfig/contexts", s.handleKubeconfigCreateContext)
+	mux.HandleFunc("DELETE /api/kubeconfig/contexts/{name}", s.handleKubeconfigDeleteContext)
+	mux.HandleFunc("GET /api/kubeconfig/contexts/{name}/ping", s.handleKubeconfigPingContext)
+	mux.HandleFunc("POST /api/kubeconfig/import/preview", s.handleKubeconfigImportPreview)
+	mux.HandleFunc("POST /api/kubeconfig/import/commit", s.handleKubeconfigImportCommit)
+	mux.HandleFunc("GET /api/kubeconfig/users/{name}/reveal", s.handleKubeconfigRevealSecret)
 	mux.HandleFunc("GET /api/contexts", s.handleContexts)
 	mux.HandleFunc("GET /api/contexts/{ctx}/namespaces", s.handleNamespaces)
 	mux.HandleFunc("GET /api/contexts/{ctx}/nodes", s.handleNodes)
@@ -196,11 +221,12 @@ func (s *Server) demoModeBlocked(w http.ResponseWriter) bool {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":      "ok",
-		"kubeconfig":  s.mgr.ConfigPath(),
-		"demo":        s.DemoMode,
-		"version":     s.Version,
-		"authEnabled": s.AuthEnabled,
+		"status":             "ok",
+		"kubeconfig":         s.mgr.ConfigPath(),
+		"demo":               s.DemoMode,
+		"version":            s.Version,
+		"authEnabled":        s.AuthEnabled,
+		"kubeconfigEditable": s.kcfg != nil,
 	})
 }
 

@@ -7,6 +7,7 @@ export interface Health {
   demo: boolean
   version: string
   authEnabled: boolean
+  kubeconfigEditable: boolean
 }
 
 export interface UpdateCheck {
@@ -22,6 +23,120 @@ export interface ContextInfo {
   namespace: string
   server: string
   current: boolean
+}
+
+// --- Kubeconfig manager --------------------------------------------------
+// CRUD over the user's real kubeconfig file — distinct from ContextInfo/
+// api.contexts() above, which is a read-only projection kube.Manager
+// already had. See backend/internal/kubeconfig/editor.go.
+
+export interface KubeconfigContextView {
+  name: string
+  cluster: string
+  user: string
+  namespace: string
+  locationOfOrigin: string
+  current: boolean
+}
+export interface KubeconfigClusterView {
+  name: string
+  server: string
+  locationOfOrigin: string
+  insecureSkipTLSVerify: boolean
+  hasCertificateAuthorityData: boolean
+  certificateAuthority?: string
+}
+export interface KubeconfigUserView {
+  name: string
+  locationOfOrigin: string
+  username?: string
+  hasPassword: boolean
+  hasToken: boolean
+  hasClientCertificateData: boolean
+  hasClientKeyData: boolean
+  execCommand?: string
+  execProfile?: string
+  authProvider?: string
+}
+export interface KubeconfigView {
+  currentContext: string
+  configPaths: string[]
+  contexts: KubeconfigContextView[]
+  clusters: KubeconfigClusterView[]
+  users: KubeconfigUserView[]
+}
+export interface ImportPreview {
+  addedContexts: string[]
+  addedClusters: string[]
+  addedUsers: string[]
+  conflictingContexts: string[]
+  conflictingClusters: string[]
+  conflictingUsers: string[]
+}
+export type RevealField = 'token' | 'password' | 'clientKeyData' | 'clientCertificateData'
+export interface PingResult {
+  reachable: boolean
+  latencyMs?: number
+  error?: string
+}
+
+export function kubeconfigView() {
+  return get<KubeconfigView>('/kubeconfig')
+}
+export async function setCurrentContext(name: string) {
+  const res = await fetch('/api/kubeconfig/current-context', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  await throwIfError(res)
+}
+export async function editKubeconfigContext(name: string, patch: { newName?: string; namespace?: string }) {
+  const res = await fetch(`/api/kubeconfig/contexts/${enc(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  await throwIfError(res)
+}
+export async function createKubeconfigContext(input: { name: string; cluster: string; user: string; namespace?: string }) {
+  const res = await fetch('/api/kubeconfig/contexts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  await throwIfError(res)
+}
+export async function deleteKubeconfigContext(name: string): Promise<{ orphanedCluster?: string; orphanedUser?: string }> {
+  const res = await fetch(`/api/kubeconfig/contexts/${enc(name)}`, { method: 'DELETE' })
+  await throwIfError(res)
+  return res.json()
+}
+export async function previewKubeconfigImport(yaml: string): Promise<ImportPreview> {
+  const res = await fetch('/api/kubeconfig/import/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yaml }),
+  })
+  await throwIfError(res)
+  return res.json()
+}
+export async function commitKubeconfigImport(yaml: string, overwrite: string[]) {
+  const res = await fetch('/api/kubeconfig/import/commit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yaml, overwrite }),
+  })
+  await throwIfError(res)
+}
+export async function revealKubeconfigSecret(user: string, field: RevealField): Promise<string> {
+  const res = await fetch(`/api/kubeconfig/users/${enc(user)}/reveal?field=${enc(field)}`)
+  await throwIfError(res)
+  const body = (await res.json()) as { value: string }
+  return body.value
+}
+export function pingContext(name: string) {
+  return get<PingResult>(`/kubeconfig/contexts/${enc(name)}/ping`)
 }
 
 export interface Overview {

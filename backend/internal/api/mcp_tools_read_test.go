@@ -110,6 +110,51 @@ func TestTruncateIssues_InvalidSinceLeavesItemsUnchanged(t *testing.T) {
 // get_overview) and registerReadTools' list_contexts/list_resources closures
 // are only exercised by an actual tool call — registration alone (covered by
 // every other MCP test's ListTools) doesn't run their bodies.
+func TestMCPHandler_ReadToolBlockedForDisabledContext(t *testing.T) {
+	s := newTestServer(t, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod"},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+	})
+	s.mcpFlags.set(true, false, nil, map[string]bool{"test": true}) // enabled, but "test" disabled for reads
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "list_pods",
+		Arguments: map[string]any{"context": "test"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected list_pods to be blocked for a context disabled for MCP reads")
+	}
+	text, _ := result.Content[0].(*mcp.TextContent)
+	if text == nil || !strings.Contains(text.Text, "read operations are disabled") {
+		t.Errorf("error message = %+v, want it to mention reads are disabled", result.Content)
+	}
+}
+
+func TestMCPHandler_ReadToolAllowedForOtherContexts(t *testing.T) {
+	s := newTestServer(t, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod"},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+	})
+	// Some other context is read-disabled — "test" itself must be unaffected.
+	s.mcpFlags.set(true, false, nil, map[string]bool{"some-other-context": true})
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "list_pods",
+		Arguments: map[string]any{"context": "test"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("list_pods returned a tool error: %+v", result.Content)
+	}
+}
+
 func TestMCPHandler_CallSimpleGetTools(t *testing.T) {
 	s := newTestServer(t, &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod"},

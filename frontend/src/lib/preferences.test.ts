@@ -77,6 +77,40 @@ describe('hydrateAppPrefs', () => {
     expect((result.current as unknown as Record<string, unknown>).evilField).toBeUndefined()
   })
 
+  it('defaults mcp.readDisabledContexts and contexts.favorites to empty arrays', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
+    const { useAppPrefs } = await import('./preferences')
+    const { result } = renderHook(() => useAppPrefs())
+    expect(result.current.mcp.readDisabledContexts).toEqual([])
+    expect(result.current.contexts.favorites).toEqual([])
+  })
+
+  it('adopts mcp.readDisabledContexts and contexts.favorites from the server response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          mcp: { enabled: true, allowWrite: false, readOnlyContexts: [], readDisabledContexts: ['prod'] },
+          contexts: { favorites: ['staging'] },
+        }),
+      }),
+    )
+    const { hydrateAppPrefs, useAppPrefs } = await import('./preferences')
+    const { result } = renderHook(() => useAppPrefs())
+    hydrateAppPrefs()
+    await waitFor(() => expect(result.current.mcp.readDisabledContexts).toEqual(['prod']))
+    expect(result.current.contexts.favorites).toEqual(['staging'])
+  })
+
+  it('discards a tampered contexts.favorites (non-string entries) instead of trusting it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ contexts: { favorites: [1, 2, 'valid'] } }) }))
+    const { hydrateAppPrefs, useAppPrefs } = await import('./preferences')
+    const { result } = renderHook(() => useAppPrefs())
+    hydrateAppPrefs()
+    await waitFor(() => expect(result.current.contexts.favorites).toEqual(['valid']))
+  })
+
   it('pushes local defaults to the server when it has no saved prefs yet', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
     vi.stubGlobal('fetch', fetchMock)

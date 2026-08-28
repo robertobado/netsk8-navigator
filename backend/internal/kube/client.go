@@ -35,6 +35,7 @@ type Manager struct {
 	mu            sync.RWMutex
 	rawConfig     clientcmdapi.Config
 	configPath    string
+	inCluster     bool
 	clients       map[string]*kubernetes.Clientset
 	restConfigs   map[string]*rest.Config
 	dynamics      map[string]dynamic.Interface
@@ -105,6 +106,7 @@ func newInClusterManager(cfg *rest.Config) (*Manager, error) {
 	}
 
 	return &Manager{
+		inCluster: true,
 		rawConfig: clientcmdapi.Config{
 			CurrentContext: inClusterContext,
 			Contexts: map[string]*clientcmdapi.Context{
@@ -256,6 +258,40 @@ func (m *Manager) RESTMapperFor(contextName string) (meta.RESTMapper, error) {
 
 // ConfigPath exposes the resolved kubeconfig path (handy for the UI header).
 func (m *Manager) ConfigPath() string { return m.configPath }
+
+// InCluster reports whether this Manager is running off the pod's own
+// service-account credentials rather than a real kubeconfig file — there's
+// nothing for internal/kubeconfig.Editor to edit in that mode.
+func (m *Manager) InCluster() bool { return m.inCluster }
+
+// Reload re-reads the kubeconfig from disk and clears every cached
+// client/mapper/watcher so the next lookup rebuilds from the fresh config —
+// called after internal/kubeconfig.Editor writes a change, so contexts
+// added/renamed/removed through the kubeconfig manager are visible
+// immediately without an app restart. A no-op in in-cluster mode (nothing
+// on disk to re-read). Already-open clients/watchers held directly by
+// in-flight requests are unaffected; only subsequent lookups see the
+// reload.
+func (m *Manager) Reload() error {
+	if m.inCluster {
+		return nil
+	}
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	raw, err := rules.Load()
+	if err != nil {
+		return fmt.Errorf("reloading kubeconfig: %w", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.rawConfig = *raw
+	m.clients = make(map[string]*kubernetes.Clientset)
+	m.restConfigs = make(map[string]*rest.Config)
+	m.dynamics = make(map[string]dynamic.Interface)
+	m.mappers = make(map[string]meta.RESTMapper)
+	m.watchers = make(map[string]*PodWatcher)
+	m.apiextClients = make(map[string]apiextensionsclientset.Interface)
+	return nil
+}
 
 // ExecInfoFor returns the exec-credential plugin command and a best-effort
 // profile name configured for contextName, if its AuthInfo uses one (aws eks

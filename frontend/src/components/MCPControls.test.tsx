@@ -39,7 +39,7 @@ beforeEach(() => {
   // localStorage.clear() alone doesn't reset (it only affects what a future
   // load() would read) — reset it explicitly so each test starts from a
   // known baseline regardless of what an earlier test in this file left it at.
-  setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [] } })
+  setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] } })
   writeTextMock.mockClear()
   mcpTokenMock.mockReset().mockResolvedValue({ token: 'abcdef1234567890token' })
   contextsMock.mockReset().mockResolvedValue([])
@@ -67,7 +67,7 @@ describe('MCPControls', () => {
 
     await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
 
-    expect(prefs().mcp).toEqual({ enabled: true, allowWrite: false, readOnlyContexts: [] })
+    expect(prefs().mcp).toEqual({ enabled: true, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] })
     expect(screen.getByText(`${window.location.origin}/mcp`)).toBeInTheDocument()
     expect(screen.getByText('Permitir escrita')).toBeInTheDocument()
     await waitFor(() => expect(mcpTokenMock).toHaveBeenCalled())

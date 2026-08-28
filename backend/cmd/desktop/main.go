@@ -27,6 +27,7 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/api"
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 	"github.com/robertobado/netsk8-navigator/backend/internal/kube"
+	"github.com/robertobado/netsk8-navigator/backend/internal/kubeconfig"
 	"github.com/robertobado/netsk8-navigator/backend/internal/mcpinstall"
 	"github.com/robertobado/netsk8-navigator/backend/internal/web"
 )
@@ -114,6 +115,21 @@ func mustInit() (*kube.Manager, *config.Store) {
 	return mgr, cfg
 }
 
+// wireKubeconfigEditor mirrors backend/main.go's own copy — duplicated
+// rather than imported for the same reason mustInit is (see its comment):
+// this binary's package main can't import the CLI's unexported package main.
+func wireKubeconfigEditor(srv *api.Server, mgr *kube.Manager) {
+	if mgr.InCluster() {
+		return
+	}
+	editor, err := kubeconfig.NewEditor()
+	if err != nil {
+		log.Printf("kubeconfig editing unavailable: %v", err)
+		return
+	}
+	srv.SetKubeconfigEditor(editor)
+}
+
 // buildMux mirrors backend/main.go's buildMux. AuthEnabled is left at its
 // zero value (false) — this binary has no AUTH_PASSWORD/wrapWithAuth
 // equivalent at all, so that's simply accurate here.
@@ -122,6 +138,7 @@ func buildMux() http.Handler {
 	srv := api.NewServer(mgr, cfg, "")
 	srv.Version = version
 	srv.StartUpdateChecker(version) // see backend/main.go's buildMux — the desktop app never called this, so its update bubble never had anything to show
+	wireKubeconfigEditor(srv, mgr)
 	mux := http.NewServeMux()
 	mux.Handle("/api/", srv.Routes())
 	mux.Handle("/mcp", srv.MCPHandler()) // see backend/main.go's buildMux for the rationale

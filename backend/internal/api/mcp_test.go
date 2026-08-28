@@ -65,7 +65,7 @@ func mcpConnect(t *testing.T, s *Server) *mcp.ClientSession {
 // by most tests here; TestMCPHandler_PreferencesRoundTrip below additionally
 // exercises the real PUT /api/preferences -> flag-update wiring end to end.
 func enableMCP(s *Server, allowWrite bool) {
-	s.mcpFlags.set(true, allowWrite, nil)
+	s.mcpFlags.set(true, allowWrite, nil, nil)
 }
 
 func TestMCPHandler_DisabledReturns404(t *testing.T) {
@@ -435,7 +435,7 @@ func TestMCPHandler_WriteToolBlockedForReadOnlyContext(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
 		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
 	})
-	s.mcpFlags.set(true, true, map[string]bool{"test": true}) // globally allowed, but "test" pinned read-only
+	s.mcpFlags.set(true, true, map[string]bool{"test": true}, nil) // globally allowed, but "test" pinned read-only
 	session := mcpConnect(t, s)
 
 	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
