@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Eye, EyeOff, KeyRound, Pencil, Plug, Star, Trash2, Upload, X } from 'lucide-react'
 import {
@@ -12,6 +12,7 @@ import {
   revealKubeconfigSecret,
   setCurrentContext,
   type ImportPreview,
+  type KubeconfigContextView,
   type KubeconfigUserView,
   type PingResult,
   type RevealField,
@@ -165,166 +166,35 @@ export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectCont
                         </tr>
                       </thead>
                       <tbody>
-                        {view.contexts.map((c) => {
-                          const ping = pings[c.name]
-                          const isEditing = editing === c.name
-                          return (
-                            <tr key={c.name} className="border-b border-border/50 align-top last:border-0">
-                              <td className="px-3 py-2">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleFavorite(c.name)}
-                                  aria-label={
-                                    contextPrefs.favorites.includes(c.name)
-                                      ? t('kubeconfig.unfavorite', 'Remove favorite')
-                                      : t('kubeconfig.favorite', 'Favorite')
-                                  }
-                                  className={cn(
-                                    'transition-colors',
-                                    contextPrefs.favorites.includes(c.name) ? 'text-[color:var(--warn)]' : 'text-muted-foreground hover:text-foreground',
-                                  )}
-                                >
-                                  <Star className="size-4" fill={contextPrefs.favorites.includes(c.name) ? 'currentColor' : 'none'} />
-                                </button>
-                              </td>
-                              <td className="px-3 py-2">
-                                {isEditing ? (
-                                  <input
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full min-w-32 rounded border bg-background/60 px-1.5 py-0.5 text-xs"
-                                  />
-                                ) : (
-                                  <span className="font-medium">
-                                    {shortContext(c.name)}
-                                    {c.current && (
-                                      <span className="ml-1.5 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{t('current')}</span>
-                                    )}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-muted-foreground">{c.cluster}</td>
-                              <td className="px-3 py-2 text-muted-foreground">{c.user}</td>
-                              <td className="px-3 py-2">
-                                {isEditing ? (
-                                  <input
-                                    value={editNamespace}
-                                    onChange={(e) => setEditNamespace(e.target.value)}
-                                    className="w-full min-w-24 rounded border bg-background/60 px-1.5 py-0.5 text-xs"
-                                  />
-                                ) : (
-                                  <span className="text-muted-foreground">{c.namespace}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <Switch
-                                  checked={!mcp.readDisabledContexts.includes(c.name)}
-                                  onChange={() => toggleReadDisabled(c.name)}
-                                  label={`MCP read — ${c.name}`}
-                                  disabled={!mcp.enabled}
-                                />
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <Switch
-                                  checked={!mcp.readOnlyContexts.includes(c.name)}
-                                  onChange={() => toggleWriteDisabled(c.name)}
-                                  label={`MCP write — ${c.name}`}
-                                  disabled={!mcp.allowWrite}
-                                  activeClassName="bg-[color:var(--err)]"
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="flex items-center justify-end gap-1">
-                                  {isEditing ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => saveEdit(c.name)}
-                                        className="rounded p-1 text-[color:var(--ok)] hover:bg-accent"
-                                        aria-label={t('Save')}
-                                      >
-                                        <Check className="size-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditing(null)}
-                                        className="rounded p-1 text-muted-foreground hover:bg-accent"
-                                        aria-label={t('Cancel')}
-                                      >
-                                        <X className="size-3.5" />
-                                      </button>
-                                    </>
-                                  ) : confirmingDelete === c.name ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => doDelete(c.name)}
-                                        className="rounded bg-[color:var(--err)]/90 px-1.5 py-0.5 text-[11px] text-white"
-                                      >
-                                        {t('Confirm')}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmingDelete(null)}
-                                        className="text-[11px] text-muted-foreground hover:text-foreground"
-                                      >
-                                        {t('Cancel')}
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      {ping === 'loading' ? (
-                                        <span
-                                          className="size-2 shrink-0 animate-pulse rounded-full bg-muted-foreground"
-                                          title={t('kubeconfig.pinging', 'Testing…')}
-                                        />
-                                      ) : ping ? (
-                                        <span
-                                          className={cn('size-2 shrink-0 rounded-full', ping.reachable ? 'bg-[color:var(--ok)]' : 'bg-[color:var(--err)]')}
-                                          title={ping.reachable ? `${ping.latencyMs}ms` : ping.error}
-                                        />
-                                      ) : null}
-                                      <button
-                                        type="button"
-                                        onClick={() => doPing(c.name)}
-                                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                                        title={t('kubeconfig.testConnection', 'Test connection')}
-                                      >
-                                        <Plug className="size-3.5" />
-                                      </button>
-                                      {!c.current && (
-                                        <button
-                                          type="button"
-                                          onClick={() => run(() => setCurrentContext(c.name))}
-                                          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                                          title={t('kubeconfig.setCurrent', 'Set as current context')}
-                                        >
-                                          <Check className="size-3.5" />
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => startEdit(c.name, c.namespace)}
-                                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                                        title={t('Edit')}
-                                      >
-                                        <Pencil className="size-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmingDelete(c.name)}
-                                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-[color:var(--err)]"
-                                        title={t('Delete')}
-                                      >
-                                        <Trash2 className="size-3.5" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
+                        {view.contexts.map((c) => (
+                          <ContextRow
+                            key={c.name}
+                            c={c}
+                            isEditing={editing === c.name}
+                            editName={editName}
+                            onEditNameChange={setEditName}
+                            editNamespace={editNamespace}
+                            onEditNamespaceChange={setEditNamespace}
+                            favorited={contextPrefs.favorites.includes(c.name)}
+                            onToggleFavorite={() => toggleFavorite(c.name)}
+                            readChecked={!mcp.readDisabledContexts.includes(c.name)}
+                            readDisabled={!mcp.enabled}
+                            onToggleRead={() => toggleReadDisabled(c.name)}
+                            writeChecked={!mcp.readOnlyContexts.includes(c.name)}
+                            writeDisabled={!mcp.allowWrite}
+                            onToggleWrite={() => toggleWriteDisabled(c.name)}
+                            confirmingDelete={confirmingDelete === c.name}
+                            ping={pings[c.name]}
+                            onStartEdit={() => startEdit(c.name, c.namespace)}
+                            onSaveEdit={() => saveEdit(c.name)}
+                            onCancelEdit={() => setEditing(null)}
+                            onRequestDelete={() => setConfirmingDelete(c.name)}
+                            onConfirmDelete={() => doDelete(c.name)}
+                            onCancelDelete={() => setConfirmingDelete(null)}
+                            onPing={() => doPing(c.name)}
+                            onSetCurrent={() => run(() => setCurrentContext(c.name))}
+                          />
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -341,6 +211,241 @@ export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectCont
         </div>
       </div>
     </>
+  )
+}
+
+// ContextRow and RowActions are split out of the table body's .map() (rather
+// than inlined, like every other row-shaped list in this file) specifically
+// because the row's per-state action buttons pushed the enclosing dialog
+// component's own cognitive complexity well past the lint limit — the same
+// reasoning behind every registerXTool split in mcp_tools_read.go.
+function ContextRow({
+  c,
+  isEditing,
+  editName,
+  onEditNameChange,
+  editNamespace,
+  onEditNamespaceChange,
+  favorited,
+  onToggleFavorite,
+  readChecked,
+  readDisabled,
+  onToggleRead,
+  writeChecked,
+  writeDisabled,
+  onToggleWrite,
+  confirmingDelete,
+  ping,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+  onPing,
+  onSetCurrent,
+}: Readonly<{
+  c: KubeconfigContextView
+  isEditing: boolean
+  editName: string
+  onEditNameChange: (v: string) => void
+  editNamespace: string
+  onEditNamespaceChange: (v: string) => void
+  favorited: boolean
+  onToggleFavorite: () => void
+  readChecked: boolean
+  readDisabled: boolean
+  onToggleRead: () => void
+  writeChecked: boolean
+  writeDisabled: boolean
+  onToggleWrite: () => void
+  confirmingDelete: boolean
+  ping: PingResult | 'loading' | undefined
+  onStartEdit: () => void
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+  onRequestDelete: () => void
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+  onPing: () => void
+  onSetCurrent: () => void
+}>) {
+  const t = useT()
+  return (
+    <tr className="border-b border-border/50 align-top last:border-0">
+      <td className="px-3 py-2">
+        <button
+          type="button"
+          onClick={onToggleFavorite}
+          aria-label={favorited ? t('kubeconfig.unfavorite', 'Remove favorite') : t('kubeconfig.favorite', 'Favorite')}
+          className={cn('transition-colors', favorited ? 'text-[color:var(--warn)]' : 'text-muted-foreground hover:text-foreground')}
+        >
+          <Star className="size-4" fill={favorited ? 'currentColor' : 'none'} />
+        </button>
+      </td>
+      <td className="px-3 py-2">
+        {isEditing ? (
+          <input
+            value={editName}
+            onChange={(e) => onEditNameChange(e.target.value)}
+            className="w-full min-w-32 rounded border bg-background/60 px-1.5 py-0.5 text-xs"
+          />
+        ) : (
+          <span className="font-medium">
+            {shortContext(c.name)}
+            {c.current && <span className="ml-1.5 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{t('current')}</span>}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-muted-foreground">{c.cluster}</td>
+      <td className="px-3 py-2 text-muted-foreground">{c.user}</td>
+      <td className="px-3 py-2">
+        {isEditing ? (
+          <input
+            value={editNamespace}
+            onChange={(e) => onEditNamespaceChange(e.target.value)}
+            className="w-full min-w-24 rounded border bg-background/60 px-1.5 py-0.5 text-xs"
+          />
+        ) : (
+          <span className="text-muted-foreground">{c.namespace}</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-center">
+        <Switch checked={readChecked} onChange={onToggleRead} label={`MCP read — ${c.name}`} disabled={readDisabled} />
+      </td>
+      <td className="px-3 py-2 text-center">
+        <Switch
+          checked={writeChecked}
+          onChange={onToggleWrite}
+          label={`MCP write — ${c.name}`}
+          disabled={writeDisabled}
+          activeClassName="bg-[color:var(--err)]"
+        />
+      </td>
+      <td className="px-3 py-2">
+        <RowActions
+          current={c.current}
+          isEditing={isEditing}
+          confirmingDelete={confirmingDelete}
+          ping={ping}
+          onSaveEdit={onSaveEdit}
+          onCancelEdit={onCancelEdit}
+          onConfirmDelete={onConfirmDelete}
+          onCancelDelete={onCancelDelete}
+          onPing={onPing}
+          onSetCurrent={onSetCurrent}
+          onStartEdit={onStartEdit}
+          onRequestDelete={onRequestDelete}
+        />
+      </td>
+    </tr>
+  )
+}
+
+// Each of the three states below (editing / confirming delete / normal) is
+// returned early rather than nested in a ternary chain — the ping indicator
+// within the "normal" state does the same (if/else into a variable) instead
+// of a second nested ternary, per the same lint rule.
+function RowActions({
+  current,
+  isEditing,
+  confirmingDelete,
+  ping,
+  onSaveEdit,
+  onCancelEdit,
+  onConfirmDelete,
+  onCancelDelete,
+  onPing,
+  onSetCurrent,
+  onStartEdit,
+  onRequestDelete,
+}: Readonly<{
+  current: boolean
+  isEditing: boolean
+  confirmingDelete: boolean
+  ping: PingResult | 'loading' | undefined
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+  onPing: () => void
+  onSetCurrent: () => void
+  onStartEdit: () => void
+  onRequestDelete: () => void
+}>) {
+  const t = useT()
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <button type="button" onClick={onSaveEdit} className="rounded p-1 text-[color:var(--ok)] hover:bg-accent" aria-label={t('Save')}>
+          <Check className="size-3.5" />
+        </button>
+        <button type="button" onClick={onCancelEdit} className="rounded p-1 text-muted-foreground hover:bg-accent" aria-label={t('Cancel')}>
+          <X className="size-3.5" />
+        </button>
+      </div>
+    )
+  }
+
+  if (confirmingDelete) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <button type="button" onClick={onConfirmDelete} className="rounded bg-[color:var(--err)]/90 px-1.5 py-0.5 text-[11px] text-white">
+          {t('Confirm')}
+        </button>
+        <button type="button" onClick={onCancelDelete} className="text-[11px] text-muted-foreground hover:text-foreground">
+          {t('Cancel')}
+        </button>
+      </div>
+    )
+  }
+
+  let pingIndicator: ReactNode = null
+  if (ping === 'loading') {
+    pingIndicator = <span className="size-2 shrink-0 animate-pulse rounded-full bg-muted-foreground" title={t('kubeconfig.pinging', 'Testing…')} />
+  } else if (ping) {
+    pingIndicator = (
+      <span
+        className={cn('size-2 shrink-0 rounded-full', ping.reachable ? 'bg-[color:var(--ok)]' : 'bg-[color:var(--err)]')}
+        title={ping.reachable ? `${ping.latencyMs}ms` : ping.error}
+      />
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {pingIndicator}
+      <button
+        type="button"
+        onClick={onPing}
+        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        title={t('kubeconfig.testConnection', 'Test connection')}
+      >
+        <Plug className="size-3.5" />
+      </button>
+      {!current && (
+        <button
+          type="button"
+          onClick={onSetCurrent}
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={t('kubeconfig.setCurrent', 'Set as current context')}
+        >
+          <Check className="size-3.5" />
+        </button>
+      )}
+      <button type="button" onClick={onStartEdit} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title={t('Edit')}>
+        <Pencil className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onRequestDelete}
+        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-[color:var(--err)]"
+        title={t('Delete')}
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+    </div>
   )
 }
 

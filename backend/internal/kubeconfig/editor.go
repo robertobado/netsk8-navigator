@@ -476,24 +476,32 @@ func (e *Editor) CommitImport(raw []byte, overwrite []string) error {
 		allow[n] = true
 	}
 	return e.apply(func(cfg *clientcmdapi.Config) error {
-		for name, c := range incoming.Contexts {
-			if _, exists := cfg.Contexts[name]; exists && !allow[name] {
-				continue
-			}
-			cfg.Contexts[name] = c
-		}
-		for name, cl := range incoming.Clusters {
-			if _, exists := cfg.Clusters[name]; exists && !allow[name] {
-				continue
-			}
-			cfg.Clusters[name] = cl
-		}
-		for name, ai := range incoming.AuthInfos {
-			if _, exists := cfg.AuthInfos[name]; exists && !allow[name] {
-				continue
-			}
-			cfg.AuthInfos[name] = ai
-		}
+		mergeImport(cfg, incoming, allow)
 		return nil
 	})
+}
+
+// mergeImport is split out of CommitImport's mutate closure — inlined, its
+// three loops pushed CommitImport's own cognitive complexity over the lint
+// limit, the same reasoning behind every registerXTool split in
+// internal/api/mcp_tools_read.go.
+func mergeImport(cfg, incoming *clientcmdapi.Config, allow map[string]bool) {
+	for name, c := range incoming.Contexts {
+		if _, exists := cfg.Contexts[name]; exists && !allow[name] {
+			continue
+		}
+		cfg.Contexts[name] = c
+	}
+	for name, cl := range incoming.Clusters {
+		if _, exists := cfg.Clusters[name]; exists && !allow[name] {
+			continue
+		}
+		cfg.Clusters[name] = cl
+	}
+	for name, ai := range incoming.AuthInfos {
+		if _, exists := cfg.AuthInfos[name]; exists && !allow[name] {
+			continue
+		}
+		cfg.AuthInfos[name] = ai
+	}
 }
