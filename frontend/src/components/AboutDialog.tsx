@@ -15,7 +15,7 @@ interface Props {
 // Same dialog shape as PreferencesDialog (backdrop/centering-wrapper/panel,
 // Escape-to-close, z-[90]) — opened from the version badge next to the
 // sidebar logo, and (desktop app only) from the native "About" menu item via
-// the show-about Wails event App.tsx listens for.
+// the show-about SSE event App.tsx listens for on /api/app-events.
 export function AboutDialog({ open, onClose, version, update }: Readonly<Props>) {
   const t = useT()
 
@@ -72,7 +72,7 @@ export function AboutDialog({ open, onClose, version, update }: Readonly<Props>)
                   // See openExternal's doc comment — target="_blank" alone
                   // does nothing in the desktop app.
                   e.preventDefault()
-                  openExternal(update.url ?? 'https://github.com/robertobado/netsk8-navigator/releases/latest')
+                  void openExternal(update.url ?? 'https://github.com/robertobado/netsk8-navigator/releases/latest')
                 }}
               >
                 {t('update.available')}
@@ -90,7 +90,7 @@ export function AboutDialog({ open, onClose, version, update }: Readonly<Props>)
               className="inline-flex items-center gap-1 text-xs text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
               onClick={(e) => {
                 e.preventDefault()
-                openExternal('https://github.com/robertobado/netsk8-navigator')
+                void openExternal('https://github.com/robertobado/netsk8-navigator')
               }}
             >
               {t('about.viewOnGithub')}

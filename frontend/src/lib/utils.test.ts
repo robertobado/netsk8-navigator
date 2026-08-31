@@ -50,23 +50,39 @@ describe('openExternal', () => {
     vi.unstubAllGlobals()
   })
 
-  it('calls window.runtime.BrowserOpenURL when the Wails bridge is present, not window.open', () => {
-    const browserOpenURL = vi.fn()
+  it('POSTs to /api/open-external and does not fall back to window.open when that succeeds (desktop build)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
     const windowOpen = vi.fn()
-    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+    vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('open', windowOpen)
 
-    openExternal('https://example.com')
+    await openExternal('https://example.com')
 
-    expect(browserOpenURL).toHaveBeenCalledWith('https://example.com')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/open-external',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ url: 'https://example.com' }) }),
+    )
     expect(windowOpen).not.toHaveBeenCalled()
   })
 
-  it('falls back to window.open when there is no Wails bridge (plain browser build)', () => {
+  it('falls back to window.open when /api/open-external 501s (plain browser build)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 501 })
     const windowOpen = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('open', windowOpen)
 
-    openExternal('https://example.com')
+    await openExternal('https://example.com')
+
+    expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+  })
+
+  it('falls back to window.open when the fetch itself throws (no backend reachable)', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('network error'))
+    const windowOpen = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('open', windowOpen)
+
+    await openExternal('https://example.com')
 
     expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
   })

@@ -181,7 +181,7 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                     // See openExternal's doc comment — target="_blank" alone
                     // does nothing in the desktop app.
                     e.preventDefault()
-                    openExternal(`https://${h}`)
+                    void openExternal(`https://${h}`)
                   }}
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-sm text-[color:var(--brand)] underline decoration-dotted underline-offset-2">

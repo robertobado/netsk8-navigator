@@ -369,19 +369,23 @@ describe('DetailBody — hosts', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
-  // target="_blank" alone does nothing in the Wails desktop app (see
-  // openExternal's doc comment in lib/utils.ts) — the click must go through
-  // window.runtime.BrowserOpenURL when that bridge is present.
-  it('opens a non-wildcard host via window.runtime.BrowserOpenURL when the Wails bridge is present', () => {
-    const browserOpenURL = vi.fn()
-    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+  // target="_blank" alone does nothing in the Wails desktop app, and that
+  // app's window never has Wails' own JS bridge either (see openExternal's
+  // doc comment in lib/utils.ts) — the click goes through
+  // POST /api/open-external instead.
+  it('opens a non-wildcard host via POST /api/open-external', () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
     const d = detail([])
     d.hosts = ['app.example.com']
     render(<DetailBody d={d} ctx="c" kind="ingress" namespace="prod" name="web" />)
 
     fireEvent.click(screen.getByRole('link', { name: /app.example.com/ }))
 
-    expect(browserOpenURL).toHaveBeenCalledWith('https://app.example.com')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/open-external',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ url: 'https://app.example.com' }) }),
+    )
   })
 })
 

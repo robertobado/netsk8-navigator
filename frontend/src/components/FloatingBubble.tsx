@@ -128,7 +128,7 @@ export function FloatingBubble({ message, href }: Readonly<{ message: string; hr
           // See openExternal's doc comment — target="_blank" alone does
           // nothing in the desktop app.
           e.preventDefault()
-          openExternal(href)
+          void openExternal(href)
         }}
       >
         <img src={balloonImg} alt="" width={BALLOON_WIDTH} height={BALLOON_HEIGHT} className="drop-shadow-xl transition-transform group-hover:scale-110" />

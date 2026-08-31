@@ -88,6 +88,15 @@ type Server struct {
 	// (no kubeconfig file to edit) or when internal/kubeconfig.NewEditor
 	// failed to even read the file. See kubeconfig.go.
 	kcfg *kubeconfig.Editor
+
+	// appEv fans out native-code signals (e.g. the desktop app's "About"
+	// menu item) to the frontend over SSE, standing in for Wails' JS bridge,
+	// which this app never has present. See appevents.go.
+	appEv appEvents
+
+	// opener performs SetExternalOpener's native "open in the real browser"
+	// call — nil in the plain server/browser binary. See externalopen.go.
+	opener func(url string)
 }
 
 // SetKubeconfigEditor installs the kubeconfig-editing backend for
@@ -135,6 +144,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/contexts/{ctx}/preferences", s.handlePutClusterPrefs)
 	mux.HandleFunc("GET /api/mcp/token", s.handleGetMCPToken)
 	mux.HandleFunc("POST /api/mcp/token/regenerate", s.handleRegenerateMCPToken)
+	mux.HandleFunc("GET /api/app-events", s.handleAppEvents)
+	mux.HandleFunc("POST /api/open-external", s.handleOpenExternal)
 	mux.HandleFunc("GET /api/kubeconfig", s.handleKubeconfigView)
 	mux.HandleFunc("PUT /api/kubeconfig/current-context", s.handleKubeconfigSetCurrentContext)
 	mux.HandleFunc("PUT /api/kubeconfig/contexts/{name}", s.handleKubeconfigEditContext)

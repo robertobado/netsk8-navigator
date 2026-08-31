@@ -132,8 +132,11 @@ func wireKubeconfigEditor(srv *api.Server, mgr *kube.Manager) {
 
 // buildMux mirrors backend/main.go's buildMux. AuthEnabled is left at its
 // zero value (false) — this binary has no AUTH_PASSWORD/wrapWithAuth
-// equivalent at all, so that's simply accurate here.
-func buildMux() http.Handler {
+// equivalent at all, so that's simply accurate here. Returns srv alongside
+// the mux so main() can wire desktop-only hooks onto it (the About-menu
+// event broadcaster, the native external-URL opener) that backend/main.go
+// has no equivalent of.
+func buildMux() (http.Handler, *api.Server) {
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, "")
 	srv.Version = version
@@ -147,7 +150,7 @@ func buildMux() http.Handler {
 	} else {
 		log.Fatal("no embedded frontend build — run `pnpm build` in frontend/ first")
 	}
-	return mux
+	return mux, srv
 }
 
 // startServer serves mux over a real TCP socket on 127.0.0.1, exactly like
@@ -219,20 +222,23 @@ func main() {
 	kube.InstallStderrTap() // see internal/kube/execstderr.go — enriches exec-credential failures surfaced over /mcp and /api
 	log.Printf("netsk8-navigator %s", version)
 	fixPathForGUILaunch()
-	addr := startServer(buildMux())
+	mux, srv := buildMux()
+	addr := startServer(mux)
 	url := fmt.Sprintf("http://%s/", addr)
 
-	app := NewApp()
+	app := NewApp(srv)
 	appMenu := menu.NewMenu()
 	fileMenu := appMenu.AddSubmenu("File")
-	// The window has no direct Go-side handle the frontend can query, and this
-	// app has no other Go->JS bridge (see app.go's doc comment) — so this is
-	// the first one, deliberately kept to this single fire-and-forget event
-	// rather than growing into a general-purpose IPC channel. The frontend
-	// listens via Wails' auto-injected window.runtime.EventsOn, guarded so it
-	// no-ops in the plain browser build (see App.tsx).
+	// Wails' JS bridge (window.wails/window.runtime, which runtime.EventsEmit
+	// would normally rely on) is never present in this window — see
+	// bootstrapRedirect's comment below. So instead of an Events*/JS round
+	// trip, this is a same-process Go call straight into srv, which fans it
+	// out to the frontend over its own SSE connection (appevents.go). The
+	// frontend listens via a plain EventSource on /api/app-events, guarded
+	// so it's inert in the plain browser build (nothing ever broadcasts on
+	// that route there — see App.tsx).
 	fileMenu.AddText("About Netsk8 Navigator", nil, func(_ *menu.CallbackData) {
-		runtime.EventsEmit(app.ctx, "show-about")
+		srv.BroadcastAppEvent("show-about")
 	})
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Open in Browser", nil, func(_ *menu.CallbackData) {

@@ -30,6 +30,20 @@ vi.mock('@/components/CRDKindView', () => ({ CRDKindView: () => <div data-testid
 vi.mock('@/components/EventsView', () => ({ EventsView: () => <div data-testid="events-view-stub" /> }))
 vi.mock('@/lib/useLivePods', () => ({ useLivePods: () => ({ pods: [], state: 'live' as const }) }))
 
+// jsdom has no EventSource — App's show-about listener (App.tsx) opens one
+// unconditionally on mount, so every test needs a stand-in or rendering
+// throws. See lib/useLivePods.test.ts for the same pattern.
+class FakeEventSource {
+  static instances: FakeEventSource[] = []
+  url: string
+  onmessage: ((e: { data: string }) => void) | null = null
+  constructor(url: string) {
+    this.url = url
+    FakeEventSource.instances.push(this)
+  }
+  close() {}
+}
+
 const { contextsMock, healthMock, updateCheckMock, overviewMock, namespacesMock, routeKindsMock, crdKindsMock, issuesMock } = vi.hoisted(() => ({
   contextsMock: vi.fn(),
   healthMock: vi.fn(),
@@ -80,6 +94,8 @@ function renderApp() {
 beforeEach(() => {
   localStorage.clear()
   window.location.hash = ''
+  FakeEventSource.instances = []
+  vi.stubGlobal('EventSource', FakeEventSource)
   healthMock.mockReset().mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: 'test', authEnabled: true })
   updateCheckMock.mockReset().mockResolvedValue({ available: false })
   overviewMock.mockReset().mockResolvedValue(overview())
@@ -92,6 +108,7 @@ beforeEach(() => {
 
 afterEach(() => {
   window.location.hash = ''
+  vi.unstubAllGlobals()
 })
 
 describe('App', () => {
@@ -159,6 +176,19 @@ describe('App', () => {
     contextsMock.mockResolvedValue([ctxInfo({ name: 'prod', current: true })])
     renderApp()
     expect(await screen.findByTestId('events-view-stub')).toBeInTheDocument()
+  })
+
+  it('opens the About dialog when the /api/app-events SSE stream sends show-about', async () => {
+    localStorage.setItem('netsk8s.ctx', 'prod')
+    contextsMock.mockResolvedValue([ctxInfo({ name: 'prod', current: true })])
+    renderApp()
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+    expect(FakeEventSource.instances[0].url).toBe('/api/app-events')
+    expect(screen.queryByText('about.title')).not.toBeInTheDocument()
+
+    FakeEventSource.instances[0].onmessage?.({ data: 'show-about' })
+
+    expect(await screen.findByText('about.title')).toBeInTheDocument()
   })
 
   it('shows a demo-mode banner when the backend reports demo mode', async () => {

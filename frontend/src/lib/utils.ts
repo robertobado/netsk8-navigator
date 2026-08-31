@@ -12,17 +12,28 @@ export function cn(...inputs: ClassValue[]) {
  * swallowed in the native desktop app: WKWebView (macOS) and WebView2
  * (Windows) only create a new window/tab for a target="_blank" navigation
  * if the host app implements a delegate for it, and Wails' desktop shell
- * doesn't — the click just does nothing, with no error. window.runtime's
- * BrowserOpenURL (the same call the native "Open in Browser" menu item
- * uses, see backend/cmd/desktop/main.go) is the one that actually works
- * there; it isn't present in the plain browser build, where the normal
- * window.open fallback below is what's needed instead.
+ * doesn't — the click just does nothing, with no error.
+ *
+ * The desktop app's window also never gets Wails' injected window.wails/
+ * window.runtime JS bridge in the first place (its window navigates away
+ * from Wails' own asset server to this app's real HTTP origin right at
+ * startup — see backend/cmd/desktop/main.go's bootstrapRedirect comment),
+ * so BrowserOpenURL can't be called from JS directly. POST
+ * /api/open-external instead: in the desktop build that's wired to the
+ * native runtime.BrowserOpenURL call (backend/internal/api/externalopen.go);
+ * in the plain server/browser build it 501s and we fall back to the normal
+ * window.open below, same as any other web page.
  */
-export function openExternal(url: string) {
-  const rt = (window as unknown as { runtime?: { BrowserOpenURL?: (url: string) => void } }).runtime
-  if (rt?.BrowserOpenURL) {
-    rt.BrowserOpenURL(url)
-    return
+export async function openExternal(url: string) {
+  try {
+    const res = await fetch('/api/open-external', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+    if (res.ok) return
+  } catch {
+    // network/fetch failure (e.g. no backend at all) — fall through below
   }
   window.open(url, '_blank', 'noopener,noreferrer')
 }

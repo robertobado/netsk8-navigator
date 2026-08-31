@@ -93,14 +93,20 @@ function AppMain() {
   }, [])
 
   // Native desktop app only: the "About" menu item (cmd/desktop/main.go) has
-  // no direct hook into the React tree, so it emits a show-about event over
-  // Wails' injected window.runtime bridge instead, and this just opens the
-  // same dialog the sidebar version badge does. window.runtime doesn't exist
-  // in the plain browser build, so this is a no-op there.
+  // no direct hook into the React tree. Wails' own JS bridge (window.wails/
+  // window.runtime) is never present in this app's window (see that file's
+  // bootstrapRedirect comment), so the menu instead broadcasts over a small
+  // SSE channel this app already has a real HTTP connection to (GET
+  // /api/app-events, backend/internal/api/appevents.go) — this just opens
+  // the same dialog the sidebar version badge does. Nothing ever gets
+  // broadcast on that route in the plain browser build, so this is inert
+  // there.
   useEffect(() => {
-    const rt = (window as unknown as { runtime?: { EventsOn: (event: string, cb: () => void) => () => void } }).runtime
-    if (!rt) return
-    return rt.EventsOn('show-about', () => setAboutOpen(true))
+    const es = new EventSource('/api/app-events')
+    es.onmessage = (e) => {
+      if (e.data === 'show-about') setAboutOpen(true)
+    }
+    return () => es.close()
   }, [])
 
   const contextsQ = useQuery({ queryKey: ['contexts'], queryFn: api.contexts, refetchInterval: false })
