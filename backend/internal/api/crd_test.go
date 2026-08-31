@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	ktesting "k8s.io/client-go/testing"
 
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
@@ -644,7 +645,32 @@ type clientWithDiscoveryStub struct {
 	disc discovery.DiscoveryInterface
 }
 
-func (c *clientWithDiscoveryStub) Discovery() discovery.DiscoveryInterface { return c.disc }
+func (c *clientWithDiscoveryStub) Discovery() discovery.DiscoveryInterfaces {
+	return newDiscoveryInterfacesStub(c.disc)
+}
+
+// discoveryInterfacesStub adapts a plain discovery.DiscoveryInterface (all
+// this test package's stubs implement) into the discovery.DiscoveryInterfaces
+// kubernetes.Interface.Discovery() now returns as of client-go 0.37
+// (DiscoveryInterface + the context-aware DiscoveryInterfaceWithContext
+// added alongside it). Both embedded interfaces declare RESTClient() with
+// an identical signature, which would otherwise make it an ambiguous
+// (unpromoted) selector — the explicit method below resolves that.
+type discoveryInterfacesStub struct {
+	discovery.DiscoveryInterface
+	discovery.DiscoveryInterfaceWithContext
+}
+
+func (d discoveryInterfacesStub) RESTClient() restclient.Interface {
+	return d.DiscoveryInterface.RESTClient()
+}
+
+func newDiscoveryInterfacesStub(d discovery.DiscoveryInterface) discoveryInterfacesStub {
+	return discoveryInterfacesStub{
+		DiscoveryInterface:            d,
+		DiscoveryInterfaceWithContext: discovery.ToDiscoveryInterfaceWithContext(d),
+	}
+}
 
 // routeKindsManager wraps fakeManager so ClientFor's Discovery() reports
 // caller-supplied preferred resources / error.
