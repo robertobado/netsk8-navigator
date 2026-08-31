@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 // Pixabay Content License (free for commercial/noncommercial use, no
 // attribution required): https://pixabay.com/illustrations/ai-generated-hot-air-balloon-8115321/
 import balloonImg from '@/assets/hot-air-balloon.png'
+import { openExternal } from '@/lib/utils'
 
 const BALLOON_WIDTH = 56
 const BALLOON_HEIGHT = 69 // source image is 518x640 — keep its aspect ratio
@@ -117,7 +118,19 @@ export function FloatingBubble({ message, href }: Readonly<{ message: string; hr
       className="group fixed left-0 top-0 z-50 flex flex-col items-center gap-1"
       style={reducedMotion.current ? { transform: 'translate3d(calc(100vw - 6rem), calc(100vh - 8rem), 0)' } : undefined}
     >
-      <a href={href} target="_blank" rel="noreferrer" className="block" title={message}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="block"
+        title={message}
+        onClick={(e) => {
+          // See openExternal's doc comment — target="_blank" alone does
+          // nothing in the desktop app.
+          e.preventDefault()
+          openExternal(href)
+        }}
+      >
         <img src={balloonImg} alt="" width={BALLOON_WIDTH} height={BALLOON_HEIGHT} className="drop-shadow-xl transition-transform group-hover:scale-110" />
       </a>
       <button

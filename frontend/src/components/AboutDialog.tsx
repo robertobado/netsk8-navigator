@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { ExternalLink, Info, X } from 'lucide-react'
 import { NavigatorLoader } from './Loader'
 import { useT } from '@/lib/i18n'
+import { openExternal } from '@/lib/utils'
 import type { UpdateCheck } from '@/lib/api'
 
 interface Props {
@@ -67,6 +68,12 @@ export function AboutDialog({ open, onClose, version, update }: Readonly<Props>)
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                onClick={(e) => {
+                  // See openExternal's doc comment — target="_blank" alone
+                  // does nothing in the desktop app.
+                  e.preventDefault()
+                  openExternal(update.url ?? 'https://github.com/robertobado/netsk8-navigator/releases/latest')
+                }}
               >
                 {t('update.available')}
                 {update.latest}
@@ -81,6 +88,10 @@ export function AboutDialog({ open, onClose, version, update }: Readonly<Props>)
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-xs text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
+              onClick={(e) => {
+                e.preventDefault()
+                openExternal('https://github.com/robertobado/netsk8-navigator')
+              }}
             >
               {t('about.viewOnGithub')}
               <ExternalLink className="size-3" />

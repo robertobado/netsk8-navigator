@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Eye, EyeOff, ExternalLink, Loader2, Plug } from 'lucide-react'
 import { api, getDetail, kindToSlug, type DetailChip, type DetailKV, type ManifestKind, type Pod, type ResourceDetail } from '@/lib/api'
-import { age, cn } from '@/lib/utils'
+import { age, cn, openExternal } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
 import { MetricsSection } from './MetricsSection'
 import { StatusBadge } from './StatusBadge'
@@ -177,6 +177,12 @@ export function DetailBody({ d, ctx, kind, namespace, name, onOpenPod, onOpenRes
                   target="_blank"
                   rel="noreferrer"
                   className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/40"
+                  onClick={(e) => {
+                    // See openExternal's doc comment — target="_blank" alone
+                    // does nothing in the desktop app.
+                    e.preventDefault()
+                    openExternal(`https://${h}`)
+                  }}
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-sm text-[color:var(--brand)] underline decoration-dotted underline-offset-2">
                     {h}

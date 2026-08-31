@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { AboutDialog } from './AboutDialog'
 
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string) => key }))
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('AboutDialog', () => {
   it('renders nothing when closed', () => {
@@ -47,6 +51,31 @@ describe('AboutDialog', () => {
   it('links to the GitHub repo', () => {
     render(<AboutDialog open={true} onClose={vi.fn()} version="1.2.3" />)
     expect(screen.getByRole('link', { name: /about.viewOnGithub/ })).toHaveAttribute('href', 'https://github.com/robertobado/netsk8-navigator')
+  })
+
+  // target="_blank" alone does nothing in the Wails desktop app (see
+  // openExternal's doc comment in lib/utils.ts) — both external links must
+  // go through window.runtime.BrowserOpenURL when that bridge is present.
+  it('opens the GitHub link via window.runtime.BrowserOpenURL when the Wails bridge is present', () => {
+    const browserOpenURL = vi.fn()
+    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+    render(<AboutDialog open={true} onClose={vi.fn()} version="1.2.3" />)
+
+    fireEvent.click(screen.getByRole('link', { name: /about.viewOnGithub/ }))
+
+    expect(browserOpenURL).toHaveBeenCalledWith('https://github.com/robertobado/netsk8-navigator')
+  })
+
+  it('opens the update link via window.runtime.BrowserOpenURL when the Wails bridge is present', () => {
+    const browserOpenURL = vi.fn()
+    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+    render(
+      <AboutDialog open={true} onClose={vi.fn()} version="1.2.3" update={{ available: true, latest: '1.3.0', url: 'https://example.com/releases/1.3.0' }} />,
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: /update.available1.3.0/ }))
+
+    expect(browserOpenURL).toHaveBeenCalledWith('https://example.com/releases/1.3.0')
   })
 
   it('calls onClose when the X button is clicked', () => {

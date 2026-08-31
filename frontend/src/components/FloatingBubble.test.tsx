@@ -15,6 +15,21 @@ describe('FloatingBubble', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
+  // target="_blank" alone does nothing in the Wails desktop app (see
+  // openExternal's doc comment in lib/utils.ts) — the click must go through
+  // window.runtime.BrowserOpenURL when that bridge is present, not rely on
+  // the browser's own new-tab handling.
+  it('opens the link via window.runtime.BrowserOpenURL when the Wails bridge is present', async () => {
+    const browserOpenURL = vi.fn()
+    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+    const user = userEvent.setup()
+    render(<FloatingBubble message="Check us out on GitHub" href="https://github.com/robertobado/netsk8-navigator" />)
+
+    await user.click(screen.getByRole('link', { name: /check us out on github/i }))
+
+    expect(browserOpenURL).toHaveBeenCalledWith('https://github.com/robertobado/netsk8-navigator')
+  })
+
   it('disappears once dismissed', async () => {
     const user = userEvent.setup()
     render(<FloatingBubble message="hello" href="https://example.com" />)

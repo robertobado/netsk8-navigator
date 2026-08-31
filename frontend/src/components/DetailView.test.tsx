@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DetailBody, DetailView } from './DetailView'
@@ -353,6 +353,35 @@ describe('DetailBody — conditions, selector, labels', () => {
     render(<DetailBody d={d} ctx="c" kind="configmap" namespace="prod" name="web-1" />)
     expect(screen.getByText('team=platform')).toBeInTheDocument()
     expect(screen.getByText('feature-flag')).toBeInTheDocument()
+  })
+})
+
+describe('DetailBody — hosts', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders a wildcard host as plain text, not a link', () => {
+    const d = detail([])
+    d.hosts = ['*.example.com']
+    render(<DetailBody d={d} ctx="c" kind="ingress" namespace="prod" name="web" />)
+    expect(screen.getByText('*.example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  // target="_blank" alone does nothing in the Wails desktop app (see
+  // openExternal's doc comment in lib/utils.ts) — the click must go through
+  // window.runtime.BrowserOpenURL when that bridge is present.
+  it('opens a non-wildcard host via window.runtime.BrowserOpenURL when the Wails bridge is present', () => {
+    const browserOpenURL = vi.fn()
+    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+    const d = detail([])
+    d.hosts = ['app.example.com']
+    render(<DetailBody d={d} ctx="c" kind="ingress" namespace="prod" name="web" />)
+
+    fireEvent.click(screen.getByRole('link', { name: /app.example.com/ }))
+
+    expect(browserOpenURL).toHaveBeenCalledWith('https://app.example.com')
   })
 })
 

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { age, cn, shortContext } from './utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { age, cn, openExternal, shortContext } from './utils'
 
 describe('cn', () => {
   it('merges class names and resolves Tailwind conflicts', () => {
@@ -42,5 +42,32 @@ describe('shortContext', () => {
   })
   it('returns the name unchanged when there is no cluster/ segment', () => {
     expect(shortContext('minikube')).toBe('minikube')
+  })
+})
+
+describe('openExternal', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('calls window.runtime.BrowserOpenURL when the Wails bridge is present, not window.open', () => {
+    const browserOpenURL = vi.fn()
+    const windowOpen = vi.fn()
+    vi.stubGlobal('runtime', { BrowserOpenURL: browserOpenURL })
+    vi.stubGlobal('open', windowOpen)
+
+    openExternal('https://example.com')
+
+    expect(browserOpenURL).toHaveBeenCalledWith('https://example.com')
+    expect(windowOpen).not.toHaveBeenCalled()
+  })
+
+  it('falls back to window.open when there is no Wails bridge (plain browser build)', () => {
+    const windowOpen = vi.fn()
+    vi.stubGlobal('open', windowOpen)
+
+    openExternal('https://example.com')
+
+    expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
   })
 })
