@@ -368,8 +368,12 @@ typo is rejected immediately as a schema-validation error instead of
 round-tripping through a failed API call. `list_pods`, `list_resources`,
 and `get_issues` accept an optional `limit` (and `since` on the two that
 have a meaningful timestamp to filter on) to keep responses small on a
-busy cluster; `get_issues` always includes a `summary` grouping every
-issue by cause, computed before any truncation. `list_resources`/
+busy cluster; `list_pods`/`list_resources`/`list_crd_resources` also take
+server-side `labelSelector` and `fieldSelector` (e.g.
+`status.phase=Running`, `spec.nodeName=…`), and `list_pods` a `compact`
+flag that drops per-pod detail — combine these when an unfiltered list
+would blow the token budget. `get_issues` always includes a `summary`
+grouping every issue by cause, computed before any truncation. `list_resources`/
 `get_resource_detail`/`get_manifest` only know the built-in Kubernetes
 kinds — for a CustomResourceDefinition (Gateway API route, cert-manager
 Certificate, etc.), `list_crd_kinds` finds its exact group/version/

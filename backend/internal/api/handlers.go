@@ -311,7 +311,7 @@ func (s *Server) handlePods(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	namespace := r.URL.Query().Get("namespace") // "" == all namespaces
-	list, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	list, err := client.CoreV1().Pods(namespace).List(ctx, listOptionsFromQuery(r))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -381,6 +381,18 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 func reqCtx(r *http.Request) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(r.Context(), 30*time.Second)
+}
+
+// listOptionsFromQuery reads the optional ?labelSelector= and ?fieldSelector=
+// filters shared by the pod, generic-resource, and CRD list endpoints, and
+// returns them as ListOptions passed straight through to the API server — so
+// the cluster does the filtering and only the matching objects come back,
+// rather than listing everything and trimming here.
+func listOptionsFromQuery(r *http.Request) metav1.ListOptions {
+	return metav1.ListOptions{
+		LabelSelector: r.URL.Query().Get("labelSelector"),
+		FieldSelector: r.URL.Query().Get("fieldSelector"),
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
