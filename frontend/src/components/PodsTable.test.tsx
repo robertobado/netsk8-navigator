@@ -101,6 +101,24 @@ describe('PodsTable', () => {
     expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
   })
 
+  it('only shows the green Running pulse when the pod is fully Ready; a not-yet-Ready Running pod reads as in-progress blue', async () => {
+    podsUsageMock.mockResolvedValue({ available: false })
+    renderWithClient(
+      <PodsTable
+        ctx="test"
+        pods={[pod({ name: 'fully-ready', status: 'Running', ready: 2, total: 2 }), pod({ name: 'starting', status: 'Running', ready: 1, total: 2 })]}
+        connState="live"
+        onOpenResource={vi.fn()}
+      />,
+    )
+    expect(await screen.findByText('fully-ready')).toBeInTheDocument()
+    // Exactly one pod (fully-ready) gets the pulsing "Active" dot.
+    expect(screen.getAllByTitle('Active')).toHaveLength(1)
+    // The not-yet-Ready one still says "Running" but in the transient blue tone.
+    const runningBadges = screen.getAllByText('Running').map((el) => el.closest('span')?.className ?? '')
+    expect(runningBadges.some((c) => c.includes('#38bdf8'))).toBe(true)
+  })
+
   it('colors Ready/Restarts and treats a finished 0/1 job pod as healthy', async () => {
     podsUsageMock.mockResolvedValue({ available: false })
     renderWithClient(

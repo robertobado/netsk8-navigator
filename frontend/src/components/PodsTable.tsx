@@ -52,6 +52,18 @@ const GROUP_STYLE: Record<string, string> = {
   terminating: 'bg-muted text-muted-foreground ring-border',
 }
 
+// The 3 bouncing dots shared by every "in progress, not settled yet" badge:
+// a healthy Pending, and a Running pod whose containers aren't all Ready.
+function BouncingDots() {
+  return (
+    <span className="inline-flex items-end gap-0.5">
+      {[0, 1, 2].map((i) => (
+        <span key={i} className="size-1 animate-bounce rounded-full bg-[#38bdf8]" style={{ animationDelay: `${i * 0.15}s` }} />
+      ))}
+    </span>
+  )
+}
+
 // Live-ticking relative age from an ISO timestamp (updates every second).
 function LiveAge({ since }: Readonly<{ since: string }>) {
   // Force-update idiom: age() recomputes from the current clock on every
@@ -163,26 +175,58 @@ export function TerminatingStatus({
 function PodStatus({
   status,
   reason,
+  ready,
+  total,
   deletedAt,
   finalizers,
   ctx,
   namespace,
   name,
   createdAt,
-}: Readonly<{ status: string; reason: string; deletedAt?: string; finalizers?: string[]; ctx: string; namespace: string; name: string; createdAt?: string }>) {
+}: Readonly<{
+  status: string
+  reason: string
+  ready: number
+  total: number
+  deletedAt?: string
+  finalizers?: string[]
+  ctx: string
+  namespace: string
+  name: string
+  createdAt?: string
+}>) {
   const t = useT()
   const group = classify(status, reason)
   const text = reason || status
 
+  const pill = (children: React.ReactNode, styleKey: string = group) => (
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', GROUP_STYLE[styleKey])}>
+      {children}
+    </span>
+  )
+
   if (group === 'running') {
-    return (
-      <span className="inline-flex items-center gap-2">
-        <StatusBadge status="Running" />
-        <span className="relative flex size-2.5" title={t('Active')}>
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[color:var(--ok)] opacity-60" />
-          <span className="relative inline-flex size-2.5 rounded-full bg-[color:var(--ok)]" />
+    // Only a fully-ready pod — every container passing its readiness probe —
+    // gets the confident green "Running" + pulsing dot. A Running pod that
+    // isn't all-Ready yet (containers still starting, readiness not passing)
+    // isn't serving traffic, so it reads as the same in-progress blue as a
+    // healthy Pending.
+    if (total > 0 && ready === total) {
+      return (
+        <span className="inline-flex items-center gap-2">
+          <StatusBadge status="Running" />
+          <span className="relative flex size-2.5" title={t('Active')}>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[color:var(--ok)] opacity-60" />
+            <span className="relative inline-flex size-2.5 rounded-full bg-[color:var(--ok)]" />
+          </span>
         </span>
-      </span>
+      )
+    }
+    return pill(
+      <>
+        Running <BouncingDots />
+      </>,
+      'transient',
     )
   }
   // terminating → dedicated component (events/finalizers drive warning vs ellipsis)
@@ -190,11 +234,6 @@ function PodStatus({
     return <TerminatingStatus ctx={ctx} namespace={namespace} name={name} deletedAt={deletedAt} finalizers={finalizers ?? []} />
   }
 
-  const pill = (children: React.ReactNode) => (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset', GROUP_STYLE[group])}>
-      {children}
-    </span>
-  )
   let content: React.ReactNode
   if (group === 'error')
     content = pill(
@@ -211,12 +250,7 @@ function PodStatus({
   else if (group === 'transient')
     content = pill(
       <>
-        {text}
-        <span className="inline-flex items-end gap-0.5">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="size-1 animate-bounce rounded-full bg-[#38bdf8]" style={{ animationDelay: `${i * 0.15}s` }} />
-          ))}
-        </span>
+        {text} <BouncingDots />
       </>,
     )
   else content = <StatusBadge status={text} />
@@ -412,6 +446,8 @@ export function PodsTable({
           <PodStatus
             status={c.getValue()}
             reason={c.row.original.reason}
+            ready={c.row.original.ready}
+            total={c.row.original.total}
             deletedAt={c.row.original.deletedAt}
             finalizers={c.row.original.finalizers}
             createdAt={c.row.original.age}
