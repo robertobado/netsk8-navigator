@@ -41,6 +41,39 @@ func TestStore_ClusterRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStore_DesktopPortRoundTripAndPersist(t *testing.T) {
+	s := newTestStore(t)
+	if got := s.DesktopPort(); got != 0 {
+		t.Errorf("unset DesktopPort() = %d, want 0", got)
+	}
+	if err := s.SetDesktopPort(8078); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.DesktopPort(); got != 8078 {
+		t.Errorf("DesktopPort() = %d, want 8078", got)
+	}
+	// Survives a restart, so the window reloads on the same origin.
+	if got := NewStoreAt(s.path).DesktopPort(); got != 8078 {
+		t.Errorf("DesktopPort() after restart = %d, want 8078", got)
+	}
+}
+
+func TestStore_SetDesktopPortSkipsSaveWhenUnchanged(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// An unwritable path: any real save() attempt fails, so a nil return
+	// proves the unchanged-value write was skipped.
+	s := &Store{path: filepath.Join(blocker, "sub", "config.json"), data: fileData{DesktopPort: 8078, Clusters: map[string]json.RawMessage{}}}
+	if err := s.SetDesktopPort(8078); err != nil {
+		t.Errorf("SetDesktopPort(same value) = %v, want nil (no save attempted)", err)
+	}
+	if err := s.SetDesktopPort(9090); err == nil {
+		t.Error("SetDesktopPort(new value) should attempt save() and fail on the unwritable path")
+	}
+}
+
 func TestStore_MCPTokenLazyAndStable(t *testing.T) {
 	s := newTestStore(t)
 	tok1, err := s.MCPToken()

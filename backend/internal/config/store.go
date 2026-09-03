@@ -21,6 +21,14 @@ type fileData struct {
 	// frontend-owned blob — SetApp replaces that whole blob wholesale on
 	// every preferences write, which would otherwise silently drop it.
 	MCPToken string `json:"mcpToken,omitempty"`
+	// DesktopPort is the loopback port the desktop app's embedded HTTP
+	// server bound on its last run. Persisted so the window reloads on a
+	// stable origin every launch: browser localStorage (selected context,
+	// per-table sort order, ...) is scoped to the origin, and the origin's
+	// port would otherwise change each start and discard all of it. Only
+	// the desktop binary reads or writes this; a top-level sibling for the
+	// same reason MCPToken is.
+	DesktopPort int `json:"desktopPort,omitempty"`
 }
 
 // Store is a concurrency-safe preferences store backed by a JSON file.
@@ -90,6 +98,28 @@ func (s *Store) SetCluster(ctx string, raw json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data.Clusters[ctx] = raw
+	return s.save()
+}
+
+// DesktopPort returns the loopback port the desktop app bound on its last
+// run, or 0 when none has been persisted yet (first launch).
+func (s *Store) DesktopPort() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.DesktopPort
+}
+
+// SetDesktopPort persists the loopback port the desktop app just bound, so
+// the next launch reuses it and keeps the web origin (and its localStorage)
+// stable. A no-op when the value is unchanged, so a normal launch that
+// re-binds the same port doesn't rewrite the file.
+func (s *Store) SetDesktopPort(port int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.DesktopPort == port {
+		return nil
+	}
+	s.data.DesktopPort = port
 	return s.save()
 }
 
