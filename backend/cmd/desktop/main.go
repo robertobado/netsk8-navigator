@@ -135,8 +135,9 @@ func wireKubeconfigEditor(srv *api.Server, mgr *kube.Manager) {
 // equivalent at all, so that's simply accurate here. Returns srv alongside
 // the mux so main() can wire desktop-only hooks onto it (the About-menu
 // event broadcaster, the native external-URL opener) that backend/main.go
-// has no equivalent of.
-func buildMux() (http.Handler, *api.Server) {
+// has no equivalent of. Returns the preferences store too, so startServer
+// can persist the loopback port it binds.
+func buildMux() (http.Handler, *api.Server, *config.Store) {
 	mgr, cfg := mustInit()
 	srv := api.NewServer(mgr, cfg, "")
 	srv.Version = version
@@ -150,22 +151,30 @@ func buildMux() (http.Handler, *api.Server) {
 	} else {
 		log.Fatal("no embedded frontend build — run `pnpm build` in frontend/ first")
 	}
-	return mux, srv
+	return mux, srv, cfg
 }
 
-// startServer serves mux over a real TCP socket on 127.0.0.1, exactly like
-// the CLI does. A real socket is required (not just Wails' in-process
-// AssetServer.Handler bridge) because that bridge is confirmed to break
-// long-lived/streaming responses: verified empirically that Server-Sent
-// Events (the live pod list, events feed, log tail) hang as "reconnecting"
-// through it, and Wails' own issue tracker documents the same gap for
-// WebSocket upgrades (pod exec, port-forward) in production builds. Returns
-// the address to navigate the window to.
-func startServer(mux http.Handler) string {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		log.Fatalf("failed to start local server: %v", err)
-	}
+// preferredDesktopPort is the loopback port the desktop server tries to bind
+// when no port has been persisted yet. Fixed (not OS-assigned) so the window
+// loads the UI from a stable origin every launch — see listenStable. Well
+// clear of the CLI's :8080 so running both at once doesn't collide.
+const preferredDesktopPort = 8078
+
+// startServer serves mux over a real TCP socket on 127.0.0.1. A real socket
+// is required (not just Wails' in-process AssetServer.Handler bridge)
+// because that bridge is confirmed to break long-lived/streaming responses:
+// verified empirically that Server-Sent Events (the live pod list, events
+// feed, log tail) hang as "reconnecting" through it, and Wails' own issue
+// tracker documents the same gap for WebSocket upgrades (pod exec,
+// port-forward) in production builds.
+//
+// The port is kept stable across launches (see listenStable): the window
+// loads http://127.0.0.1:<port>/, and browser localStorage — the selected
+// context, per-table sort order, ... — is scoped to that origin, so a port
+// that changed every start would silently discard all of it. Returns the
+// address to navigate the window to.
+func startServer(mux http.Handler, cfg *config.Store) string {
+	ln := listenStable(cfg)
 	addr := ln.Addr().String()
 	// ReadHeaderTimeout guards against slow-header attacks; Read/WriteTimeout are
 	// deliberately left unset (0 = no limit) — mirrors backend/main.go, since
@@ -181,6 +190,42 @@ func startServer(mux http.Handler) string {
 	}()
 	log.Printf("serving on http://%s", addr)
 	return addr
+}
+
+// listenStable returns a loopback listener, preferring a port that stays the
+// same across launches (the one persisted from last run, else
+// preferredDesktopPort) so the window's origin — and its localStorage —
+// doesn't change every start. If every preferred port is already taken
+// (typically a second instance is running), it falls back to an OS-assigned
+// port without persisting it, so the next solo launch still lands on the
+// stable one.
+func listenStable(cfg *config.Store) net.Listener {
+	return listenPreferring(cfg, []int{cfg.DesktopPort(), preferredDesktopPort})
+}
+
+// listenPreferring tries each port in order, persisting and returning the
+// first it can bind; on none, it binds an OS-assigned port and leaves the
+// persisted value untouched. Split from listenStable so tests can pass a
+// deterministic port list instead of racing the real preferred port.
+func listenPreferring(cfg *config.Store, ports []int) net.Listener {
+	for _, port := range ports {
+		if port <= 0 || port > 65535 {
+			continue
+		}
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		if err := cfg.SetDesktopPort(port); err != nil {
+			log.Printf("could not persist desktop port %d: %v", port, err)
+		}
+		return ln
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatalf("failed to start local server: %v", err)
+	}
+	return ln
 }
 
 // bootstrapRedirect serves a minimal real HTML document that immediately
@@ -222,8 +267,8 @@ func main() {
 	kube.InstallStderrTap() // see internal/kube/execstderr.go — enriches exec-credential failures surfaced over /mcp and /api
 	log.Printf("netsk8-navigator %s", version)
 	fixPathForGUILaunch()
-	mux, srv := buildMux()
-	addr := startServer(mux)
+	mux, srv, cfg := buildMux()
+	addr := startServer(mux, cfg)
 	url := fmt.Sprintf("http://%s/", addr)
 
 	app := NewApp(srv)
