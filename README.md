@@ -81,18 +81,34 @@ saved contexts, and everything below work identically in each.
   Resources** in the sidebar. Common route CRDs (Gateway API, Traefik
   IngressRoute, Istio VirtualService, Contour HTTPProxy) additionally get a
   curated spot under **Network** when installed.
-- 📝 **Detail view + YAML manifest editor** (Monaco) for reading and
-  editing any object in place.
+- 📝 **Detail view, YAML editor & actions** — read any object's structured
+  detail or its live manifest (Monaco), edit it in place, or create one from
+  a blank template. Scale, `rollout restart`, roll back to a previous
+  revision, cordon/uncordon a node, port-forward a pod, delete — the
+  `kubectl` verbs, as buttons.
 - 🔌 **Live logs, exec, and events** over SSE/WebSocket — pods stream in
   real time, no manual refresh.
 - 📊 **CPU/memory metrics** at cluster, node, and pod level when the
   cluster exposes `metrics-server` or Prometheus.
+- 🚨 **Triage feed** — the overview groups every pending / failed /
+  crash-looping pod and not-ready node by root cause, so a broken cluster
+  reads at a glance.
 - 🕸️ **Cluster topology** — a live graph of how workloads, pods, and
   services connect within a namespace.
+- ☸️ **Helm** — browse releases per cluster, install from a repo, upgrade
+  with an edited values file, roll back, or uninstall; manage repos and
+  search charts, without leaving the app.
+- 🔑 **Kubeconfig manager** — add, rename, edit, or delete contexts, import
+  another kubeconfig (with a conflict preview), test-connection ping, reveal
+  a user's token/cert, and star the contexts you use most — edits land in
+  your real kubeconfig file.
 - 🌐 **Multi-cluster & multi-version** — switch kubeconfig context without
   restarting anything; every resource is resolved via discovery/RESTMapper
   at request time, so it works against whatever Kubernetes version the
   cluster actually serves.
+- ⌨️ **Command palette & i18n** — ⌘K / Ctrl+K jumps to any view or
+  resource; the UI ships in English and Brazilian Portuguese with an in-app
+  toggle (see [TRANSLATIONS.md](TRANSLATIONS.md)).
 - 🤖 **MCP server built in** — spawn it over stdio or flip one toggle for
   HTTP, and Claude (or any other MCP-speaking agent) can browse and manage
   the cluster too, no `kubectl` or terminal needed. See
@@ -110,7 +126,7 @@ data, no install or kubeconfig needed.
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/manifest.png" alt="YAML manifest editor powered by Monaco" /><br/><sub>Read/edit any object's YAML in place</sub></td>
-    <td width="50%"><img src="docs/screenshots/events.png" alt="Live cluster events feed" /><br/><sub>Cluster-wide events, live and filterable</sub></td>
+    <td width="50%"><img src="docs/screenshots/kubeconfig-manager.png" alt="Kubeconfig manager: contexts, users, import" /><br/><sub>Manage kubeconfig contexts without leaving the app</sub></td>
   </tr>
 </table>
 
@@ -210,7 +226,7 @@ KUBECONFIG_HOST_PATH=$(readlink -f ~/.kube/config) docker compose up
 
 ### From source
 
-Prerequisites: Go 1.26+, Node 20+, [pnpm](https://pnpm.io).
+Prerequisites: Go 1.26+, Node 22+, [pnpm](https://pnpm.io).
 
 ```bash
 # Backend — API at http://127.0.0.1:8080 (reads ~/.kube/config, or $KUBECONFIG)
