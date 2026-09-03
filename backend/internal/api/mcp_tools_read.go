@@ -22,10 +22,13 @@ type ctxArgs struct {
 }
 
 type namespaceScopedListArgs struct {
-	Context   string `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
-	Since     string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items created/changed at or after this are returned"`
+	Context       string `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
+	Namespace     string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx,tier!=frontend; matched server-side"`
+	FieldSelector string `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector, e.g. status.phase=Running or spec.nodeName=node-1; matched server-side"`
+	Compact       bool   `json:"compact,omitempty" jsonschema:"when true, return only name/namespace/status/ready/restarts/node/age/reason per pod — drops containers, IP, owner refs and finalizers to keep a large list within the token budget"`
+	Limit         int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Since         string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items created/changed at or after this are returned"`
 }
 
 type resourceKindArgs struct {
@@ -39,12 +42,14 @@ type resourceKindArgs struct {
 // list_crd_kinds, instead of the fixed manifest-kind slug resourceKindArgs
 // uses — that slug catalog only covers built-in kinds, never CRDs.
 type crdListArgs struct {
-	Context   string `json:"context" jsonschema:"kubeconfig context name"`
-	Group     string `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
-	Version   string `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
-	Resource  string `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Context       string `json:"context" jsonschema:"kubeconfig context name"`
+	Group         string `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
+	Version       string `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
+	Resource      string `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
+	Namespace     string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx; matched server-side"`
+	FieldSelector string `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector; matched server-side"`
+	Limit         int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
 }
 
 type crdGetArgs struct {
@@ -81,13 +86,24 @@ func contextPath(context, suffix string) string {
 	return "/api/contexts/" + url.PathEscape(context) + "/" + suffix
 }
 
-// withNamespaceQuery appends an optional ?namespace= query param — the shape
-// list_pods/list_resources/list_crd_resources all share.
-func withNamespaceQuery(path, namespace string) string {
-	if namespace == "" {
+// withListQuery appends the optional ?namespace=/?labelSelector=/?fieldSelector=
+// filters that list_pods, list_resources, and list_crd_resources all share.
+// Empty values are dropped; with none set the path is returned unchanged.
+func withListQuery(path, namespace, labelSelector, fieldSelector string) string {
+	q := url.Values{}
+	if namespace != "" {
+		q.Set("namespace", namespace)
+	}
+	if labelSelector != "" {
+		q.Set("labelSelector", labelSelector)
+	}
+	if fieldSelector != "" {
+		q.Set("fieldSelector", fieldSelector)
+	}
+	if len(q) == 0 {
 		return path
 	}
-	return path + "?namespace=" + url.QueryEscape(namespace)
+	return path + "?" + q.Encode()
 }
 
 // registerSimpleGetTool registers a read-only tool whose handler is nothing
@@ -148,10 +164,12 @@ func registerCRDGetTool(srv *mcp.Server, s *Server, contexts []string, name, des
 }
 
 type listResourcesArgs struct {
-	Context   string `json:"context" jsonschema:"kubeconfig context name"`
-	Resource  string `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Context       string `json:"context" jsonschema:"kubeconfig context name"`
+	Resource      string `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
+	Namespace     string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx,tier!=frontend; matched server-side"`
+	FieldSelector string `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector, e.g. metadata.name=my-cm; matched server-side"`
+	Limit         int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
 }
 
 type getLogsArgs struct {
@@ -178,17 +196,20 @@ type getIssuesArgs struct {
 func registerListPodsTool(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_pods",
-		Description: "List pods in a cluster context, optionally filtered by namespace. limit/since keep the response small on a busy cluster.",
+		Description: "List pods in a cluster context. Narrow the response — essential on a busy cluster, where an unfiltered list can exceed the token budget — with namespace, labelSelector and/or fieldSelector (matched server-side; e.g. status.phase=Running, spec.nodeName=NODE), compact (drops per-pod detail), and limit/since.",
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[namespaceScopedListArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args namespaceScopedListArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
-		path := withNamespaceQuery(contextPath(args.Context, "pods"), args.Namespace)
+		path := withListQuery(contextPath(args.Context, "pods"), args.Namespace, args.LabelSelector, args.FieldSelector)
 		status, body := s.callREST(ctx, "GET", path, nil)
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
+		}
+		if args.Compact {
+			body = compactPods(body)
 		}
 		return toolResult(status, shapeItemList(body, args.Limit, args.Since, "age"))
 	})
@@ -197,14 +218,14 @@ func registerListPodsTool(srv *mcp.Server, s *Server, contexts []string) {
 func registerListResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_resources",
-		Description: "List resources of a given built-in kind (e.g. deployments, services, configmaps, jobs, secrets, ingresses) in a cluster context, optionally filtered by namespace. limit keeps the response small on a busy cluster. This only knows a fixed set of built-in Kubernetes kinds — for a CustomResourceDefinition (CRD), e.g. SecretProviderClass, use list_crd_kinds then list_crd_resources instead.",
+		Description: "List resources of a given built-in kind (e.g. deployments, services, configmaps, jobs, secrets, ingresses) in a cluster context. Narrow the response with namespace, labelSelector and/or fieldSelector (matched server-side), and limit. This only knows a fixed set of built-in Kubernetes kinds — for a CustomResourceDefinition (CRD), e.g. SecretProviderClass, use list_crd_kinds then list_crd_resources instead.",
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[listResourcesArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args listResourcesArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
-		path := withNamespaceQuery(contextPath(args.Context, "resources/"+url.PathEscape(args.Resource)), args.Namespace)
+		path := withListQuery(contextPath(args.Context, "resources/"+url.PathEscape(args.Resource)), args.Namespace, args.LabelSelector, args.FieldSelector)
 		status, body := s.callREST(ctx, "GET", path, nil)
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
@@ -216,7 +237,7 @@ func registerListResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
 func registerListCRDResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_crd_resources",
-		Description: "List instances of a CRD kind (group/version/resource from list_crd_kinds), optionally filtered by namespace. limit keeps the response small on a busy cluster.",
+		Description: "List instances of a CRD kind (group/version/resource from list_crd_kinds). Narrow the response with namespace, labelSelector and/or fieldSelector (matched server-side), and limit.",
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[crdListArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args crdListArgs) (*mcp.CallToolResult, any, error) {
@@ -224,7 +245,7 @@ func registerListCRDResourcesTool(srv *mcp.Server, s *Server, contexts []string)
 			return nil, nil, err
 		}
 		suffix := fmt.Sprintf("crd/%s/%s/%s", url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource))
-		path := withNamespaceQuery(contextPath(args.Context, suffix), args.Namespace)
+		path := withListQuery(contextPath(args.Context, suffix), args.Namespace, args.LabelSelector, args.FieldSelector)
 		status, body := s.callREST(ctx, "GET", path, nil)
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
@@ -360,6 +381,38 @@ func filterSince(items []json.RawMessage, field, since string) []json.RawMessage
 		if err != nil || !t.Before(cutoff) {
 			out = append(out, item)
 		}
+	}
+	return out
+}
+
+// compactPodFields are the pod-row fields compactPods keeps — enough to
+// triage (who, where, health, how old, why) without the bulk of a full
+// PodView (containers, IP, owner refs, finalizers, deletedAt).
+var compactPodFields = []string{"name", "namespace", "status", "ready", "total", "restarts", "node", "age", "reason"}
+
+// compactPods trims each pod in a list response down to compactPodFields. An
+// all-namespaces pod list is the MCP response most likely to blow an agent's
+// token budget; dropping the per-container detail roughly halves it. Returns
+// body unchanged if it isn't the bare array the REST handler produces (an
+// error object, or an already-shaped {"items":...} wrapper).
+func compactPods(body []byte) []byte {
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(body, &items); err != nil {
+		return body
+	}
+	trimmed := make([]map[string]json.RawMessage, len(items))
+	for i, item := range items {
+		t := make(map[string]json.RawMessage, len(compactPodFields))
+		for _, k := range compactPodFields {
+			if v, ok := item[k]; ok {
+				t[k] = v
+			}
+		}
+		trimmed[i] = t
+	}
+	out, err := json.Marshal(trimmed)
+	if err != nil {
+		return body
 	}
 	return out
 }

@@ -139,6 +139,36 @@ func TestHandlePods(t *testing.T) {
 	}
 }
 
+func TestHandlePods_LabelSelector(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod", Labels: map[string]string{"app": "web"}}},
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "db-0", Namespace: "prod", Labels: map[string]string{"app": "db"}}},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/pods?namespace=prod&labelSelector=app%3Dweb", "")
+	var pods []kube.PodView
+	if err := json.Unmarshal(rec.Body.Bytes(), &pods); err != nil {
+		t.Fatal(err)
+	}
+	if len(pods) != 1 || pods[0].Name != "web-0" {
+		t.Errorf("labelSelector app=web returned %+v, want only web-0", pods)
+	}
+}
+
+func TestHandlePods_FieldSelector(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "running-0", Namespace: "prod"}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pending-0", Namespace: "prod"}, Status: corev1.PodStatus{Phase: corev1.PodPending}},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/pods?namespace=prod&fieldSelector=status.phase%3DRunning", "")
+	var pods []kube.PodView
+	if err := json.Unmarshal(rec.Body.Bytes(), &pods); err != nil {
+		t.Fatal(err)
+	}
+	if len(pods) != 1 || pods[0].Name != "running-0" {
+		t.Errorf("fieldSelector status.phase=Running returned %+v, want only running-0", pods)
+	}
+}
+
 func TestHandleOverview(t *testing.T) {
 	s := newTestServer(t,
 		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}, Status: corev1.NodeStatus{
@@ -174,6 +204,24 @@ func TestHandleResourceList_Deployments(t *testing.T) {
 	}
 	if len(out) != 1 || out[0].Name != "web" || out[0].Status != "Available" {
 		t.Errorf("got %+v", out)
+	}
+}
+
+func TestHandleResourceList_LabelSelector(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "keep", Namespace: "prod", Labels: map[string]string{"team": "infra"}}},
+		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "skip", Namespace: "prod", Labels: map[string]string{"team": "apps"}}},
+	)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/configmaps?namespace=prod&labelSelector=team%3Dinfra", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var out []kube.ConfigMapView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Name != "keep" {
+		t.Errorf("labelSelector team=infra returned %+v, want only keep", out)
 	}
 }
 

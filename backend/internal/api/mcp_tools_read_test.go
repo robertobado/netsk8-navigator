@@ -79,6 +79,56 @@ func TestFilterSince_KeepsItemsMissingOrUnparseableField(t *testing.T) {
 	}
 }
 
+func TestWithListQuery(t *testing.T) {
+	cases := []struct {
+		name                    string
+		namespace, label, field string
+		want                    string
+	}{
+		{"none", "", "", "", "/pods"},
+		{"namespace only", "prod", "", "", "/pods?namespace=prod"},
+		{"label + field", "", "app=web", "status.phase=Running", "/pods?fieldSelector=status.phase%3DRunning&labelSelector=app%3Dweb"},
+		{"all three", "prod", "app=web", "spec.nodeName=n1", "/pods?fieldSelector=spec.nodeName%3Dn1&labelSelector=app%3Dweb&namespace=prod"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := withListQuery("/pods", tc.namespace, tc.label, tc.field); got != tc.want {
+				t.Errorf("withListQuery = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompactPods_TrimsToEssentialFields(t *testing.T) {
+	body := []byte(`[{"name":"web-0","namespace":"prod","status":"Running","ready":1,"total":1,"restarts":0,"node":"n1","age":"2024-01-01T00:00:00Z","reason":"","ip":"10.0.0.1","containers":["app","sidecar"],"ownerKind":"ReplicaSet","ownerName":"web-abc","finalizers":["x"]}]`)
+	got := compactPods(body)
+
+	var out []map[string]any
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatalf("unmarshal: %v, body=%s", err, got)
+	}
+	if len(out) != 1 {
+		t.Fatalf("got %d pods, want 1", len(out))
+	}
+	for _, dropped := range []string{"ip", "containers", "ownerKind", "ownerName", "finalizers"} {
+		if _, present := out[0][dropped]; present {
+			t.Errorf("compactPods kept %q, want it dropped", dropped)
+		}
+	}
+	for _, kept := range compactPodFields {
+		if _, present := out[0][kept]; !present {
+			t.Errorf("compactPods dropped %q, want it kept", kept)
+		}
+	}
+}
+
+func TestCompactPods_LeavesNonArrayBodyAlone(t *testing.T) {
+	body := []byte(`{"error":"boom"}`)
+	if got := compactPods(body); string(got) != string(body) {
+		t.Errorf("got %s, want an error object passed through untouched", got)
+	}
+}
+
 func TestTruncateIssues_LimitAndSince(t *testing.T) {
 	newItems := func() []issueItemShape {
 		return []issueItemShape{
@@ -152,6 +202,60 @@ func TestMCPHandler_ReadToolAllowedForOtherContexts(t *testing.T) {
 	}
 	if result.IsError {
 		t.Fatalf("list_pods returned a tool error: %+v", result.Content)
+	}
+}
+
+func TestMCPHandler_CallListPods_Compact(t *testing.T) {
+	s := newTestServer(t, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod"},
+		Spec:       corev1.PodSpec{NodeName: "n1", Containers: []corev1.Container{{Name: "app"}, {Name: "sidecar"}}},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning, PodIP: "10.0.0.1"},
+	})
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "list_pods",
+		Arguments: map[string]any{"context": "test", "compact": true},
+	})
+	if err != nil {
+		t.Fatalf("CallTool list_pods: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("list_pods returned a tool error: %+v", result.Content)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text //nolint:forcetypeassert // asserted shape from toolResult
+	if !strings.Contains(text, `"web-0"`) {
+		t.Errorf("compact list_pods = %q, want it to still name the pod", text)
+	}
+	for _, dropped := range []string{"containers", "10.0.0.1", "ownerKind"} {
+		if strings.Contains(text, dropped) {
+			t.Errorf("compact list_pods still contains %q: %s", dropped, text)
+		}
+	}
+}
+
+func TestMCPHandler_CallListPods_LabelSelector(t *testing.T) {
+	s := newTestServer(t,
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod", Labels: map[string]string{"app": "web"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "db-0", Namespace: "prod", Labels: map[string]string{"app": "db"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning}},
+	)
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "list_pods",
+		Arguments: map[string]any{"context": "test", "labelSelector": "app=web"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool list_pods: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("list_pods returned a tool error: %+v", result.Content)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text //nolint:forcetypeassert // asserted shape from toolResult
+	if !strings.Contains(text, `"web-0"`) || strings.Contains(text, `"db-0"`) {
+		t.Errorf("labelSelector app=web returned %q, want only web-0", text)
 	}
 }
 

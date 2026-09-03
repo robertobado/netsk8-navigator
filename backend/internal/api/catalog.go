@@ -303,7 +303,7 @@ func (s *Server) handleResourceList(w http.ResponseWriter, r *http.Request) {
 	if res.Namespaced {
 		ns = namespaceParam(r)
 	}
-	list, err := dyn.Resource(res.GVR).Namespace(ns).List(ctx, metav1.ListOptions{})
+	list, err := dyn.Resource(res.GVR).Namespace(ns).List(ctx, listOptionsFromQuery(r))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return

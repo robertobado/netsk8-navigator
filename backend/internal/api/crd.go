@@ -177,7 +177,7 @@ func (s *Server) handleCRDList(w http.ResponseWriter, r *http.Request) {
 
 	gvr := schema.GroupVersionResource{Group: r.PathValue("group"), Version: r.PathValue("version"), Resource: r.PathValue("resource")}
 	ns := r.URL.Query().Get("namespace")
-	list, err := dyn.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{})
+	list, err := dyn.Resource(gvr).Namespace(ns).List(ctx, listOptionsFromQuery(r))
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
