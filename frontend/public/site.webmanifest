@@ -1,7 +1,10 @@
 {
-  "name": "Netsk8 Navigator",
+  "id": "/",
+  "name": "Netsk8 Navigator — navegador de clusters Kubernetes",
   "short_name": "Netsk8",
-  "description": "Kubernetes cluster management no navegador",
+  "description": "Navegue qualquer cluster Kubernetes — recursos padrão e CRDs — por um app nativo, uma UI no navegador ou um servidor MCP, tudo no mesmo binário.",
+  "lang": "pt-BR",
+  "categories": ["developer", "productivity", "utilities"],
   "icons": [
     { "src": "/web-app-manifest-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
     { "src": "/web-app-manifest-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
@@ -9,5 +12,6 @@
   "theme_color": "#0b1120",
   "background_color": "#0b1120",
   "display": "standalone",
+  "scope": "/",
   "start_url": "/"
 }

@@ -2,17 +2,157 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      SEO / social metadata below targets the public demo at https://netsk8.io.
+      The same index.html is embedded verbatim into every binary (local server,
+      desktop app), so the absolute netsk8.io URLs also ship there — harmless:
+      a locally-run instance is never crawled or link-unfurled, and netsk8.io
+      genuinely is the canonical public copy of this page.
+    -->
+    <title>Netsk8 Navigator — navegador de clusters Kubernetes</title>
+    <meta
+      name="description"
+      content="Navegue qualquer cluster Kubernetes — recursos padrão e CRDs — por um app nativo, uma UI no navegador ou um servidor MCP, tudo no mesmo binário. Lê o seu kubeconfig; nada instalado no cluster."
+    />
+    <link rel="canonical" href="https://netsk8.io/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Roberto Badô" />
+    <meta
+      name="keywords"
+      content="Kubernetes, kubeconfig, dashboard Kubernetes, navegador de cluster, Lens, k8s, kubectl, CRD, Helm, MCP, Model Context Protocol"
+    />
+
+    <!-- Open Graph (Facebook, LinkedIn, Slack, Discord, …) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Netsk8 Navigator" />
+    <meta property="og:title" content="Netsk8 Navigator — navegador de clusters Kubernetes" />
+    <meta
+      property="og:description"
+      content="Um app nativo, uma UI no navegador e um servidor MCP para navegar qualquer cluster Kubernetes — recursos padrão e CRDs — tudo no mesmo binário."
+    />
+    <meta property="og:url" content="https://netsk8.io/" />
+    <meta property="og:image" content="https://netsk8.io/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Visão geral do cluster no Netsk8 Navigator — métricas de CPU e memória ao vivo e uma tabela de pods." />
+    <meta property="og:locale" content="pt_BR" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Netsk8 Navigator — navegador de clusters Kubernetes" />
+    <meta
+      name="twitter:description"
+      content="Um app nativo, uma UI no navegador e um servidor MCP para navegar qualquer cluster Kubernetes, tudo no mesmo binário."
+    />
+    <meta name="twitter:image" content="https://netsk8.io/og-image.png" />
+    <meta name="twitter:image:alt" content="Visão geral do cluster no Netsk8 Navigator — métricas ao vivo e uma tabela de pods." />
+
+    <meta name="theme-color" content="#0b1120" />
+
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#0b1120" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Netsk8 Navigator</title>
+
+    <!-- Structured data: a free, cross-platform developer tool. Kept version-less
+         on purpose so it never goes stale against the actual release. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Netsk8 Navigator",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Windows, Linux, Web",
+        "url": "https://netsk8.io/",
+        "downloadUrl": "https://github.com/robertobado/netsk8-navigator/releases/latest",
+        "softwareHelp": "https://github.com/robertobado/netsk8-navigator#readme",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "description": "Navegue qualquer cluster Kubernetes — recursos padrão e CRDs — por um app nativo, uma UI no navegador ou um servidor MCP, tudo no mesmo binário. Lê o seu kubeconfig; nada instalado no cluster.",
+        "author": { "@type": "Person", "name": "Roberto Badô" },
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "featureList": [
+          "Todos os recursos padrão do Kubernetes em tabelas filtráveis e ordenáveis",
+          "Custom Resources (CRDs) — lista, detalhe, YAML, editar e excluir",
+          "Editor de manifesto YAML (Monaco) para ler e editar qualquer objeto",
+          "Logs, exec e eventos ao vivo por SSE/WebSocket",
+          "Métricas de CPU/memória no nível de cluster, nó e pod",
+          "Grafo de topologia do cluster por namespace",
+          "Multi-cluster e multi-versão via discovery/RESTMapper",
+          "Servidor MCP embutido para agentes como o Claude"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <!-- Fully self-contained: the app's stylesheet may or may not have
+           loaded, so this styles itself and hides the (empty) #root. -->
+      <style>
+        #root {
+          display: none;
+        }
+        body {
+          background: #0b1120;
+          color: #e2e8f0;
+        }
+        .nk-noscript {
+          max-width: 40rem;
+          margin: 4rem auto;
+          padding: 0 1.25rem;
+          font-family:
+            system-ui,
+            -apple-system,
+            sans-serif;
+          line-height: 1.65;
+        }
+        .nk-noscript h1 {
+          font-size: 1.6rem;
+          font-weight: 700;
+          margin: 0 0 1rem;
+        }
+        .nk-noscript a {
+          color: #7dd3fc;
+        }
+        .nk-noscript ul {
+          padding-left: 1.25rem;
+        }
+        .nk-noscript li {
+          list-style: disc;
+          margin: 0.35rem 0;
+        }
+        .nk-noscript code {
+          background: rgba(255, 255, 255, 0.08);
+          padding: 0.1em 0.35em;
+          border-radius: 0.25rem;
+          font-size: 0.9em;
+        }
+      </style>
+      <main class="nk-noscript">
+        <h1>Netsk8 Navigator</h1>
+        <p>
+          Um navegador de clusters Kubernetes: um <strong>app nativo</strong> (macOS, Windows e Linux), a mesma UI no <strong>navegador</strong>, ou um
+          <strong>servidor MCP</strong> que os seus agentes podem operar — tudo no mesmo binário. Lê o seu <code>kubeconfig</code> e fala direto com a API do
+          cluster; nada é instalado no cluster, o mesmo modelo de confiança de rodar <code>kubectl</code> na sua máquina.
+        </p>
+        <ul>
+          <li>Todos os recursos padrão (Workloads, Rede, Config, Storage, RBAC, Governança, Cluster) em tabelas filtráveis e ordenáveis.</li>
+          <li>Custom Resources: toda CRD que o cluster serve ganha lista, detalhe, YAML, edição e exclusão.</li>
+          <li>Editor de manifesto YAML (Monaco), logs/exec/eventos ao vivo, métricas de CPU/memória e um grafo de topologia.</li>
+          <li>Multi-cluster e multi-versão — troca de contexto do kubeconfig sem reiniciar nada.</li>
+          <li>Servidor <a href="https://modelcontextprotocol.io">MCP</a> embutido para agentes.</li>
+        </ul>
+        <p>
+          Esta é uma aplicação de página única e precisa de JavaScript para rodar.
+          <a href="https://github.com/robertobado/netsk8-navigator">Código-fonte, documentação e downloads no GitHub.</a>
+        </p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
