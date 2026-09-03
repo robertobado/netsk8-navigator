@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronsUpDown, Search, Server, Star } from 'lucide-react'
+import { Check, ChevronsUpDown, KeyRound, Search, Server, Star } from 'lucide-react'
 import type { ContextInfo } from '@/lib/api'
 import { cn, shortContext } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -9,9 +9,13 @@ interface Props {
   contexts: ContextInfo[]
   selected?: string
   onSelect: (name: string) => void
+  // Opens the kubeconfig manager — rendered as an entry below the context
+  // list. Omitted when the kubeconfig isn't editable (in-cluster, or the
+  // editor failed to load), which just hides the entry.
+  onManageKubeconfig?: () => void
 }
 
-export function ContextSwitcher({ contexts, selected, onSelect }: Readonly<Props>) {
+export function ContextSwitcher({ contexts, selected, onSelect, onManageKubeconfig }: Readonly<Props>) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -117,6 +121,20 @@ export function ContextSwitcher({ contexts, selected, onSelect }: Readonly<Props
               </div>
             ))}
           </div>
+          {onManageKubeconfig && (
+            <button
+              type="button"
+              onClick={() => {
+                onManageKubeconfig()
+                setOpen(false)
+                setQuery('')
+              }}
+              className="flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <KeyRound className="size-4 shrink-0" />
+              <span className="truncate">{t('kubeconfig.title', 'Manage kubeconfig')}</span>
+            </button>
+          )}
         </div>
       )}
     </div>
