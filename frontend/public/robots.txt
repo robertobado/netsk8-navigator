@@ -1,0 +1,6 @@
+# https://netsk8.io — the public demo. A self-hosted/local instance serving
+# this same file isn't reachable by crawlers anyway, so a blanket allow is fine.
+User-agent: *
+Allow: /
+
+Sitemap: https://netsk8.io/sitemap.xml
