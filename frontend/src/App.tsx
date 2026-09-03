@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Boxes, CircleAlert, CircleDot, KeyRound, Layers, Menu, Server, Settings2 } from 'lucide-react'
+import { Activity, Boxes, CircleAlert, CircleDot, Layers, Menu, Server, Settings2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useLivePods } from '@/lib/useLivePods'
 import { cn, shortContext } from '@/lib/utils'
@@ -213,22 +213,12 @@ function AppMain() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <div className="min-w-0 flex-1">
-              <ContextSwitcher contexts={contextsQ.data ?? []} selected={ctx} onSelect={updateCtx} />
-            </div>
-            {healthQ.data?.kubeconfigEditable !== false && (
-              <button
-                type="button"
-                onClick={() => setKubeconfigOpen(true)}
-                className="shrink-0 rounded-xl border bg-card/70 p-2.5 text-muted-foreground backdrop-blur-xl transition-colors hover:border-primary/40 hover:text-foreground"
-                aria-label={t('kubeconfig.title', 'Manage kubeconfig')}
-                title={t('kubeconfig.title', 'Manage kubeconfig')}
-              >
-                <KeyRound className="size-4" />
-              </button>
-            )}
-          </div>
+          <ContextSwitcher
+            contexts={contextsQ.data ?? []}
+            selected={ctx}
+            onSelect={updateCtx}
+            onManageKubeconfig={healthQ.data?.kubeconfigEditable !== false ? () => setKubeconfigOpen(true) : undefined}
+          />
           {ctx && !resDef?.clusterScoped && <NamespaceSelect namespaces={nsQ.data ?? []} selected={ns} onSelect={updateNs} />}
 
           <div className="min-h-0 flex-1 overflow-y-auto pt-1">

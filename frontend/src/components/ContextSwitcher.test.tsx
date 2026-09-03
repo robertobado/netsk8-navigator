@@ -72,6 +72,33 @@ describe('ContextSwitcher', () => {
     expect(stagingIdx).toBeLessThan(prodIdx)
   })
 
+  it('shows a "Manage kubeconfig" entry below the list that fires onManageKubeconfig and closes the dropdown', async () => {
+    const user = userEvent.setup()
+    const onManageKubeconfig = vi.fn()
+    const onSelect = vi.fn()
+    render(<ContextSwitcher contexts={contexts} selected="prod" onSelect={onSelect} onManageKubeconfig={onManageKubeconfig} />)
+    await openDropdown(user)
+
+    const manage = screen.getByRole('button', { name: 'Manage kubeconfig' })
+    // It sits after every context row, not among them.
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.indexOf(manage)).toBe(buttons.length - 1)
+
+    await user.click(manage)
+    expect(onManageKubeconfig).toHaveBeenCalledOnce()
+    expect(onSelect).not.toHaveBeenCalled()
+    // Dropdown closed — the search box is gone.
+    expect(screen.queryByPlaceholderText('Search cluster...')).not.toBeInTheDocument()
+  })
+
+  it('omits the "Manage kubeconfig" entry when onManageKubeconfig is not provided', async () => {
+    const user = userEvent.setup()
+    render(<ContextSwitcher contexts={contexts} selected="prod" onSelect={vi.fn()} />)
+    await openDropdown(user)
+
+    expect(screen.queryByRole('button', { name: 'Manage kubeconfig' })).not.toBeInTheDocument()
+  })
+
   it('toggles a context as favorite without triggering onSelect', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
