@@ -104,7 +104,12 @@ export function ContextSwitcher({ contexts, selected, onSelect, onManageKubeconf
                     <span className="block truncate text-xs text-muted-foreground">{c.name}</span>
                   </span>
                   {c.name === selected && (
-                    <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">{t('current')}</span>
+                    // Deliberately NOT t('current') — that word is reserved for the
+                    // kubeconfig's own current-context (KubeconfigManagerDialog's badge),
+                    // a different, independent piece of state. See i18n.ts's comment.
+                    <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      {t('contextSwitcher.selected', 'selected')}
+                    </span>
                   )}
                 </button>
                 <button

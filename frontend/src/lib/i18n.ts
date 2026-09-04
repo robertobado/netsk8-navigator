@@ -102,6 +102,13 @@ const pt: Dict = {
   'Open details': 'Abrir detalhes',
   'Try again': 'Tentar novamente',
   current: 'atual',
+  // Deliberately distinct from `current` above: that word is reserved for
+  // the kubeconfig's own current-context (see KubeconfigManagerDialog's
+  // badge) — reusing it in ContextSwitcher for "the context this session
+  // has selected" made two unrelated things read as the same "current" in
+  // two different pickers, looking like a bug rather than the two
+  // independent, correctly-behaving states they are.
+  'contextSwitcher.selected': 'selecionado',
   live: 'ao vivo',
   connecting: 'conectando',
   reconnecting: 'reconectando',

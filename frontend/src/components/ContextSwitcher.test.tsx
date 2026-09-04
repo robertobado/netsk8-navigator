@@ -14,7 +14,9 @@ beforeEach(() => {
 
 // `current` reflects the kubeconfig's static default context, which can
 // differ from `selected` — the context actually active in this app session
-// (e.g. after the user picks a different one from this very list).
+// (e.g. after the user picks a different one from this very list). The
+// switcher's own badge reads "selected", not "current" — see i18n.ts's
+// contextSwitcher.selected comment for why the two must stay distinct words.
 const contexts: ContextInfo[] = [
   { name: 'prod', cluster: 'prod', user: 'prod', namespace: 'default', server: 'https://prod', current: true },
   { name: 'staging', cluster: 'staging', user: 'staging', namespace: 'default', server: 'https://staging', current: false },
@@ -26,7 +28,7 @@ function openDropdown(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('ContextSwitcher', () => {
-  it('puts the "current" badge on the selected context, not the kubeconfig default', async () => {
+  it('puts the "selected" badge on the selected context, not the kubeconfig default — and never the word "current"', async () => {
     const user = userEvent.setup()
     render(<ContextSwitcher contexts={contexts} selected="staging" onSelect={vi.fn()} />)
     await openDropdown(user)
@@ -35,7 +37,10 @@ describe('ContextSwitcher', () => {
     const stagingRow = rows.find((r) => r.textContent?.includes('staging'))
     const prodRow = rows.find((r) => r.textContent?.includes('prod'))
 
-    expect(stagingRow?.textContent).toContain('current')
+    expect(stagingRow?.textContent).toContain('selected')
+    expect(prodRow?.textContent).not.toContain('selected')
+    // Neither row says "current" — that word is KubeconfigManagerDialog's alone.
+    expect(stagingRow?.textContent).not.toContain('current')
     expect(prodRow?.textContent).not.toContain('current')
   })
 
