@@ -194,6 +194,10 @@ export function DataTable<T extends RowData>({
   const modelRows = table.getRowModel().rows
   const doVirtualize = !!virtualize && modelRows.length > VIRTUALIZE_MIN
   const scrollRef = useRef<HTMLDivElement>(null)
+  // False positive (for our purposes): @tanstack/react-virtual's own return
+  // shape isn't memoizable, and that's a property of the library's API, not
+  // something fixable from call sites like this one.
+  // oxlint-disable-next-line react/incompatible-library
   const virtualizer = useVirtualizer({
     count: modelRows.length,
     getScrollElement: () => scrollRef.current,

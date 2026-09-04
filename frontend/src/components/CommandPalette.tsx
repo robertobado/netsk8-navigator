@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { Boxes, LayoutDashboard, Search, Server, Share2, Ship, type LucideIcon } from 'lucide-react'
@@ -112,12 +112,17 @@ export function CommandPalette({
   const t = useT()
   const viewItems = useViewItems()
   const [search, setSearch] = useState('')
-  const matches = useResourceMatches(selectedCtx, search, open)
-
-  // Drop any typed search once the palette closes, so reopening starts fresh.
-  useEffect(() => {
+  // Drop any typed search once the palette closes, so reopening starts
+  // fresh. Adjusted during render (React's documented alternative to an
+  // effect for "reset state when a prop changes") rather than in a
+  // useEffect, so the reset is visible in the very render `open` flips in
+  // instead of lagging a render behind.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (!open) setSearch('')
-  }, [open])
+  }
+  const matches = useResourceMatches(selectedCtx, search, open)
 
   return (
     <Command.Dialog

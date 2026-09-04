@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Bell, Boxes, ChevronRight, LayoutDashboard, Puzzle, Share2, Ship, Waypoints } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -35,9 +35,14 @@ function CRDGroupNode({ group, kinds, active, onSelect }: Readonly<{ group: stri
   const [open, setOpen] = useState(containsActive)
   // Auto-expand to reveal the active selection (e.g. deep-linking via hash),
   // but never auto-collapse — that stays under the user's own control.
-  useEffect(() => {
+  // Adjusted during render rather than in a useEffect (React's documented
+  // alternative for "reset state when a value changes"), so it doesn't lag
+  // a render behind.
+  const [wasActive, setWasActive] = useState(containsActive)
+  if (containsActive !== wasActive) {
+    setWasActive(containsActive)
     if (containsActive) setOpen(true)
-  }, [containsActive])
+  }
 
   return (
     <div className="flex flex-col gap-0.5">

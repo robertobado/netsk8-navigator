@@ -31,6 +31,10 @@ export function LogsPanel({ ctx, namespace, pod, container }: Readonly<{ ctx: st
   const counter = useRef(0)
 
   useEffect(() => {
+    // False positive: this effect opens a real EventSource right below;
+    // resetting state here is synchronizing with that external connection,
+    // not deriving state from a prop.
+    // oxlint-disable-next-line react/set-state-in-effect
     setLines([])
     counter.current = 0
     const es = new EventSource(logsURL(ctx, namespace, pod, container))

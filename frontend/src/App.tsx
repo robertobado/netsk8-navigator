@@ -63,6 +63,10 @@ function AppMain() {
   // so views are bookmarkable and shareable.
   const [view, setView] = useState<string>(() => window.location.hash.slice(1) || 'overview')
   const updateView = (v: string) => {
+    // False positive: this only ever runs from an event handler
+    // (onSelect/onNavigate), never during render, so mutating
+    // window.location here is safe.
+    // oxlint-disable-next-line react/immutability
     window.location.hash = v
     setView(v)
     setSidebarOpen(false)
@@ -125,6 +129,10 @@ function AppMain() {
     if (!valid) {
       const fallback = contextsQ.data.find((c) => c.current)?.name ?? contextsQ.data[0].name
       localStorage.setItem(CTX_KEY, fallback)
+      // False positive: this is synchronizing with an external system (the
+      // query's async data + a localStorage write), not deriving state
+      // from a prop — exactly the case the rule's own help text carves out.
+      // oxlint-disable-next-line react/set-state-in-effect
       setCtx(fallback)
     }
   }, [contextsQ.data, ctx])

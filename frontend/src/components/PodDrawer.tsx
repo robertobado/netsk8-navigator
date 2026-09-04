@@ -29,14 +29,23 @@ export function PodDrawer({
 }>) {
   const t = useT()
   const [tab, setTab] = useState<Tab>('detail')
-  const [container, setContainer] = useState<string | undefined>()
+  // Lazily derived from `pod`, not a hardcoded undefined: matches the
+  // formula the render-time adjustment below uses, which is what lets it
+  // safely skip re-deriving on mount.
+  const [container, setContainer] = useState<string | undefined>(() => pod?.containers?.[0])
   // Shares the ['health'] cache with App.tsx's own query — no extra request.
   const demoMode = useQuery({ queryKey: ['health'], queryFn: api.health, staleTime: Infinity, refetchInterval: false }).data?.demo ?? false
 
-  useEffect(() => {
+  // Reset the tab and default container whenever a new pod opens. Adjusted
+  // during render rather than in a useEffect (React's documented
+  // alternative for "reset state when a prop changes"), so the reset is
+  // visible in the very render `pod` changes in.
+  const [prevPod, setPrevPod] = useState(pod)
+  if (pod !== prevPod) {
+    setPrevPod(pod)
     setTab('detail')
     setContainer(pod?.containers?.[0])
-  }, [pod])
+  }
 
   // Close on Escape.
   useEffect(() => {

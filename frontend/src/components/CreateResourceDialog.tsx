@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Editor, { type Monaco } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { AlertTriangle, Loader2, Plus, X } from 'lucide-react'
@@ -42,13 +42,19 @@ export function CreateResourceDialog({
   useYamlMarkers(editorRef, monacoRef, yamlError)
 
   // Reset to a fresh template each time the dialog is (re)opened, possibly for
-  // a different kind/namespace than last time.
-  useEffect(() => {
+  // a different kind/namespace than last time. Adjusted during render rather
+  // than in a useEffect (React's documented alternative for "reset state
+  // when a prop changes"), so the reset is visible in the very render the
+  // dialog opens in.
+  const resetKey = `${open}:${kind}:${namespace}:${clusterScoped}`
+  const [prevResetKey, setPrevResetKey] = useState(resetKey)
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey)
     if (open) {
       setValue(blankManifestYAML(kind, namespace, clusterScoped))
       setError('')
     }
-  }, [open, kind, namespace, clusterScoped])
+  }
 
   if (!open) return null
 

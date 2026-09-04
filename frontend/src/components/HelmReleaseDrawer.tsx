@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, FileCode2, History, Loader2, NotebookText, RotateCcw, Settings2, Trash2, X } from 'lucide-react'
 import { helmReleaseHistory, helmReleaseManifest, helmReleaseRollback, helmReleaseStatus, helmReleaseUninstall, type HelmRelease } from '@/lib/api'
@@ -22,11 +22,17 @@ export function HelmReleaseDrawer({
   const [upgrading, setUpgrading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  // Reset the drawer's local state whenever a new release opens. Adjusted
+  // during render rather than in a useEffect (React's documented
+  // alternative for "reset state when a prop changes"), so the reset is
+  // visible in the very render `target` changes in.
+  const [prevTarget, setPrevTarget] = useState(target)
+  if (target !== prevTarget) {
+    setPrevTarget(target)
     setTab('values')
     setConfirmUninstall(false)
     setError('')
-  }, [target])
+  }
 
   const open = !!target
   const statusQ = useQuery({

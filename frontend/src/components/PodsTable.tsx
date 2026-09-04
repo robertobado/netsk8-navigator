@@ -91,11 +91,13 @@ export function TerminatingStatus({
   finalizers,
 }: Readonly<{ ctx: string; namespace: string; name: string; deletedAt?: string; finalizers: string[] }>) {
   const t = useT()
-  // Force-update idiom (see LiveAge above) so the "stuck for N minutes"
-  // check below keeps re-evaluating against the current clock.
-  const [, forceUpdate] = useReducer((n: number) => n + 1, 0)
+  // A ticking clock in state (rather than the LiveAge/force-update idiom
+  // above) so the "stuck for N minutes" check below keeps re-evaluating
+  // without reading the impure Date.now() during render — render only ever
+  // reads `now`, a plain state value.
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const id = setInterval(forceUpdate, 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
   const eventsQ = useQuery({
@@ -109,7 +111,7 @@ export function TerminatingStatus({
   // window in time (e.g. a recurring FailedToRetrieveImagePullSecret from
   // an unrelated container) isn't itself evidence of a termination problem.
   const problemEvents = (eventsQ.data ?? []).filter((e) => e.type === 'Warning' && TERM_PROBLEM_REASONS.test(e.reason))
-  const elapsedMs = deletedAt ? Date.now() - sinceMs : 0
+  const elapsedMs = deletedAt ? now - sinceMs : 0
   const stuckFinalizers = problemEvents.length === 0 && finalizers.length > 0 && elapsedMs > 5 * 60_000
   const warn = problemEvents.length > 0 || stuckFinalizers
 

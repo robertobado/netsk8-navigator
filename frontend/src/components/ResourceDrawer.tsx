@@ -22,22 +22,36 @@ type Tab = 'detail' | 'events' | 'logs' | 'yaml'
 // Slide-over showing a resource: a structured detail view + the raw YAML.
 export function ResourceDrawer({ target, ctx, onClose }: Readonly<{ target: DrawerTarget | null; ctx: string; onClose: () => void }>) {
   const t = useT()
-  const [tab, setTab] = useState<Tab>('detail')
+  // Lazily derived from `target`, not a hardcoded 'detail': the stack below
+  // always starts empty, so `target` is `cur` on this very first render —
+  // matching the formula the render-time adjustment further down uses,
+  // which is what lets it safely skip re-deriving on mount.
+  const [tab, setTab] = useState<Tab>(() => (KINDS_WITH_DETAIL.has(target?.kind as ManifestKind) ? 'detail' : 'yaml'))
   const [pod, setPod] = useState<Pod | null>(null) // drill-down into a workload's pod
   const [stack, setStack] = useState<DrawerTarget[]>([]) // in-drawer navigation (e.g. ingress → service)
+
+  // Reset navigation whenever a new entry target opens, and reset the tab
+  // whenever the resolved current resource's kind/name changes below (either
+  // because of that, or a drill-down push/pop). Both adjusted during render
+  // rather than in a useEffect (React's documented alternative for "reset
+  // state when a prop changes") — chaining them as effects would resolve
+  // over two cascading renders; doing it here resolves in one.
+  const [prevTarget, setPrevTarget] = useState(target)
+  if (target !== prevTarget) {
+    setPrevTarget(target)
+    setStack([])
+  }
 
   // The currently shown resource: the deepest drill-down, else the entry target.
   const cur = stack.length > 0 ? stack[stack.length - 1] : target
   const hasDetail = !!cur && KINDS_WITH_DETAIL.has(cur.kind)
 
-  // Reset navigation whenever a new entry target opens.
-  useEffect(() => {
-    setStack([])
-  }, [target])
-
-  useEffect(() => {
+  const curKey = cur ? `${cur.kind}/${cur.name}` : ''
+  const [prevCurKey, setPrevCurKey] = useState(curKey)
+  if (curKey !== prevCurKey) {
+    setPrevCurKey(curKey)
     setTab(KINDS_WITH_DETAIL.has(cur?.kind as ManifestKind) ? 'detail' : 'yaml')
-  }, [cur?.kind, cur?.name])
+  }
 
   useEffect(() => {
     if (!target) return

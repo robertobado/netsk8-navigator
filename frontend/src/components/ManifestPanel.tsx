@@ -161,6 +161,10 @@ export function ManifestPanel({
 
   useEffect(() => {
     let cancelled = false
+    // False positive: this effect fetches the manifest right below;
+    // resetting state here is synchronizing with that external fetch, not
+    // deriving state from a prop.
+    // oxlint-disable-next-line react/set-state-in-effect
     setState('loading')
     setConfirming(false)
     setApplied(false)
@@ -181,6 +185,11 @@ export function ManifestPanel({
     }
   }, [ctx, kind, namespace, name])
 
+  // False positive: original.current is only ever mutated in the same tick
+  // as a setValue/setApplied call (see below), so any change to it is
+  // always accompanied by a state update that already triggers this
+  // re-render — it can't go stale.
+  // oxlint-disable-next-line react/refs
   const dirty = value !== original.current
 
   const preview = async () => {
@@ -252,6 +261,8 @@ export function ManifestPanel({
             language="yaml"
             theme={NETSK8_THEME}
             beforeMount={ensureNetsk8Theme}
+            // False positive: same ref/state pairing as the `dirty` read above.
+            // oxlint-disable-next-line react/refs
             original={original.current}
             modified={previewYaml}
             options={{

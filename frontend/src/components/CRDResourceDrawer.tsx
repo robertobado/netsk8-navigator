@@ -32,7 +32,15 @@ export function CRDResourceDrawer({
 }>) {
   const t = useT()
   const [tab, setTab] = useState<Tab>('detail')
-  useEffect(() => setTab('detail'), [item])
+  // Reset the tab whenever a new item opens. Adjusted during render rather
+  // than in a useEffect (React's documented alternative for "reset state
+  // when a prop changes"), so the reset is visible in the very render
+  // `item` changes in.
+  const [prevItem, setPrevItem] = useState(item)
+  if (item !== prevItem) {
+    setPrevItem(item)
+    setTab('detail')
+  }
   useEffect(() => {
     if (!item) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()

@@ -50,6 +50,10 @@ export function MultiPodLogsPanel({ ctx, kind, namespace, name }: Readonly<{ ctx
 
   useEffect(() => {
     if (podNames.length === 0) return
+    // False positive: this effect opens a real EventSource right below;
+    // resetting state here is synchronizing with that external connection,
+    // not deriving state from a prop.
+    // oxlint-disable-next-line react/set-state-in-effect
     setLines([])
     counter.current = 0
     const es = new EventSource(workloadLogsURL(ctx, kind, namespace, name, container))

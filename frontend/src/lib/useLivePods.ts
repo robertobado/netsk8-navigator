@@ -31,6 +31,10 @@ export function useLivePods(ctx?: string, namespace = '') {
 
   useEffect(() => {
     if (!ctx) return
+    // False positive: this effect opens a real EventSource right below;
+    // resetting state here is synchronizing with that external connection,
+    // not deriving state from a prop.
+    // oxlint-disable-next-line react/set-state-in-effect
     setState('connecting')
     setPods([])
     stage.current = new Map()

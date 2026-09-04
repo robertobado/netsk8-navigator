@@ -56,10 +56,14 @@ function prefersReducedMotion(): boolean {
 export function FloatingBubble({ message, href }: Readonly<{ message: string; href: string }>) {
   const [dismissed, setDismissed] = useState(false)
   const elRef = useRef<HTMLDivElement>(null)
-  const reducedMotion = useRef(prefersReducedMotion())
+  // A snapshot of the media query at mount, not a live subscription — this
+  // never changes again after mount, so state (read safely during render,
+  // unlike a ref) rather than an active listener is the right amount of
+  // reactivity for it.
+  const [reducedMotion] = useState(prefersReducedMotion)
 
   useEffect(() => {
-    if (dismissed || reducedMotion.current) return
+    if (dismissed || reducedMotion) return
     const el = elRef.current
     if (!el) return
 
@@ -108,7 +112,7 @@ export function FloatingBubble({ message, href }: Readonly<{ message: string; hr
     raf = requestAnimationFrame(tick)
 
     return () => cancelAnimationFrame(raf)
-  }, [dismissed])
+  }, [dismissed, reducedMotion])
 
   if (dismissed) return null
 
@@ -116,7 +120,7 @@ export function FloatingBubble({ message, href }: Readonly<{ message: string; hr
     <div
       ref={elRef}
       className="group fixed left-0 top-0 z-50 flex flex-col items-center gap-1"
-      style={reducedMotion.current ? { transform: 'translate3d(calc(100vw - 6rem), calc(100vh - 8rem), 0)' } : undefined}
+      style={reducedMotion ? { transform: 'translate3d(calc(100vw - 6rem), calc(100vh - 8rem), 0)' } : undefined}
     >
       <a
         href={href}
