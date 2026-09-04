@@ -40,6 +40,9 @@ const {
   editKubeconfigContextMock,
   createKubeconfigContextMock,
   deleteKubeconfigContextMock,
+  createKubeconfigUserMock,
+  editKubeconfigUserMock,
+  deleteKubeconfigUserMock,
   previewKubeconfigImportMock,
   commitKubeconfigImportMock,
   revealKubeconfigSecretMock,
@@ -50,6 +53,9 @@ const {
   editKubeconfigContextMock: vi.fn(),
   createKubeconfigContextMock: vi.fn(),
   deleteKubeconfigContextMock: vi.fn(),
+  createKubeconfigUserMock: vi.fn(),
+  editKubeconfigUserMock: vi.fn(),
+  deleteKubeconfigUserMock: vi.fn(),
   previewKubeconfigImportMock: vi.fn(),
   commitKubeconfigImportMock: vi.fn(),
   revealKubeconfigSecretMock: vi.fn(),
@@ -62,6 +68,9 @@ vi.mock('@/lib/api', () => ({
   editKubeconfigContext: editKubeconfigContextMock,
   createKubeconfigContext: createKubeconfigContextMock,
   deleteKubeconfigContext: deleteKubeconfigContextMock,
+  createKubeconfigUser: createKubeconfigUserMock,
+  editKubeconfigUser: editKubeconfigUserMock,
+  deleteKubeconfigUser: deleteKubeconfigUserMock,
   previewKubeconfigImport: previewKubeconfigImportMock,
   commitKubeconfigImport: commitKubeconfigImportMock,
   revealKubeconfigSecret: revealKubeconfigSecretMock,
@@ -141,6 +150,9 @@ beforeEach(async () => {
   editKubeconfigContextMock.mockReset().mockResolvedValue(undefined)
   createKubeconfigContextMock.mockReset().mockResolvedValue(undefined)
   deleteKubeconfigContextMock.mockReset().mockResolvedValue({})
+  createKubeconfigUserMock.mockReset().mockResolvedValue(undefined)
+  editKubeconfigUserMock.mockReset().mockResolvedValue(undefined)
+  deleteKubeconfigUserMock.mockReset().mockResolvedValue(undefined)
   previewKubeconfigImportMock.mockReset()
   commitKubeconfigImportMock.mockReset().mockResolvedValue(undefined)
   revealKubeconfigSecretMock.mockReset()
@@ -149,6 +161,18 @@ beforeEach(async () => {
 
 function findRow(name: string) {
   return screen.getByText(name).closest('tr')!
+}
+
+// The "New context..." and "New user" forms each have their own "Name"
+// field and "Create" button — scope by section heading to disambiguate.
+function section(heading: string) {
+  return screen.getByText(heading).closest('section')!
+}
+
+// A user name (e.g. "staging-user") also appears as the Contexts table's
+// User column text — scope to the Users section to disambiguate.
+function findUserRow(name: string) {
+  return within(section('Users')).getByText(name).closest('tr')!
 }
 
 describe('KubeconfigManagerDialog', () => {
@@ -251,11 +275,12 @@ describe('KubeconfigManagerDialog', () => {
     const user = userEvent.setup()
     renderDialog()
     await screen.findByText('Contexts')
+    const form = within(section('New context from existing cluster + user'))
 
-    await user.type(screen.getByLabelText('Name'), 'new-ctx')
-    await user.selectOptions(screen.getByLabelText('Cluster'), 'staging-cluster')
-    await user.selectOptions(screen.getByLabelText('User'), 'staging-user')
-    await user.click(screen.getByRole('button', { name: 'Create' }))
+    await user.type(form.getByLabelText('Name'), 'new-ctx')
+    await user.selectOptions(form.getByLabelText('Cluster'), 'staging-cluster')
+    await user.selectOptions(form.getByLabelText('User'), 'staging-user')
+    await user.click(form.getByRole('button', { name: 'Create' }))
 
     await waitFor(() =>
       expect(createKubeconfigContextMock).toHaveBeenCalledWith({ name: 'new-ctx', cluster: 'staging-cluster', user: 'staging-user', namespace: undefined }),
@@ -269,9 +294,68 @@ describe('KubeconfigManagerDialog', () => {
     await screen.findByText('Contexts')
 
     expect(screen.queryByText('the-real-token')).not.toBeInTheDocument()
-    await user.click(screen.getByText('Token'))
+    await user.click(within(findUserRow('prod-user')).getByText('Token'))
     await waitFor(() => expect(revealKubeconfigSecretMock).toHaveBeenCalledWith('prod-user', 'token'))
     expect(await screen.findByText('the-real-token')).toBeInTheDocument()
+  })
+
+  it('renames a user, rewiring any editing UI back to the closed state', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await screen.findByText('Users')
+
+    // Same <tr> throughout — once editing starts, the name cell holds an
+    // input (its value, not a text node), so re-querying by the new name
+    // wouldn't find anything; keep the row reference from before the edit.
+    const row = findUserRow('staging-user')
+    await user.click(within(row).getByTitle('Edit'))
+    const input = within(row).getByDisplayValue('staging-user')
+    await user.clear(input)
+    await user.type(input, 'staging-user-renamed')
+    await user.click(within(row).getByLabelText('Save'))
+
+    await waitFor(() => expect(editKubeconfigUserMock).toHaveBeenCalledWith('staging-user', 'staging-user-renamed'))
+  })
+
+  it('deletes a user after confirmation', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await screen.findByText('Users')
+
+    await user.click(within(findUserRow('staging-user')).getByTitle('Delete'))
+    await user.click(within(findUserRow('staging-user')).getByText('Confirm'))
+
+    await waitFor(() => expect(deleteKubeconfigUserMock).toHaveBeenCalledWith('staging-user'))
+  })
+
+  it('creates a new user with a token', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await screen.findByText('Users')
+    const form = within(section('New user'))
+
+    await user.type(form.getByLabelText('Name'), 'new-user')
+    await user.type(form.getByLabelText('Token'), 'tok-123')
+    await user.click(form.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(createKubeconfigUserMock).toHaveBeenCalledWith({ name: 'new-user', token: 'tok-123' }))
+  })
+
+  it('creates a new user with a client certificate and key', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await screen.findByText('Users')
+    const form = within(section('New user'))
+
+    await user.type(form.getByLabelText('Name'), 'cert-user')
+    await user.selectOptions(form.getByLabelText('Auth'), 'cert')
+    await user.type(form.getByLabelText(/Client cert/), 'cert-pem')
+    await user.type(form.getByLabelText(/Client key/), 'key-pem')
+    await user.click(form.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() =>
+      expect(createKubeconfigUserMock).toHaveBeenCalledWith({ name: 'cert-user', clientCertificateData: 'cert-pem', clientKeyData: 'key-pem' }),
+    )
   })
 
   it('previews then commits a kubeconfig import', async () => {

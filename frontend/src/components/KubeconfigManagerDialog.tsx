@@ -4,13 +4,17 @@ import { Check, Eye, EyeOff, KeyRound, Pencil, Plug, Star, Trash2, Upload, X } f
 import {
   commitKubeconfigImport,
   createKubeconfigContext,
+  createKubeconfigUser,
   deleteKubeconfigContext,
+  deleteKubeconfigUser,
   editKubeconfigContext,
+  editKubeconfigUser,
   kubeconfigView,
   pingContext,
   previewKubeconfigImport,
   revealKubeconfigSecret,
   setCurrentContext,
+  type CreateKubeconfigUserInput,
   type ImportPreview,
   type KubeconfigContextView,
   type KubeconfigUserView,
@@ -43,6 +47,9 @@ export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectCont
   const [notice, setNotice] = useState<string | null>(null)
   const [pings, setPings] = useState<Record<string, PingResult | 'loading'>>({})
   const [importOpen, setImportOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<string | null>(null)
+  const [editUserName, setEditUserName] = useState('')
+  const [confirmingDeleteUser, setConfirmingDeleteUser] = useState<string | null>(null)
 
   const viewQ = useQuery({ queryKey: ['kubeconfig'], queryFn: kubeconfigView, enabled: open })
 
@@ -118,11 +125,31 @@ export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectCont
     }
   }
 
+  const startEditUser = (name: string) => {
+    setEditingUser(name)
+    setEditUserName(name)
+  }
+  const saveEditUser = (oldName: string) =>
+    run(async () => {
+      const newName = editUserName.trim()
+      if (newName && newName !== oldName) await editKubeconfigUser(oldName, newName)
+      setEditingUser(null)
+    })
+  const doDeleteUser = (name: string) =>
+    run(async () => {
+      await deleteKubeconfigUser(name)
+      setConfirmingDeleteUser(null)
+    })
+
   return (
     <>
       <div aria-hidden="true" className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="pointer-events-none fixed inset-0 z-[90] flex items-center justify-center p-4">
-        <div className="pointer-events-auto flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl">
+        {/* Wider than every other dialog in the app (max-w-3xl elsewhere) —
+            this is the one screen showing dense tabular config (an 8-column
+            context table, now a user table with rename/delete/create too)
+            rather than a single form or YAML editor. */}
+        <div className="pointer-events-auto flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl">
           <div className="flex items-center justify-between border-b px-5 py-3.5">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <KeyRound className="size-4" /> {t('kubeconfig.title', 'Manage kubeconfig')}
@@ -207,7 +234,20 @@ export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectCont
 
                 <NewContextForm view={view} onCreate={(input) => run(() => createKubeconfigContext(input))} />
 
-                <UsersSection users={view.users} />
+                <UsersSection
+                  users={view.users}
+                  isEditing={editingUser}
+                  editName={editUserName}
+                  onEditNameChange={setEditUserName}
+                  confirmingDelete={confirmingDeleteUser}
+                  onStartEdit={startEditUser}
+                  onSaveEdit={saveEditUser}
+                  onCancelEdit={() => setEditingUser(null)}
+                  onRequestDelete={setConfirmingDeleteUser}
+                  onConfirmDelete={doDeleteUser}
+                  onCancelDelete={() => setConfirmingDeleteUser(null)}
+                />
+                <NewUserForm onCreate={(input) => run(() => createKubeconfigUser(input))} />
 
                 <ImportSection open={importOpen} onOpenChange={setImportOpen} onCommitted={refresh} />
               </>
@@ -528,24 +568,325 @@ function NewContextForm({
   )
 }
 
-function UsersSection({ users }: Readonly<{ users: KubeconfigUserView[] }>) {
+function UsersSection({
+  users,
+  isEditing,
+  editName,
+  onEditNameChange,
+  confirmingDelete,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: Readonly<{
+  users: KubeconfigUserView[]
+  isEditing: string | null
+  editName: string
+  onEditNameChange: (v: string) => void
+  confirmingDelete: string | null
+  onStartEdit: (name: string) => void
+  onSaveEdit: (name: string) => void
+  onCancelEdit: () => void
+  onRequestDelete: (name: string) => void
+  onConfirmDelete: (name: string) => void
+  onCancelDelete: () => void
+}>) {
   const t = useT()
   return (
     <section className="space-y-2">
       <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('kubeconfig.users', 'Users')}</h3>
-      <div className="space-y-1.5">
-        {users.map((u) => (
-          <div key={u.name} className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-xs">
-            <span className="font-medium">{u.name}</span>
-            {u.execCommand && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">exec: {u.execCommand}</span>}
-            {u.authProvider && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{u.authProvider}</span>}
-            {u.hasToken && <RevealSecret user={u.name} field="token" label={t('kubeconfig.token', 'Token')} />}
-            {u.hasPassword && <RevealSecret user={u.name} field="password" label={t('kubeconfig.password', 'Password')} />}
-            {u.hasClientKeyData && <RevealSecret user={u.name} field="clientKeyData" label={t('kubeconfig.clientKey', 'Client key')} />}
-            {u.hasClientCertificateData && <RevealSecret user={u.name} field="clientCertificateData" label={t('kubeconfig.clientCert', 'Client cert')} />}
-          </div>
-        ))}
+      <div className="overflow-x-auto rounded-xl border">
+        <table className="w-full text-sm">
+          <thead className="bg-background/40">
+            <tr className="border-b text-left text-xs text-muted-foreground">
+              <th className="px-3 py-2 font-medium">{t('Name')}</th>
+              <th className="px-3 py-2 font-medium">{t('kubeconfig.authMethod', 'Auth')}</th>
+              <th className="px-3 py-2 font-medium" />
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <UserRow
+                key={u.name}
+                u={u}
+                isEditing={isEditing === u.name}
+                editName={editName}
+                onEditNameChange={onEditNameChange}
+                confirmingDelete={confirmingDelete === u.name}
+                onStartEdit={() => onStartEdit(u.name)}
+                onSaveEdit={() => onSaveEdit(u.name)}
+                onCancelEdit={onCancelEdit}
+                onRequestDelete={() => onRequestDelete(u.name)}
+                onConfirmDelete={() => onConfirmDelete(u.name)}
+                onCancelDelete={onCancelDelete}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
+    </section>
+  )
+}
+
+// Split out of UsersSection's .map() for the same reason ContextRow is:
+// the row's editing/confirm-delete states pushed the enclosing component's
+// cognitive complexity past the lint limit.
+function UserRow({
+  u,
+  isEditing,
+  editName,
+  onEditNameChange,
+  confirmingDelete,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: Readonly<{
+  u: KubeconfigUserView
+  isEditing: boolean
+  editName: string
+  onEditNameChange: (v: string) => void
+  confirmingDelete: boolean
+  onStartEdit: () => void
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+  onRequestDelete: () => void
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+}>) {
+  const t = useT()
+  return (
+    <tr className="border-b border-border/50 align-top last:border-0">
+      <td className="px-3 py-2">
+        {isEditing ? (
+          <input
+            value={editName}
+            onChange={(e) => onEditNameChange(e.target.value)}
+            className="w-full min-w-32 rounded border bg-background/60 px-1.5 py-0.5 text-xs"
+          />
+        ) : (
+          <span className="font-medium">{u.name}</span>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {u.execCommand && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">exec: {u.execCommand}</span>}
+          {u.authProvider && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{u.authProvider}</span>}
+          {u.username && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">user: {u.username}</span>}
+          {u.hasToken && <RevealSecret user={u.name} field="token" label={t('kubeconfig.token', 'Token')} />}
+          {u.hasPassword && <RevealSecret user={u.name} field="password" label={t('kubeconfig.password', 'Password')} />}
+          {u.hasClientKeyData && <RevealSecret user={u.name} field="clientKeyData" label={t('kubeconfig.clientKey', 'Client key')} />}
+          {u.hasClientCertificateData && <RevealSecret user={u.name} field="clientCertificateData" label={t('kubeconfig.clientCert', 'Client cert')} />}
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <UserRowActions
+          isEditing={isEditing}
+          confirmingDelete={confirmingDelete}
+          onSaveEdit={onSaveEdit}
+          onCancelEdit={onCancelEdit}
+          onConfirmDelete={onConfirmDelete}
+          onCancelDelete={onCancelDelete}
+          onStartEdit={onStartEdit}
+          onRequestDelete={onRequestDelete}
+        />
+      </td>
+    </tr>
+  )
+}
+
+function UserRowActions({
+  isEditing,
+  confirmingDelete,
+  onSaveEdit,
+  onCancelEdit,
+  onConfirmDelete,
+  onCancelDelete,
+  onStartEdit,
+  onRequestDelete,
+}: Readonly<{
+  isEditing: boolean
+  confirmingDelete: boolean
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+  onStartEdit: () => void
+  onRequestDelete: () => void
+}>) {
+  const t = useT()
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <button type="button" onClick={onSaveEdit} className="rounded p-1 text-[color:var(--ok)] hover:bg-accent" aria-label={t('Save')}>
+          <Check className="size-3.5" />
+        </button>
+        <button type="button" onClick={onCancelEdit} className="rounded p-1 text-muted-foreground hover:bg-accent" aria-label={t('Cancel')}>
+          <X className="size-3.5" />
+        </button>
+      </div>
+    )
+  }
+
+  if (confirmingDelete) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <button type="button" onClick={onConfirmDelete} className="rounded bg-[color:var(--err)]/90 px-1.5 py-0.5 text-[11px] text-white">
+          {t('Confirm')}
+        </button>
+        <button type="button" onClick={onCancelDelete} className="text-[11px] text-muted-foreground hover:text-foreground">
+          {t('Cancel')}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <button type="button" onClick={onStartEdit} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title={t('Edit')}>
+        <Pencil className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onRequestDelete}
+        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-[color:var(--err)]"
+        title={t('Delete')}
+      >
+        <Trash2 className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
+type NewUserAuthType = 'token' | 'basic' | 'cert'
+
+// New-user credential form: unlike NewContextForm (which only composes
+// existing entries), this hand-authors a brand-new AuthInfo — so it's
+// deliberately limited to the three credential shapes someone could
+// reasonably type/paste in a browser (token, username+password, client
+// cert+key). Exec-plugin and auth-provider users (aws/gcloud/az CLI output)
+// aren't offered here; see UserAuthSpec's doc comment on the backend.
+function NewUserForm({ onCreate }: Readonly<{ onCreate: (input: CreateKubeconfigUserInput) => void }>) {
+  const t = useT()
+  const [name, setName] = useState('')
+  const [authType, setAuthType] = useState<NewUserAuthType>('token')
+  const [token, setToken] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [cert, setCert] = useState('')
+  const [key, setKey] = useState('')
+
+  const reset = () => {
+    setName('')
+    setToken('')
+    setUsername('')
+    setPassword('')
+    setCert('')
+    setKey('')
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    const input: CreateKubeconfigUserInput = { name: name.trim() }
+    if (authType === 'token') {
+      if (!token) return
+      input.token = token
+    } else if (authType === 'basic') {
+      if (!username && !password) return
+      input.username = username
+      input.password = password
+    } else {
+      if (!cert || !key) return
+      input.clientCertificateData = cert
+      input.clientKeyData = key
+    }
+    onCreate(input)
+    reset()
+  }
+
+  return (
+    <section className="space-y-2 rounded-xl border bg-background/40 p-3">
+      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('kubeconfig.newUser', 'New user')}</h3>
+      <form onSubmit={submit} className="space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('Name')}
+            <input value={name} onChange={(e) => setName(e.target.value)} className="w-40 rounded-lg border bg-background/60 px-2 py-1 text-xs" required />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('kubeconfig.authMethod', 'Auth')}
+            <select
+              value={authType}
+              onChange={(e) => setAuthType(e.target.value as NewUserAuthType)}
+              className="w-40 rounded-lg border bg-background/60 px-2 py-1 text-xs"
+            >
+              <option value="token">{t('kubeconfig.token', 'Token')}</option>
+              <option value="basic">{t('kubeconfig.usernamePassword', 'Username / password')}</option>
+              <option value="cert">{t('kubeconfig.clientCertKey', 'Client certificate / key')}</option>
+            </select>
+          </label>
+          {authType === 'token' && (
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('kubeconfig.token', 'Token')}
+              <input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                className="w-56 rounded-lg border bg-background/60 px-2 py-1 text-xs font-mono"
+                required
+              />
+            </label>
+          )}
+          {authType === 'basic' && (
+            <>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('kubeconfig.username', 'Username')}
+                <input value={username} onChange={(e) => setUsername(e.target.value)} className="w-40 rounded-lg border bg-background/60 px-2 py-1 text-xs" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('kubeconfig.password', 'Password')}
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-40 rounded-lg border bg-background/60 px-2 py-1 text-xs"
+                />
+              </label>
+            </>
+          )}
+          <button type="submit" className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">
+            {t('kubeconfig.create', 'Create')}
+          </button>
+        </div>
+        {authType === 'cert' && (
+          <div className="flex flex-wrap gap-2">
+            <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+              {t('kubeconfig.clientCert', 'Client cert')} (PEM)
+              <textarea
+                value={cert}
+                onChange={(e) => setCert(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border bg-background/60 px-2 py-1.5 font-mono text-[11px]"
+              />
+            </label>
+            <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+              {t('kubeconfig.clientKey', 'Client key')} (PEM)
+              <textarea
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border bg-background/60 px-2 py-1.5 font-mono text-[11px]"
+              />
+            </label>
+          </div>
+        )}
+      </form>
     </section>
   )
 }

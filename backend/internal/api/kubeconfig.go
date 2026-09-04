@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"k8s.io/client-go/discovery"
+
+	"github.com/robertobado/netsk8-navigator/backend/internal/kubeconfig"
 )
 
 // kubeconfigUnavailable writes a 501 and returns true when this server has
@@ -122,6 +124,73 @@ func (s *Server) handleKubeconfigDeleteContext(w http.ResponseWriter, r *http.Re
 	s.reloadAfterWrite()
 	audit(r, "kubeconfig-delete-context", "context", name)
 	writeJSON(w, http.StatusOK, map[string]string{"orphanedCluster": orphanedCluster, "orphanedUser": orphanedUser})
+}
+
+func (s *Server) handleKubeconfigCreateUser(w http.ResponseWriter, r *http.Request) {
+	if s.kubeconfigUnavailable(w) {
+		return
+	}
+	var body struct {
+		Name                  string `json:"name"`
+		Token                 string `json:"token"`
+		Username              string `json:"username"`
+		Password              string `json:"password"`
+		ClientCertificateData string `json:"clientCertificateData"`
+		ClientKeyData         string `json:"clientKeyData"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	spec := kubeconfig.UserAuthSpec{
+		Token: body.Token, Username: body.Username, Password: body.Password,
+		ClientCertificateData: body.ClientCertificateData, ClientKeyData: body.ClientKeyData,
+	}
+	if err := s.kcfg.CreateUser(body.Name, spec); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.reloadAfterWrite()
+	// Never the secret itself — same reasoning as every other kubeconfig
+	// audit entry below (edit/delete-context, reveal-secret): name and
+	// shape only.
+	audit(r, "kubeconfig-create-user", "user", body.Name)
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleKubeconfigEditUser(w http.ResponseWriter, r *http.Request) {
+	if s.kubeconfigUnavailable(w) {
+		return
+	}
+	name := r.PathValue("name")
+	var body struct {
+		NewName string `json:"newName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.kcfg.EditUser(name, body.NewName); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.reloadAfterWrite()
+	audit(r, "kubeconfig-edit-user", "user", name)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleKubeconfigDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if s.kubeconfigUnavailable(w) {
+		return
+	}
+	name := r.PathValue("name")
+	if err := s.kcfg.DeleteUser(name); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.reloadAfterWrite()
+	audit(r, "kubeconfig-delete-user", "user", name)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleKubeconfigImportPreview(w http.ResponseWriter, r *http.Request) {

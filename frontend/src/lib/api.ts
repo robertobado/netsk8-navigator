@@ -129,6 +129,34 @@ export async function commitKubeconfigImport(yaml: string, overwrite: string[]) 
   })
   await throwIfError(res)
 }
+export interface CreateKubeconfigUserInput {
+  name: string
+  token?: string
+  username?: string
+  password?: string
+  clientCertificateData?: string
+  clientKeyData?: string
+}
+export async function createKubeconfigUser(input: CreateKubeconfigUserInput) {
+  const res = await fetch('/api/kubeconfig/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  await throwIfError(res)
+}
+export async function editKubeconfigUser(name: string, newName: string) {
+  const res = await fetch(`/api/kubeconfig/users/${enc(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newName }),
+  })
+  await throwIfError(res)
+}
+export async function deleteKubeconfigUser(name: string) {
+  const res = await fetch(`/api/kubeconfig/users/${enc(name)}`, { method: 'DELETE' })
+  await throwIfError(res)
+}
 export async function revealKubeconfigSecret(user: string, field: RevealField): Promise<string> {
   const res = await fetch(`/api/kubeconfig/users/${enc(user)}/reveal?field=${enc(field)}`)
   await throwIfError(res)

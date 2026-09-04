@@ -197,6 +197,93 @@ func TestCreateContext(t *testing.T) {
 	}
 }
 
+func TestCreateUser(t *testing.T) {
+	ed, path := newTestEditor(t)
+
+	if err := ed.CreateUser("user-token", UserAuthSpec{Token: "tok-123"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ed.CreateUser("user-basic", UserAuthSpec{Username: "alice", Password: "hunter2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ed.CreateUser("user-cert", UserAuthSpec{ClientCertificateData: "cert-bytes", ClientKeyData: "key-bytes"}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := loadFile(t, path)
+	if got := cfg.AuthInfos["user-token"]; got == nil || got.Token != "tok-123" {
+		t.Errorf("user-token = %+v, want Token=tok-123", got)
+	}
+	if got := cfg.AuthInfos["user-basic"]; got == nil || got.Username != "alice" || got.Password != "hunter2" {
+		t.Errorf("user-basic = %+v, want Username=alice Password=hunter2", got)
+	}
+	if got := cfg.AuthInfos["user-cert"]; got == nil || string(got.ClientCertificateData) != "cert-bytes" || string(got.ClientKeyData) != "key-bytes" {
+		t.Errorf("user-cert = %+v, want cert-bytes/key-bytes", got)
+	}
+
+	if err := ed.CreateUser("user-token", UserAuthSpec{Token: "other"}); err == nil {
+		t.Error("expected error creating a duplicate user name")
+	}
+	if err := ed.CreateUser("user-empty", UserAuthSpec{}); err == nil {
+		t.Error("expected error creating a user with no credentials at all")
+	}
+	if err := ed.CreateUser("user-half-cert", UserAuthSpec{ClientCertificateData: "cert-only"}); err == nil {
+		t.Error("expected error creating a user with a cert but no key")
+	}
+}
+
+func TestEditUser_RenameRewiresContexts(t *testing.T) {
+	ed, path := newTestEditor(t)
+
+	if err := ed.EditUser("user-a", "user-a-renamed"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadFile(t, path)
+	if _, exists := cfg.AuthInfos["user-a"]; exists {
+		t.Error("user-a still present after rename")
+	}
+	if _, exists := cfg.AuthInfos["user-a-renamed"]; !exists {
+		t.Error("user-a-renamed not found after rename")
+	}
+	// ctx-a referenced user-a — the rename must have rewired it, or ctx-a
+	// would now dangle.
+	if got := cfg.Contexts["ctx-a"].AuthInfo; got != "user-a-renamed" {
+		t.Errorf("ctx-a.AuthInfo = %q, want user-a-renamed", got)
+	}
+
+	if err := ed.EditUser("no-such-user", "whatever"); err == nil {
+		t.Error("expected error renaming a nonexistent user")
+	}
+	if err := ed.EditUser("user-a-renamed", "user-b"); err == nil {
+		t.Error("expected error renaming onto an existing user name")
+	}
+}
+
+func TestDeleteUser(t *testing.T) {
+	ed, path := newTestEditor(t)
+
+	// user-a is still referenced by ctx-a — must be refused, not silently
+	// orphaning ctx-a.
+	if err := ed.DeleteUser("user-a"); err == nil {
+		t.Error("expected error deleting a user still referenced by a context")
+	}
+
+	if err := ed.CreateUser("user-c", UserAuthSpec{Token: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ed.DeleteUser("user-c"); err != nil {
+		t.Fatalf("DeleteUser on an unreferenced user: %v", err)
+	}
+	cfg := loadFile(t, path)
+	if _, exists := cfg.AuthInfos["user-c"]; exists {
+		t.Error("user-c still present after delete")
+	}
+
+	if err := ed.DeleteUser("user-c"); err == nil {
+		t.Error("expected error deleting an already-deleted user")
+	}
+}
+
 func TestDeleteContext_OrphanDetection(t *testing.T) {
 	ed, path := newTestEditor(t)
 

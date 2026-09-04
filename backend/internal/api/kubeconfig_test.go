@@ -56,6 +56,9 @@ func TestKubeconfig_UnavailableWhenNoEditor(t *testing.T) {
 		{"PUT", "/api/kubeconfig/current-context", `{"name":"x"}`},
 		{"POST", "/api/kubeconfig/contexts", `{}`},
 		{"DELETE", "/api/kubeconfig/contexts/x", ""},
+		{"POST", "/api/kubeconfig/users", `{}`},
+		{"PUT", "/api/kubeconfig/users/x", `{}`},
+		{"DELETE", "/api/kubeconfig/users/x", ""},
 	} {
 		rec := doRequest(t, s, tc.method, tc.path, tc.body)
 		if rec.Code != http.StatusNotImplemented {
@@ -116,6 +119,35 @@ func TestKubeconfigDeleteContext_HTTP(t *testing.T) {
 	}
 	if body.OrphanedCluster != "cluster-a" || body.OrphanedUser != "user-a" {
 		t.Errorf("orphans = %+v, want cluster-a/user-a", body)
+	}
+}
+
+func TestKubeconfigCreateEditDeleteUser_HTTP(t *testing.T) {
+	s := newRealKubeconfigTestServer(t)
+
+	rec := doRequest(t, s, "POST", "/api/kubeconfig/users", `{"name":"user-b","token":"tok-b"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "tok-b") {
+		t.Error("create-user response leaked the raw token")
+	}
+
+	rec = doRequest(t, s, "PUT", "/api/kubeconfig/users/user-b", `{"newName":"user-b-renamed"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename user = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Still unreferenced by any context — delete must succeed.
+	rec = doRequest(t, s, "DELETE", "/api/kubeconfig/users/user-b-renamed", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete user = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// user-a IS referenced by ctx-a — must be refused.
+	rec = doRequest(t, s, "DELETE", "/api/kubeconfig/users/user-a", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("delete user still referenced by a context = %d, want 400: %s", rec.Code, rec.Body.String())
 	}
 }
 
