@@ -8,15 +8,21 @@ import (
 	"github.com/robertobado/netsk8-navigator/backend/internal/config"
 )
 
+// gateCase is one table row for TestApplyFromGate_InvariantAndFailClosed,
+// pulled out to a named type so checkApplyFromGate (below) can share it —
+// splitting the per-case assertions out of the table-driving loop is what
+// keeps the test's cognitive complexity under SonarCloud's threshold.
+type gateCase struct {
+	name       string
+	raw        string
+	wantEn     bool
+	wantWrite  bool
+	wantRO     []string
+	wantRODisa []string
+}
+
 func TestApplyFromGate_InvariantAndFailClosed(t *testing.T) {
-	cases := []struct {
-		name       string
-		raw        string
-		wantEn     bool
-		wantWrite  bool
-		wantRO     []string
-		wantRODisa []string
-	}{
+	cases := []gateCase{
 		{"empty fails closed", `{}`, false, false, nil, nil},
 		{"garbage fails closed", `not json`, false, false, nil, nil},
 		{"enabled only", `{"enabled":true}`, true, false, nil, nil},
@@ -28,26 +34,29 @@ func TestApplyFromGate_InvariantAndFailClosed(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f := &MCPFlags{}
-			f.applyFromGate(json.RawMessage(tc.raw))
-			if f.Enabled() != tc.wantEn {
-				t.Errorf("Enabled() = %v, want %v", f.Enabled(), tc.wantEn)
-			}
-			if f.AllowWrite() != tc.wantWrite {
-				t.Errorf("AllowWrite() = %v, want %v", f.AllowWrite(), tc.wantWrite)
-			}
-			for _, c := range tc.wantRO {
-				if f.WriteAllowedFor(c) {
-					t.Errorf("WriteAllowedFor(%q) should be false (pinned read-only)", c)
-				}
-			}
-			for _, c := range tc.wantRODisa {
-				if f.ReadAllowedFor(c) {
-					t.Errorf("ReadAllowedFor(%q) should be false (read-disabled)", c)
-				}
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { checkApplyFromGate(t, tc) })
+	}
+}
+
+func checkApplyFromGate(t *testing.T, tc gateCase) {
+	t.Helper()
+	f := &MCPFlags{}
+	f.applyFromGate(json.RawMessage(tc.raw))
+	if f.Enabled() != tc.wantEn {
+		t.Errorf("Enabled() = %v, want %v", f.Enabled(), tc.wantEn)
+	}
+	if f.AllowWrite() != tc.wantWrite {
+		t.Errorf("AllowWrite() = %v, want %v", f.AllowWrite(), tc.wantWrite)
+	}
+	for _, c := range tc.wantRO {
+		if f.WriteAllowedFor(c) {
+			t.Errorf("WriteAllowedFor(%q) should be false (pinned read-only)", c)
+		}
+	}
+	for _, c := range tc.wantRODisa {
+		if f.ReadAllowedFor(c) {
+			t.Errorf("ReadAllowedFor(%q) should be false (read-disabled)", c)
+		}
 	}
 }
 
