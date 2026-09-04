@@ -18,6 +18,16 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 // Run with `pnpm test:contract` (needs the Go toolchain on PATH; excluded
 // from the default `pnpm test` run — see vitest.contract.config.ts).
 
+// Repeats testsupport/gateServerGlobalSetup.ts's own declaration: `inject`
+// here is type-checked under tsconfig.app.json's separate program, which
+// doesn't include testsupport/, so that copy of the augmentation is
+// invisible to this file — each tsc project needs its own.
+declare module 'vitest' {
+  export interface ProvidedContext {
+    gateServerUrl: string
+  }
+}
+
 const baseUrl = inject('gateServerUrl')
 
 function gateUrl() {
