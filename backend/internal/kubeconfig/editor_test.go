@@ -445,6 +445,58 @@ func TestMultiFilePrecedence(t *testing.T) {
 	}
 }
 
+// addDanglingContext writes a context referencing a cluster/user that
+// doesn't exist directly to path, bypassing the Editor — the shape of a
+// kubeconfig merged from years of `aws eks update-kubeconfig` runs plus an
+// old abandoned entry, which a real user hit: it made every edit through
+// the app fail with "resulting kubeconfig would be invalid", even edits
+// with nothing to do with the broken entry.
+func addDanglingContext(t *testing.T, path string) {
+	t.Helper()
+	raw := loadFile(t, path)
+	raw.Contexts["dangling"] = &clientcmdapi.Context{Cluster: "no-such-cluster", AuthInfo: "no-such-user"}
+	if err := clientcmd.WriteToFile(*raw, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := clientcmd.Validate(*raw); err == nil {
+		t.Fatal("test setup: expected the dangling context to make the file invalid")
+	}
+}
+
+func TestApply_PreexistingInvalidEntryDoesNotBlockUnrelatedEdits(t *testing.T) {
+	ed, path := newTestEditor(t)
+	addDanglingContext(t, path)
+
+	// An edit that has nothing to do with "dangling" must still succeed.
+	if err := ed.SetCurrentContext("ctx-b"); err != nil {
+		t.Fatalf("SetCurrentContext failed because of a pre-existing unrelated problem: %v", err)
+	}
+
+	cfg := loadFile(t, path)
+	if cfg.CurrentContext != "ctx-b" {
+		t.Errorf("current-context = %q, want ctx-b", cfg.CurrentContext)
+	}
+	// The dangling context is left alone, not silently dropped — apply
+	// should only ever refuse or accept a write, never repair one.
+	if _, ok := cfg.Contexts["dangling"]; !ok {
+		t.Error("pre-existing dangling context was removed by an unrelated edit")
+	}
+}
+
+func TestApply_NewInvalidReferenceStillBlockedDespitePreexistingOne(t *testing.T) {
+	ed, path := newTestEditor(t)
+	addDanglingContext(t, path)
+
+	// A NEW invalid reference must still be rejected, even though the file
+	// already had a different, pre-existing one.
+	if err := ed.CreateContext("ctx-new", "another-no-such-cluster", "user-a", ""); err == nil {
+		t.Error("expected error for a context referencing an unknown cluster")
+	}
+	if _, _, err := ed.DeleteContext("nonexistent"); err == nil {
+		t.Error("expected error deleting a context that was never there")
+	}
+}
+
 func loadFile(t *testing.T, path string) *clientcmdapi.Config {
 	t.Helper()
 	cfg, err := clientcmd.LoadFromFile(path)

@@ -11,6 +11,7 @@
 package kubeconfig
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -248,16 +249,69 @@ func (e *Editor) apply(mutate func(cfg *clientcmdapi.Config) error) error {
 	if err != nil {
 		return fmt.Errorf("reading kubeconfig: %w", err)
 	}
+	// Baseline: whatever's already wrong with the file before this edit. A
+	// kubeconfig merged from years of `aws eks update-kubeconfig` runs and
+	// abandoned manual entries very commonly has a stray dangling context
+	// or two already — nothing this edit touched. Blanket-validating the
+	// whole file (clientcmd.Validate does, iterating every context/cluster/
+	// user) would fail every future edit over that pre-existing mess,
+	// permanently locking the file out of the app. Only a validation error
+	// this specific edit introduces — not present in the baseline — blocks
+	// the write; see newValidationErrors.
+	before := validationMessages(clientcmd.Validate(*cfg))
+
 	if err := e.backupAll(); err != nil {
 		return fmt.Errorf("backing up kubeconfig before write: %w", err)
 	}
 	if err := mutate(cfg); err != nil {
 		return err
 	}
-	if err := clientcmd.Validate(*cfg); err != nil {
-		return fmt.Errorf("resulting kubeconfig would be invalid: %w", err)
+	if newErr := newValidationErrors(before, clientcmd.Validate(*cfg)); newErr != nil {
+		return fmt.Errorf("this change would make the kubeconfig invalid: %w", newErr)
 	}
 	return clientcmd.ModifyConfig(e.pathOptions, *cfg, true)
+}
+
+// validationMessages flattens a clientcmd.Validate result — nil, a single
+// error, or (in practice, always) the *errConfigurationInvalid aggregate it
+// returns — into a set of its error message strings, for newValidationErrors
+// to diff against.
+func validationMessages(err error) map[string]bool {
+	set := map[string]bool{}
+	for _, e := range validationErrorList(err) {
+		set[e.Error()] = true
+	}
+	return set
+}
+
+// errorLister matches utilerrors.Aggregate's shape (Errors() []error)
+// without importing k8s.io/apimachinery just for that one interface —
+// clientcmd's own *errConfigurationInvalid already implements it.
+type errorLister interface{ Errors() []error }
+
+func validationErrorList(err error) []error {
+	if err == nil {
+		return nil
+	}
+	if agg, ok := err.(errorLister); ok {
+		return agg.Errors()
+	}
+	return []error{err}
+}
+
+// newValidationErrors reports only the problems present in `after` that
+// weren't already in `before` — nil if this edit introduced nothing new.
+func newValidationErrors(before map[string]bool, after error) error {
+	var fresh []error
+	for _, e := range validationErrorList(after) {
+		if !before[e.Error()] {
+			fresh = append(fresh, e)
+		}
+	}
+	if len(fresh) == 0 {
+		return nil
+	}
+	return errors.Join(fresh...)
 }
 
 func (e *Editor) backupAll() error {
