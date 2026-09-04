@@ -74,6 +74,54 @@ func TestStore_SetDesktopPortSkipsSaveWhenUnchanged(t *testing.T) {
 	}
 }
 
+func TestStore_MCPGateRoundTripAndPersist(t *testing.T) {
+	s := newTestStore(t)
+	if got := s.MCPGate(); string(got) != "{}" {
+		t.Errorf("unset MCPGate() = %s, want {}", got)
+	}
+	gate := json.RawMessage(`{"enabled":true,"allowWrite":true,"readOnlyContexts":["prod"],"readDisabledContexts":[]}`)
+	if err := s.SetMCPGate(gate); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.MCPGate(); !jsonEqual(t, got, gate) {
+		t.Errorf("MCPGate() = %s, want %s", got, gate)
+	}
+	// Survives a restart independently of the App blob (bytes get
+	// re-indented by save()'s MarshalIndent, so compare semantically).
+	if got := NewStoreAt(s.path).MCPGate(); !jsonEqual(t, got, gate) {
+		t.Errorf("MCPGate() after restart = %s, want %s", got, gate)
+	}
+}
+
+func jsonEqual(t *testing.T, a, b json.RawMessage) bool {
+	t.Helper()
+	var av, bv any
+	if err := json.Unmarshal(a, &av); err != nil {
+		t.Fatalf("unmarshal %s: %v", a, err)
+	}
+	if err := json.Unmarshal(b, &bv); err != nil {
+		t.Fatalf("unmarshal %s: %v", b, err)
+	}
+	x, _ := json.Marshal(av)
+	y, _ := json.Marshal(bv)
+	return string(x) == string(y)
+}
+
+func TestStore_MCPGateIsIndependentOfApp(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetMCPGate(json.RawMessage(`{"enabled":true,"allowWrite":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	// A wholesale App replacement (what every PUT /api/preferences does) must
+	// not disturb the gate — the whole reason it's a separate top-level key.
+	if err := s.SetApp(json.RawMessage(`{"theme":"light"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.MCPGate(); string(got) != `{"enabled":true,"allowWrite":true}` {
+		t.Errorf("MCPGate() after SetApp = %s, want it untouched", got)
+	}
+}
+
 func TestStore_MCPTokenLazyAndStable(t *testing.T) {
 	s := newTestStore(t)
 	tok1, err := s.MCPToken()

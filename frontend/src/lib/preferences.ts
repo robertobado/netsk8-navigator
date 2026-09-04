@@ -19,15 +19,10 @@ export interface AppPreferences {
   metricsRefreshMs: number // 0 = off
   background: { enabled: boolean; effect: string; opacity: number }
   theme: ThemeMode // 'auto' follows the OS/browser color-scheme preference
-  // Toggles the /mcp endpoint (an MCP server sharing this same backend
-  // process) so agents can manage the cluster too. allowWrite is a second,
-  // more sensitive gate on top: enabled alone only exposes read tools.
-  // readOnlyContexts pins specific contexts (e.g. prod) read-only
-  // regardless of allowWrite — the backend ANDs both gates together.
-  // readDisabledContexts excludes specific contexts from MCP reads
-  // entirely, independent of the global enabled toggle — for a cluster an
-  // operator doesn't want an agent looking at at all, even read-only.
-  mcp: { enabled: boolean; allowWrite: boolean; readOnlyContexts: string[]; readDisabledContexts: string[] }
+  // NB: the /mcp security gate (enabled / allowWrite / per-context pins)
+  // used to live here. It moved to its own store + endpoint — see
+  // lib/mcpGate.ts — because this blob's fire-and-forget mirror could
+  // desync it from the backend.
   // Contexts starred in the kubeconfig manager / context switcher — purely
   // a client-side convenience, never sent to the backend beyond this blob.
   contexts: { favorites: string[] }
@@ -38,7 +33,6 @@ const DEFAULTS: AppPreferences = {
   metricsRefreshMs: 15_000,
   background: { enabled: false, effect: 'net', opacity: 0.6 },
   theme: 'dark', // the app predates light mode — keep existing users on dark by default
-  mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] }, // off by default — opt-in
   contexts: { favorites: [] },
 }
 
@@ -68,17 +62,6 @@ function sanitizeStringArray(raw: unknown, fallback: string[]): string[] {
   return Array.isArray(raw) ? raw.filter((c): c is string => typeof c === 'string') : fallback
 }
 
-function sanitizeMcp(raw: unknown): AppPreferences['mcp'] | undefined {
-  if (typeof raw !== 'object' || raw === null) return undefined
-  const m = raw as Record<string, unknown>
-  return {
-    enabled: typeof m.enabled === 'boolean' ? m.enabled : DEFAULTS.mcp.enabled,
-    allowWrite: typeof m.allowWrite === 'boolean' ? m.allowWrite : DEFAULTS.mcp.allowWrite,
-    readOnlyContexts: sanitizeStringArray(m.readOnlyContexts, DEFAULTS.mcp.readOnlyContexts),
-    readDisabledContexts: sanitizeStringArray(m.readDisabledContexts, DEFAULTS.mcp.readDisabledContexts),
-  }
-}
-
 function sanitizeContexts(raw: unknown): AppPreferences['contexts'] | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
   const c = raw as Record<string, unknown>
@@ -98,8 +81,6 @@ function sanitizePrefs(raw: unknown): Partial<AppPreferences> {
   if (typeof r.theme === 'string' && (THEME_MODES as string[]).includes(r.theme)) out.theme = r.theme as ThemeMode
   const background = sanitizeBackground(r.background)
   if (background) out.background = background
-  const mcp = sanitizeMcp(r.mcp)
-  if (mcp) out.mcp = mcp
   const contexts = sanitizeContexts(r.contexts)
   if (contexts) out.contexts = contexts
   return out
@@ -110,7 +91,6 @@ function mergeDefaults(safe: Partial<AppPreferences>): AppPreferences {
     ...DEFAULTS,
     ...safe,
     background: { ...DEFAULTS.background, ...safe.background },
-    mcp: { ...DEFAULTS.mcp, ...safe.mcp },
     contexts: { ...DEFAULTS.contexts, ...safe.contexts },
   }
 }

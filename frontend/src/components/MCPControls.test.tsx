@@ -4,9 +4,38 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MCPControls } from './MCPControls'
-import { setAppPrefs } from '@/lib/preferences'
+import { setMcpGate } from '@/lib/mcpGate'
 
-vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
+// A stand-in for the real PUT/GET /api/mcp/gate endpoint: it keeps a gate
+// object, merges partial patches onto it, and applies the same
+// enabled/allowWrite invariant the backend does — so the component under
+// test exercises the genuine "await the gate endpoint, adopt its response"
+// path instead of a mock that always echoes {}.
+const GATE_DEFAULTS = { enabled: false, allowWrite: false, readOnlyContexts: [] as string[], readDisabledContexts: [] as string[] }
+let gateStore = { ...GATE_DEFAULTS }
+
+function canonicalize(g: typeof gateStore) {
+  const enabled = !!g.enabled
+  return {
+    enabled,
+    allowWrite: enabled && !!g.allowWrite,
+    readOnlyContexts: g.readOnlyContexts ?? [],
+    readDisabledContexts: g.readDisabledContexts ?? [],
+  }
+}
+
+vi.stubGlobal(
+  'fetch',
+  vi.fn(async (url: string, init?: RequestInit) => {
+    if (typeof url === 'string' && url.includes('/api/mcp/gate')) {
+      if (init?.method === 'PUT') {
+        gateStore = canonicalize({ ...gateStore, ...JSON.parse(String(init.body)) })
+      }
+      return { ok: true, json: async () => canonicalize(gateStore) }
+    }
+    return { ok: true, json: async () => ({}) }
+  }),
+)
 
 const { mcpTokenMock, contextsMock, healthMock, regenerateMCPTokenMock } = vi.hoisted(() => ({
   mcpTokenMock: vi.fn(),
@@ -33,13 +62,14 @@ function renderWithClient(ui: ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear()
-  // preferences.ts holds its state in a module-level singleton that
-  // localStorage.clear() alone doesn't reset (it only affects what a future
-  // load() would read) — reset it explicitly so each test starts from a
-  // known baseline regardless of what an earlier test in this file left it at.
-  setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] } })
+  // mcpGate.ts holds its state in a module-level singleton that
+  // localStorage.clear() alone doesn't reset — drive it back to the
+  // baseline through the real code path so each test starts clean
+  // regardless of what an earlier test in this file left it at.
+  gateStore = { ...GATE_DEFAULTS }
+  await setMcpGate({ enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] })
   writeTextMock.mockClear()
   mcpTokenMock.mockReset().mockResolvedValue({ token: 'abcdef1234567890token' })
   contextsMock.mockReset().mockResolvedValue([])
@@ -47,8 +77,10 @@ beforeEach(() => {
   regenerateMCPTokenMock.mockReset().mockResolvedValue({ token: 'freshfreshfreshtoken0' })
 })
 
-function prefs(): Record<string, unknown> {
-  return JSON.parse(localStorage.getItem('netsk8.prefs') ?? '{}')
+// The gate store mirrors the backend's canonical response into its own
+// localStorage key after every awaited write.
+function gate(): Record<string, unknown> {
+  return JSON.parse(localStorage.getItem('netsk8.mcpgate') ?? '{}')
 }
 
 describe('MCPControls', () => {
@@ -67,7 +99,7 @@ describe('MCPControls', () => {
 
     await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
 
-    expect(prefs().mcp).toEqual({ enabled: true, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] })
+    expect(gate()).toEqual({ enabled: true, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] })
     expect(screen.getByText(`${window.location.origin}/mcp`)).toBeInTheDocument()
     expect(screen.getByText('Permitir escrita')).toBeInTheDocument()
     await waitFor(() => expect(mcpTokenMock).toHaveBeenCalled())
@@ -114,15 +146,15 @@ describe('MCPControls', () => {
     await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
 
     await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
-    expect(prefs().mcp).toMatchObject({ enabled: true, allowWrite: false }) // not yet granted
+    expect(gate()).toMatchObject({ enabled: true, allowWrite: false }) // not yet granted
 
     await user.click(screen.getByText('Cancelar'))
     expect(screen.queryByText('Confirmar')).not.toBeInTheDocument()
-    expect(prefs().mcp).toMatchObject({ enabled: true, allowWrite: false })
+    expect(gate()).toMatchObject({ enabled: true, allowWrite: false })
 
     await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
     await user.click(screen.getByText('Confirmar'))
-    expect(prefs().mcp).toMatchObject({ enabled: true, allowWrite: true })
+    expect(gate()).toMatchObject({ enabled: true, allowWrite: true })
   })
 
   it('warns when granting write access with AUTH_PASSWORD unset', async () => {
@@ -152,11 +184,11 @@ describe('MCPControls', () => {
     await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
     await user.click(screen.getByRole('switch', { name: 'Permitir escrita' }))
     await user.click(screen.getByText('Confirmar'))
-    expect(prefs().mcp).toMatchObject({ enabled: true, allowWrite: true })
+    expect(gate()).toMatchObject({ enabled: true, allowWrite: true })
 
     await user.click(screen.getByRole('switch', { name: 'Servidor MCP' }))
 
-    expect(prefs().mcp).toMatchObject({ enabled: false, allowWrite: false })
+    expect(gate()).toMatchObject({ enabled: false, allowWrite: false })
   })
 
   it('pins a context read-only via the add picker, and unpins it via its chip', async () => {
@@ -177,14 +209,14 @@ describe('MCPControls', () => {
     await user.click(screen.getByText('Fixar contexto como somente leitura'))
     await user.click(await screen.findByRole('button', { name: 'prod' }))
 
-    expect((prefs().mcp as { readOnlyContexts: string[] }).readOnlyContexts).toEqual(['prod'])
+    expect((gate() as { readOnlyContexts: string[] }).readOnlyContexts).toEqual(['prod'])
     expect(screen.getByText('prod')).toBeInTheDocument()
     // Already-pinned contexts drop out of the still-open picker's list.
     expect(screen.queryByRole('button', { name: 'prod' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'staging' })).toBeInTheDocument()
 
     await user.click(screen.getByLabelText('Remover prod'))
-    expect((prefs().mcp as { readOnlyContexts: string[] }).readOnlyContexts).toEqual([])
+    expect((gate() as { readOnlyContexts: string[] }).readOnlyContexts).toEqual([])
     expect(screen.queryByText('prod')).not.toBeInTheDocument()
   })
 })

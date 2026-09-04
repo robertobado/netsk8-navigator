@@ -18,6 +18,7 @@ import {
   type RevealField,
 } from '@/lib/api'
 import { useAppPrefs, setAppPrefs } from '@/lib/preferences'
+import { useMcpGate, setMcpGate } from '@/lib/mcpGate'
 import { Switch } from '@/components/Switch'
 import { useT } from '@/lib/i18n'
 import { cn, shortContext } from '@/lib/utils'
@@ -32,7 +33,8 @@ interface Props {
 export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectContext }: Readonly<Props>) {
   const t = useT()
   const queryClient = useQueryClient()
-  const { mcp, contexts: contextPrefs } = useAppPrefs()
+  const { contexts: contextPrefs } = useAppPrefs()
+  const mcp = useMcpGate()
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -67,15 +69,18 @@ export function KubeconfigManagerDialog({ open, onClose, activeCtx, onSelectCont
     setAppPrefs({ contexts: { ...contextPrefs, favorites } })
   }
 
+  // The MCP read/write pins go through the dedicated gate endpoint (see
+  // lib/mcpGate.ts); run() surfaces a failed write in the dialog's error
+  // banner rather than letting the switch drift from the backend.
   const toggleReadDisabled = (name: string) => {
     const disabled = mcp.readDisabledContexts.includes(name)
     const readDisabledContexts = disabled ? mcp.readDisabledContexts.filter((n) => n !== name) : [...mcp.readDisabledContexts, name]
-    setAppPrefs({ mcp: { ...mcp, readDisabledContexts } })
+    void run(() => setMcpGate({ readDisabledContexts }))
   }
   const toggleWriteDisabled = (name: string) => {
     const pinned = mcp.readOnlyContexts.includes(name)
     const readOnlyContexts = pinned ? mcp.readOnlyContexts.filter((n) => n !== name) : [...mcp.readOnlyContexts, name]
-    setAppPrefs({ mcp: { ...mcp, readOnlyContexts } })
+    void run(() => setMcpGate({ readOnlyContexts }))
   }
 
   const startEdit = (name: string, namespace: string) => {

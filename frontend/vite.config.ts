@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
@@ -41,6 +42,11 @@ export default defineConfig({
     // (usage.ts, preferences.ts) touch it directly at the top level.
     environmentOptions: { jsdom: { url: 'http://localhost/' } },
     setupFiles: ['./src/vitest.setup.ts'],
+    // *.contract.test.ts spawns the real Go backend (see
+    // vitest.contract.config.ts) and needs the Go toolchain on PATH — kept
+    // out of the default run so `pnpm test` never depends on that. Run
+    // those with `pnpm test:contract`.
+    exclude: [...configDefaults.exclude, '**/*.contract.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       // 'lcov' is what SonarCloud's sonar.javascript.lcov.reportPaths expects

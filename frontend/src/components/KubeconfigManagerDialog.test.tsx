@@ -4,9 +4,35 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { KubeconfigManagerDialog } from './KubeconfigManagerDialog'
 import { setAppPrefs } from '@/lib/preferences'
+import { setMcpGate } from '@/lib/mcpGate'
 import type { KubeconfigView } from '@/lib/api'
 
 vi.mock('@/lib/i18n', () => ({ useT: () => (key: string, fallback?: string) => fallback ?? key }))
+
+// Stateful stand-in for PUT/GET /api/mcp/gate — the MCP read/write pins go
+// through the dedicated gate endpoint now (see lib/mcpGate.ts), so these
+// tests need it to actually merge patches and echo them back.
+type Gate = { enabled: boolean; allowWrite: boolean; readOnlyContexts: string[]; readDisabledContexts: string[] }
+let gateStore: Gate = { enabled: true, allowWrite: true, readOnlyContexts: [], readDisabledContexts: [] }
+function canonicalizeGate(g: Gate): Gate {
+  const enabled = !!g.enabled
+  return {
+    enabled,
+    allowWrite: enabled && !!g.allowWrite,
+    readOnlyContexts: g.readOnlyContexts ?? [],
+    readDisabledContexts: g.readDisabledContexts ?? [],
+  }
+}
+vi.stubGlobal(
+  'fetch',
+  vi.fn(async (url: string, init?: RequestInit) => {
+    if (typeof url === 'string' && url.includes('/api/mcp/gate')) {
+      if (init?.method === 'PUT') gateStore = canonicalizeGate({ ...gateStore, ...JSON.parse(String(init.body)) })
+      return { ok: true, json: async () => canonicalizeGate(gateStore) }
+    }
+    return { ok: true, json: async () => ({}) }
+  }),
+)
 
 const {
   kubeconfigViewMock,
@@ -100,13 +126,16 @@ function renderDialog(overrides: Partial<Parameters<typeof KubeconfigManagerDial
 function prefs(): Record<string, unknown> {
   return JSON.parse(localStorage.getItem('netsk8.prefs') ?? '{}')
 }
+function gate(): Record<string, unknown> {
+  return JSON.parse(localStorage.getItem('netsk8.mcpgate') ?? '{}')
+}
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear()
-  setAppPrefs({
-    mcp: { enabled: true, allowWrite: true, readOnlyContexts: [], readDisabledContexts: [] },
-    contexts: { favorites: [] },
-  })
+  setAppPrefs({ contexts: { favorites: [] } })
+  // Baseline gate: MCP fully on, so the per-context switches are live.
+  gateStore = { enabled: true, allowWrite: true, readOnlyContexts: [], readDisabledContexts: [] }
+  await setMcpGate({ enabled: true, allowWrite: true, readOnlyContexts: [], readDisabledContexts: [] })
   kubeconfigViewMock.mockReset().mockResolvedValue(structuredClone(baseView))
   setCurrentContextMock.mockReset().mockResolvedValue(undefined)
   editKubeconfigContextMock.mockReset().mockResolvedValue(undefined)
@@ -156,7 +185,7 @@ describe('KubeconfigManagerDialog', () => {
     expect(kubeconfigViewMock).toHaveBeenCalledTimes(1) // no extra refetch from a pure-local preference change
   })
 
-  it('toggling the MCP read switch updates mcp.readDisabledContexts (inverted)', async () => {
+  it('toggling the MCP read switch updates the gate readDisabledContexts (inverted)', async () => {
     const user = userEvent.setup()
     renderDialog()
     await screen.findByText('Contexts')
@@ -164,21 +193,21 @@ describe('KubeconfigManagerDialog', () => {
     const readSwitch = within(findRow('staging')).getByRole('switch', { name: 'MCP read — staging' })
     expect(readSwitch).toHaveAttribute('aria-checked', 'true') // nothing disabled yet
     await user.click(readSwitch)
-    expect((prefs().mcp as { readDisabledContexts: string[] }).readDisabledContexts).toEqual(['staging'])
+    await waitFor(() => expect((gate() as { readDisabledContexts: string[] }).readDisabledContexts).toEqual(['staging']))
   })
 
-  it('toggling the MCP write switch updates mcp.readOnlyContexts (inverted)', async () => {
+  it('toggling the MCP write switch updates the gate readOnlyContexts (inverted)', async () => {
     const user = userEvent.setup()
     renderDialog()
     await screen.findByText('Contexts')
 
     const writeSwitch = within(findRow('staging')).getByRole('switch', { name: 'MCP write — staging' })
     await user.click(writeSwitch)
-    expect((prefs().mcp as { readOnlyContexts: string[] }).readOnlyContexts).toEqual(['staging'])
+    await waitFor(() => expect((gate() as { readOnlyContexts: string[] }).readOnlyContexts).toEqual(['staging']))
   })
 
   it('MCP switches are disabled when the corresponding global gate is off', async () => {
-    setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] } })
+    await setMcpGate({ enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] })
     renderDialog()
     await screen.findByText('Contexts')
 

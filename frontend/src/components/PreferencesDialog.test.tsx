@@ -39,7 +39,10 @@ function vantaProps(overrides: Partial<VantaSettings> = {}): VantaSettings {
 
 beforeEach(() => {
   localStorage.clear()
-  setAppPrefs({ mcp: { enabled: false, allowWrite: false, readOnlyContexts: [], readDisabledContexts: [] } })
+  // Reset the preferences module singleton (localStorage.clear() alone
+  // doesn't) to a known baseline — no test here reads a specific value,
+  // this just keeps file-order independence.
+  setAppPrefs({ theme: 'dark' })
   mcpTokenMock.mockReset().mockResolvedValue({ token: 'abcdef1234567890token' })
   contextsMock.mockReset().mockResolvedValue([])
   healthMock.mockReset().mockResolvedValue({ status: 'ok', kubeconfig: '', demo: false, version: 'test', authEnabled: true })

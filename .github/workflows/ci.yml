@@ -80,6 +80,15 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      # For src/lib/mcpGate.contract.test.ts (`pnpm test:contract` below),
+      # which builds and drives backend/cmd/gateserver — the real handler +
+      # config.Store, not a stubbed fetch. See mcpGate.ts / mcpGate.test.ts.
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
       - name: Install dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
@@ -99,6 +108,10 @@ jobs:
       - name: Test with coverage
         working-directory: frontend
         run: pnpm exec vitest run --coverage
+
+      - name: Contract test (mcpGate vs the real backend)
+        working-directory: frontend
+        run: pnpm test:contract
 
       - name: Upload coverage
         uses: actions/upload-artifact@v7

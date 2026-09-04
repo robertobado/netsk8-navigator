@@ -12,6 +12,12 @@ func (s *Server) handleGetAppPrefs(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePutAppPrefs: PUT /api/preferences  (body = the full app prefs JSON)
+//
+// This blob is best-effort and frontend-owned: the browser mirrors it here
+// with an unordered fire-and-forget PUT. It deliberately does NOT touch the
+// /mcp security gate anymore — that moved to its own ordered, awaited
+// endpoint (handlePutMCPGate) precisely because riding this channel let two
+// quick toggles land out of order and desync the gate from the UI.
 func (s *Server) handlePutAppPrefs(w http.ResponseWriter, r *http.Request) {
 	raw, err := readJSONBody(r)
 	if err != nil {
@@ -22,8 +28,43 @@ func (s *Server) handlePutAppPrefs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.mcpFlags.applyFromAppPrefs(raw)
 	writeRaw(w, raw)
+}
+
+// handleGetMCPGate: GET /api/mcp/gate — the current /mcp security gate as a
+// canonical {enabled, allowWrite, readOnlyContexts, readDisabledContexts}
+// object. The frontend adopts this verbatim at startup (server wins): the
+// gate is a security control, so the persisted backend value is the source
+// of truth, not the browser's localStorage.
+func (s *Server) handleGetMCPGate(w http.ResponseWriter, r *http.Request) {
+	writeRaw(w, canonicalGate(gatePayloadFromRaw(resolveMCPGate(s.cfg))))
+}
+
+// handlePutMCPGate: PUT /api/mcp/gate — the ONE writer of the /mcp gate.
+// Body is a partial patch ({"enabled":true} on its own is fine); it's
+// merged onto the current persisted gate, the enabled/allowWrite invariant
+// is applied, and the result is persisted AND pushed into the live
+// s.mcpFlags before the response returns. The frontend awaits this call and
+// surfaces failures, so the UI can never silently claim a state the backend
+// didn't accept.
+func (s *Server) handlePutMCPGate(w http.ResponseWriter, r *http.Request) {
+	patch, err := readJSONBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	merged, err := mergeGate(resolveMCPGate(s.cfg), patch)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.cfg.SetMCPGate(merged); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.mcpFlags.applyFromGate(merged)
+	audit(r, "mcp-gate-write")
+	writeRaw(w, merged)
 }
 
 // handleGetClusterPrefs: GET /api/contexts/{ctx}/preferences

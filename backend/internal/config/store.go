@@ -21,6 +21,17 @@ type fileData struct {
 	// frontend-owned blob — SetApp replaces that whole blob wholesale on
 	// every preferences write, which would otherwise silently drop it.
 	MCPToken string `json:"mcpToken,omitempty"`
+	// MCPGate is the security gate for the /mcp endpoint and its mutating
+	// tools: {enabled, allowWrite, readOnlyContexts, readDisabledContexts}.
+	// A top-level sibling for the same reason MCPToken is — but here the
+	// motivation is sharper than "don't drop it". It used to live inside the
+	// App blob, and the frontend mirrored it there via the same best-effort,
+	// unordered, fire-and-forget PUT /api/preferences as every other
+	// preference; two quick toggles could land out of order and leave the
+	// backend gate desynced from the UI (an "Allow write" that reads ON
+	// but acts OFF). Its own key with its own ordered, awaited endpoint
+	// (PUT /api/mcp/gate) makes the backend the single source of truth.
+	MCPGate json.RawMessage `json:"mcpGate,omitempty"`
 	// DesktopPort is the loopback port the desktop app's embedded HTTP
 	// server bound on its last run. Persisted so the window reloads on a
 	// stable origin every launch: browser localStorage (selected context,
@@ -98,6 +109,27 @@ func (s *Store) SetCluster(ctx string, raw json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data.Clusters[ctx] = raw
+	return s.save()
+}
+
+// MCPGate returns the persisted /mcp security gate payload ("{}" when
+// unset — e.g. a fresh install, or one upgrading from a build that still
+// kept the gate inside the App blob; see internal/api's one-time
+// migration).
+func (s *Store) MCPGate() json.RawMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return orEmpty(s.data.MCPGate)
+}
+
+// SetMCPGate replaces the persisted /mcp security gate payload and
+// persists. Called only from PUT /api/mcp/gate (and the one-time
+// migration), never from a preferences write — that separation is the
+// whole point of the dedicated key.
+func (s *Store) SetMCPGate(raw json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.MCPGate = raw
 	return s.save()
 }
 

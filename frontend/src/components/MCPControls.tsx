@@ -3,19 +3,28 @@ import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Bot, Check, Copy, Eye, EyeOff, Plus, RefreshCw, X } from 'lucide-react'
 import { api, type ContextInfo, regenerateMCPToken } from '@/lib/api'
-import { useAppPrefs, setAppPrefs } from '@/lib/preferences'
+import { useMcpGate, setMcpGate, type McpGate } from '@/lib/mcpGate'
 import { useT } from '@/lib/i18n'
 import { Switch } from '@/components/Switch'
 
 export function MCPControls() {
   const t = useT()
-  const { mcp } = useAppPrefs()
+  const mcp = useMcpGate()
   const queryClient = useQueryClient()
   const [confirmingWrite, setConfirmingWrite] = useState(false)
   const [confirmingRegenerate, setConfirmingRegenerate] = useState(false)
   const [tokenRevealed, setTokenRevealed] = useState(false)
   const [copied, setCopied] = useState<'url' | 'token' | null>(null)
+  const [gateError, setGateError] = useState<string | null>(null)
   const mcpUrl = `${window.location.origin}/mcp`
+
+  // Every gate change is one awaited PUT /api/mcp/gate. On failure the local
+  // state is left untouched (the backend never accepted the change) and the
+  // error is shown, so the switches keep telling the truth.
+  const applyGate = (patch: Partial<McpGate>) => {
+    setGateError(null)
+    setMcpGate(patch).catch((e) => setGateError(e instanceof Error ? e.message : String(e)))
+  }
 
   const tokenQ = useQuery({ queryKey: ['mcp-token'], queryFn: api.mcpToken, enabled: mcp.enabled, refetchInterval: false })
   const contextsQ = useQuery({ queryKey: ['contexts'], queryFn: api.contexts, enabled: mcp.enabled && mcp.allowWrite, refetchInterval: false })
@@ -23,24 +32,25 @@ export function MCPControls() {
   const healthQ = useQuery({ queryKey: ['health'], queryFn: api.health, staleTime: Infinity, refetchInterval: false })
 
   const toggleEnabled = () => {
-    // Turning MCP off also force-clears allowWrite, so re-enabling later
-    // never silently re-arms writes — mirrors the backend's own AND gate.
-    // readOnlyContexts is a hardening list, not a grant, so it survives.
-    setAppPrefs({ mcp: { ...mcp, enabled: !mcp.enabled, allowWrite: mcp.enabled ? false : mcp.allowWrite } })
+    // Turning MCP off also force-clears allowWrite server-side (the backend
+    // ANDs the two gates), so re-enabling later never silently re-arms
+    // writes. readOnlyContexts is a hardening list, not a grant, so it
+    // survives.
+    applyGate({ enabled: !mcp.enabled })
     setConfirmingWrite(false)
   }
 
-  const disableWrite = () => setAppPrefs({ mcp: { ...mcp, allowWrite: false } })
+  const disableWrite = () => applyGate({ allowWrite: false })
   const confirmWrite = () => {
-    setAppPrefs({ mcp: { ...mcp, allowWrite: true } })
+    applyGate({ allowWrite: true })
     setConfirmingWrite(false)
   }
 
   const addReadOnlyContext = (name: string) => {
     if (mcp.readOnlyContexts.includes(name)) return
-    setAppPrefs({ mcp: { ...mcp, readOnlyContexts: [...mcp.readOnlyContexts, name] } })
+    applyGate({ readOnlyContexts: [...mcp.readOnlyContexts, name] })
   }
-  const removeReadOnlyContext = (name: string) => setAppPrefs({ mcp: { ...mcp, readOnlyContexts: mcp.readOnlyContexts.filter((c) => c !== name) } })
+  const removeReadOnlyContext = (name: string) => applyGate({ readOnlyContexts: mcp.readOnlyContexts.filter((c) => c !== name) })
 
   const regenerateToken = async () => {
     await regenerateMCPToken()
@@ -93,6 +103,12 @@ export function MCPControls() {
         </span>
         <Switch checked={mcp.enabled} onChange={toggleEnabled} label={t('controls.mcp')} />
       </div>
+
+      {gateError && (
+        <p className="rounded-lg border border-[color:var(--err)]/30 bg-[color:var(--err)]/5 px-2.5 py-1.5 text-[11px] text-[color:var(--err)]">
+          {t('controls.mcpGateError', 'Could not update the MCP gate — try again.')} ({gateError})
+        </p>
+      )}
 
       {mcp.enabled && (
         <>

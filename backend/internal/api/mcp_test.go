@@ -62,8 +62,8 @@ func mcpConnect(t *testing.T, s *Server) *mcp.ClientSession {
 }
 
 // enableMCP flips the server's runtime flags directly — the fast path used
-// by most tests here; TestMCPHandler_PreferencesRoundTrip below additionally
-// exercises the real PUT /api/preferences -> flag-update wiring end to end.
+// by most tests here; TestMCPHandler_GateRoundTrip below additionally
+// exercises the real PUT /api/mcp/gate -> flag-update wiring end to end.
 func enableMCP(s *Server, allowWrite bool) {
 	s.mcpFlags.set(true, allowWrite, nil, nil)
 }
@@ -118,17 +118,50 @@ func TestMCPHandler_TokenRequired(t *testing.T) {
 	}
 }
 
-func TestMCPHandler_PreferencesRoundTrip(t *testing.T) {
+func TestMCPHandler_GateRoundTrip(t *testing.T) {
 	s := newTestServer(t)
 	if s.mcpFlags.Enabled() {
 		t.Fatal("expected MCP disabled by default")
 	}
-	rec := doRequest(t, s, "PUT", "/api/preferences", `{"mcp":{"enabled":true,"allowWrite":true}}`)
+
+	// The dedicated endpoint is the one writer that moves the live gate.
+	rec := doRequest(t, s, "PUT", "/api/mcp/gate", `{"enabled":true,"allowWrite":true}`)
 	if rec.Code != 200 {
-		t.Fatalf("PUT preferences status = %d, body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("PUT /api/mcp/gate status = %d, body=%s", rec.Code, rec.Body.String())
 	}
 	if !s.mcpFlags.Enabled() || !s.mcpFlags.AllowWrite() {
-		t.Error("expected mcpFlags updated from the PUT /api/preferences body")
+		t.Error("expected mcpFlags updated from the PUT /api/mcp/gate body")
+	}
+
+	// A partial patch leaves the other gates alone.
+	rec = doRequest(t, s, "PUT", "/api/mcp/gate", `{"allowWrite":false}`)
+	if rec.Code != 200 {
+		t.Fatalf("PUT /api/mcp/gate (patch) status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !s.mcpFlags.Enabled() {
+		t.Error("partial patch of allowWrite should not have disabled MCP")
+	}
+	if s.mcpFlags.AllowWrite() {
+		t.Error("allowWrite patch to false did not take effect")
+	}
+}
+
+// TestMCPHandler_PreferencesBlobCannotMoveGate is the regression guard for
+// the v0.0.27 desync: the best-effort, unordered PUT /api/preferences must
+// no longer touch the security gate, even when its body still carries a
+// stale "mcp" sub-object (older frontends keep sending one).
+func TestMCPHandler_PreferencesBlobCannotMoveGate(t *testing.T) {
+	s := newTestServer(t)
+	if rec := doRequest(t, s, "PUT", "/api/mcp/gate", `{"enabled":true,"allowWrite":true}`); rec.Code != 200 {
+		t.Fatalf("seed gate: status %d", rec.Code)
+	}
+
+	rec := doRequest(t, s, "PUT", "/api/preferences", `{"theme":"dark","mcp":{"enabled":false,"allowWrite":false}}`)
+	if rec.Code != 200 {
+		t.Fatalf("PUT /api/preferences status = %d", rec.Code)
+	}
+	if !s.mcpFlags.Enabled() || !s.mcpFlags.AllowWrite() {
+		t.Error("a preferences write clobbered the MCP gate — the desync this refactor removes")
 	}
 }
 

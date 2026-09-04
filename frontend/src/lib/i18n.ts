@@ -80,6 +80,7 @@ const pt: Dict = {
   'controls.mcpAllowWriteNoAuthWarning':
     'AUTH_PASSWORD não está definido — qualquer processo local pode ler o token e escrever nos clusters. Defina AUTH_PASSWORD para proteger isso de verdade.',
   'controls.mcpInstallHint': 'Prefere sem configurar URL? Rode netsk8-navigator mcp install em um terminal.',
+  'controls.mcpGateError': 'Não foi possível atualizar o gate do MCP — tente de novo.',
   'controls.language': 'Idioma',
   'controls.theme': 'Tema',
   'theme.light': 'Claro',
@@ -484,6 +485,7 @@ const en: Dict = {
   'controls.mcpAllowWriteNoAuthWarning':
     'AUTH_PASSWORD is not set — any local process can read the token and write to your clusters. Set AUTH_PASSWORD for real protection.',
   'controls.mcpInstallHint': 'Prefer no network config? Run netsk8-navigator mcp install from a terminal.',
+  'controls.mcpGateError': 'Could not update the MCP gate — try again.',
   'controls.language': 'Language',
   'controls.theme': 'Theme',
   'theme.light': 'Light',

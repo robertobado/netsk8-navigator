@@ -121,8 +121,10 @@ func NewServer(mgr clusterManager, cfg *config.Store, corsOrigin string) *Server
 		mcpFlags: &MCPFlags{},
 	}
 	// Hydrate from whatever was already persisted, so a previously-enabled
-	// MCP toggle survives a process restart like every other preference.
-	s.mcpFlags.applyFromAppPrefs(cfg.App())
+	// MCP toggle survives a process restart. resolveMCPGate also runs the
+	// one-time migration off the legacy App-blob location for installs
+	// upgrading from a build that kept the gate there.
+	s.mcpFlags.applyFromGate(resolveMCPGate(cfg))
 	return s
 }
 
@@ -144,6 +146,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/contexts/{ctx}/preferences", s.handlePutClusterPrefs)
 	mux.HandleFunc("GET /api/mcp/token", s.handleGetMCPToken)
 	mux.HandleFunc("POST /api/mcp/token/regenerate", s.handleRegenerateMCPToken)
+	mux.HandleFunc("GET /api/mcp/gate", s.handleGetMCPGate)
+	mux.HandleFunc("PUT /api/mcp/gate", s.handlePutMCPGate)
 	mux.HandleFunc("GET /api/app-events", s.handleAppEvents)
 	mux.HandleFunc("POST /api/open-external", s.handleOpenExternal)
 	mux.HandleFunc("GET /api/kubeconfig", s.handleKubeconfigView)

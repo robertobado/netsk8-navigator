@@ -12,7 +12,8 @@
     "format:check": "prettier --check .",
     "preview": "vite preview",
     "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
-    "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage"
+    "test:coverage": "NODE_OPTIONS=--no-experimental-webstorage vitest run --coverage",
+    "test:contract": "NODE_OPTIONS=--no-experimental-webstorage vitest run -c vitest.contract.config.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

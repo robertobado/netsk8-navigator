@@ -77,20 +77,21 @@ describe('hydrateAppPrefs', () => {
     expect((result.current as unknown as Record<string, unknown>).evilField).toBeUndefined()
   })
 
-  it('defaults mcp.readDisabledContexts and contexts.favorites to empty arrays', async () => {
+  it('defaults contexts.favorites to an empty array', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }))
     const { useAppPrefs } = await import('./preferences')
     const { result } = renderHook(() => useAppPrefs())
-    expect(result.current.mcp.readDisabledContexts).toEqual([])
     expect(result.current.contexts.favorites).toEqual([])
   })
 
-  it('adopts mcp.readDisabledContexts and contexts.favorites from the server response', async () => {
+  it('adopts contexts.favorites from the server response and ignores a legacy mcp blob', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
+          // Older backends still echo an "mcp" key here — it must not leak
+          // back into AppPreferences now that the gate has its own store.
           mcp: { enabled: true, allowWrite: false, readOnlyContexts: [], readDisabledContexts: ['prod'] },
           contexts: { favorites: ['staging'] },
         }),
@@ -99,8 +100,8 @@ describe('hydrateAppPrefs', () => {
     const { hydrateAppPrefs, useAppPrefs } = await import('./preferences')
     const { result } = renderHook(() => useAppPrefs())
     hydrateAppPrefs()
-    await waitFor(() => expect(result.current.mcp.readDisabledContexts).toEqual(['prod']))
-    expect(result.current.contexts.favorites).toEqual(['staging'])
+    await waitFor(() => expect(result.current.contexts.favorites).toEqual(['staging']))
+    expect((result.current as unknown as Record<string, unknown>).mcp).toBeUndefined()
   })
 
   it('discards a tampered contexts.favorites (non-string entries) instead of trusting it', async () => {
