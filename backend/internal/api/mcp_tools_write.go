@@ -21,6 +21,9 @@ func (s *Server) writeBlockedFor(contextName string) error {
 	if s.mcpFlags.AllowWrite() {
 		return fmt.Errorf("write operations are disabled for context %q (pinned read-only in netsk8-navigator's MCP panel)", contextName)
 	}
+	if s.mcpFlags.Stdio() {
+		return fmt.Errorf("write operations are disabled — turn on MCP and 'Allow write' in netsk8-navigator's MCP panel, then start a new session with this MCP client (this server only reads that setting when it starts); or reinstall it with: netsk8-navigator mcp install --allow-write")
+	}
 	return fmt.Errorf("write operations are disabled — enable 'Allow write' in netsk8-navigator's MCP panel to permit this")
 }
 

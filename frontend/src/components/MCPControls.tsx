@@ -183,12 +183,15 @@ export function MCPControls() {
           </div>
 
           {mcp.allowWrite && (
-            <ReadOnlyContextsPicker
-              contexts={contextsQ.data ?? []}
-              readOnlyContexts={mcp.readOnlyContexts}
-              onAdd={addReadOnlyContext}
-              onRemove={removeReadOnlyContext}
-            />
+            <>
+              <p className="text-[11px] text-muted-foreground">{t('controls.mcpAllowWriteStdioHint')}</p>
+              <ReadOnlyContextsPicker
+                contexts={contextsQ.data ?? []}
+                readOnlyContexts={mcp.readOnlyContexts}
+                onAdd={addReadOnlyContext}
+                onRemove={removeReadOnlyContext}
+              />
+            </>
           )}
         </>
       )}

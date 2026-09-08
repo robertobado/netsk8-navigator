@@ -602,6 +602,9 @@ func TestNewStdioMCPFlags(t *testing.T) {
 	if !f.Enabled() {
 		t.Error("stdio flags should always report enabled — the process only exists because it was spawned as an MCP server")
 	}
+	if !f.Stdio() {
+		t.Error("Stdio() should be true for flags built by NewStdioMCPFlags")
+	}
 	if !f.AllowWrite() {
 		t.Error("allowWrite should come from the launch flag (true), not the persisted (false) preference")
 	}
@@ -610,6 +613,56 @@ func TestNewStdioMCPFlags(t *testing.T) {
 	}
 	if !f.WriteAllowedFor("staging") {
 		t.Error("staging isn't pinned read-only — should follow --mcp-allow-write")
+	}
+}
+
+// TestNewStdioMCPFlags_PersistedAllowWriteGrantsWrite covers the case that
+// motivated gateAllowsWrite: the stdio server was installed read-only (no
+// --mcp-allow-write), but the human later turned on "Allow write" in the
+// running app's MCP panel. That toggle must reach the next stdio spawn, not
+// be silently ignored.
+func TestNewStdioMCPFlags_PersistedAllowWriteGrantsWrite(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	if err := cfg.SetApp(json.RawMessage(`{"mcp":{"enabled":true,"allowWrite":true,"readOnlyContexts":["prod"]}}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	f := NewStdioMCPFlags(cfg, false) // installed WITHOUT --mcp-allow-write
+	if !f.AllowWrite() {
+		t.Error("persisted allowWrite:true from the MCP panel should grant write even without the launch flag")
+	}
+	if !f.WriteAllowedFor("staging") {
+		t.Error("staging isn't pinned read-only — should follow the persisted allowWrite")
+	}
+	if f.WriteAllowedFor("prod") {
+		t.Error("prod is pinned read-only — persisted allowWrite must not override that")
+	}
+}
+
+// TestNewStdioMCPFlags_PersistedAllowWriteNeedsEnabled guards the invariant
+// gateAllowsWrite borrows from applyFromGate: allowWrite:true is inert while
+// enabled:false (a pair only reachable by hand-editing config.json).
+func TestNewStdioMCPFlags_PersistedAllowWriteNeedsEnabled(t *testing.T) {
+	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
+	if err := cfg.SetMCPGate(json.RawMessage(`{"enabled":false,"allowWrite":true,"readOnlyContexts":[],"readDisabledContexts":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	if NewStdioMCPFlags(cfg, false).AllowWrite() {
+		t.Error("allowWrite:true with enabled:false must not grant write")
+	}
+}
+
+func TestWriteBlockedFor_StdioMessagePointsToRestart(t *testing.T) {
+	s := newTestServer(t)
+	s.SetMCPFlags(newStdioMCPFlags(json.RawMessage(`{}`), false))
+
+	err := s.writeBlockedFor("staging")
+	if err == nil {
+		t.Fatal("expected write to be blocked")
+	}
+	if !strings.Contains(err.Error(), "new session") || !strings.Contains(err.Error(), "mcp install --allow-write") {
+		t.Errorf("stdio error should tell the user to restart the client or reinstall, got: %v", err)
 	}
 }
 

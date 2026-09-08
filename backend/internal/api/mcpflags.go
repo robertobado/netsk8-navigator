@@ -12,11 +12,19 @@ import (
 // Server exists and later re-derived from a preferences write.
 type MCPFlags struct {
 	mu                   sync.RWMutex
+	stdio                bool
 	enabled              bool
 	allowWrite           bool
 	readOnlyContexts     map[string]bool
 	readDisabledContexts map[string]bool
 }
+
+// Stdio reports whether these flags back a --mcp-stdio server (vs the HTTP
+// /mcp endpoint). Write-once at construction, so no lock — it only shapes
+// the wording of the "write disabled" error, which differs because a stdio
+// client owns its server process's lifecycle and must restart it to pick up
+// a panel toggle.
+func (f *MCPFlags) Stdio() bool { return f.stdio }
 
 // Enabled reports whether /mcp should serve requests at all.
 func (f *MCPFlags) Enabled() bool {
@@ -184,16 +192,33 @@ func toSet(names []string) map[string]bool {
 }
 
 // newStdioMCPFlags builds the flags for `--mcp-stdio`: always enabled (the
-// process only exists because it was spawned as an MCP server), allowWrite
-// from the launch-time --mcp-allow-write flag (there's no running UI to
-// toggle it live), but readOnlyContexts/readDisabledContexts still sourced
-// from the persisted gate — a context pinned read-only or read-disabled
-// stays that way regardless of which transport is talking to it.
+// process only exists because it was spawned as an MCP server), and
+// readOnlyContexts/readDisabledContexts sourced from the persisted gate — a
+// context pinned read-only or read-disabled stays that way regardless of
+// which transport is talking to it.
+//
+// allowWrite is granted by EITHER the launch-time --mcp-allow-write flag OR
+// the "Allow write" toggle the human set in the running app's MCP panel
+// (persisted to the gate). Both are explicit, deliberate grants; honoring
+// the persisted one too means the panel toggle isn't silently inert for
+// stdio clients — the more surprising failure. It takes effect on the next
+// process spawn (next agent session), not live: the MCP client, not the
+// app, owns this process's lifecycle.
 func newStdioMCPFlags(gate json.RawMessage, allowWrite bool) *MCPFlags {
-	f := &MCPFlags{}
+	f := &MCPFlags{stdio: true}
 	readOnly, readDisabled := parseContextSets(gate)
-	f.set(true, allowWrite, readOnly, readDisabled)
+	f.set(true, allowWrite || gateAllowsWrite(gate), readOnly, readDisabled)
 	return f
+}
+
+// gateAllowsWrite reports the persisted gate's effective allowWrite,
+// applying the same enabled&&allowWrite invariant applyFromGate does — a
+// stored allowWrite:true alongside enabled:false (only reachable by
+// hand-editing config.json; canonicalGate never writes that pair) counts as
+// false.
+func gateAllowsWrite(raw json.RawMessage) bool {
+	g := gatePayloadFromRaw(raw)
+	return g.Enabled != nil && *g.Enabled && g.AllowWrite != nil && *g.AllowWrite
 }
 
 // NewStdioMCPFlags is newStdioMCPFlags exported for --mcp-stdio's entry
