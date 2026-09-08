@@ -168,58 +168,79 @@ func seededDeploymentServer(t *testing.T) *Server {
 	})
 }
 
-// TestMCPWriteTools_GateMatrix is the core guarantee: for every mutating
-// tool, over every transport, each gate state produces the right outcome —
-// a real cluster mutation when write is granted, a typed refusal otherwise.
-func TestMCPWriteTools_GateMatrix(t *testing.T) {
-	gates := []struct {
-		name      string
-		payload   string
-		wantOK    bool
-		wantErrIs string // substring the refusal must contain (when wantOK is false)
-	}{
+// writeGateCase is one gate state and the outcome every mutating tool must
+// produce under it. Pulled out (with the per-case body in checkWriteGateCase)
+// so the matrix loop itself stays flat.
+type writeGateCase struct {
+	name      string
+	payload   string
+	wantOK    bool
+	wantErrIs string // substring the refusal must contain (when wantOK is false)
+}
+
+func writeGateCases() []writeGateCase {
+	return []writeGateCase{
 		{"write disabled", `{"enabled":true,"allowWrite":false}`, false, "write"},
 		{"write enabled", `{"enabled":true,"allowWrite":true}`, true, ""},
 		{"write enabled but context pinned read-only", `{"enabled":true,"allowWrite":true,"readOnlyContexts":["test"]}`, false, "read-only"},
 	}
+}
 
+// TestMCPWriteTools_GateMatrix is the core guarantee: for every mutating
+// tool, over every transport, each gate state produces the right outcome —
+// a real cluster mutation when write is granted, a typed refusal otherwise.
+func TestMCPWriteTools_GateMatrix(t *testing.T) {
 	for _, tr := range writeTransports() {
 		for _, tool := range writeToolMatrix() {
-			for _, g := range gates {
+			for _, g := range writeGateCases() {
 				t.Run(tr.name+"/"+tool.name+"/"+g.name, func(t *testing.T) {
-					s := seededDeploymentServer(t)
-					session := tr.arm(t, s, g.payload)
-
-					result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool.name, Arguments: tool.args})
-					if err != nil {
-						t.Fatalf("CallTool %s: %v", tool.name, err)
-					}
-
-					if g.wantOK {
-						if result.IsError {
-							t.Fatalf("%s over %s with write granted returned a tool error: %+v", tool.name, tr.name, result.Content)
-						}
-						tool.verifyDone(t, s)
-						return
-					}
-
-					if !result.IsError {
-						t.Fatalf("%s over %s expected a refusal for gate %q, got success", tool.name, tr.name, g.name)
-					}
-					text, _ := result.Content[0].(*mcp.TextContent)
-					if text == nil || !strings.Contains(strings.ToLower(text.Text), g.wantErrIs) {
-						t.Errorf("%s refusal message = %+v, want it to contain %q", tool.name, result.Content, g.wantErrIs)
-					}
-					// The cluster must be untouched on a refusal.
-					if tool.name != "delete_resource" {
-						rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
-						if !strings.Contains(rec.Body.String(), `"0/2"`) {
-							t.Errorf("%s was refused but the deployment changed anyway: %s", tool.name, rec.Body.String())
-						}
-					}
+					checkWriteGateCase(t, tr, tool, g)
 				})
 			}
 		}
+	}
+}
+
+func checkWriteGateCase(t *testing.T, tr writeTransport, tool mutatingTool, g writeGateCase) {
+	t.Helper()
+	s := seededDeploymentServer(t)
+	session := tr.arm(t, s, g.payload)
+
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool.name, Arguments: tool.args})
+	if err != nil {
+		t.Fatalf("CallTool %s: %v", tool.name, err)
+	}
+
+	if g.wantOK {
+		assertToolMutated(t, s, tr, tool, result)
+		return
+	}
+	assertToolRefused(t, s, tr, tool, g, result)
+}
+
+func assertToolMutated(t *testing.T, s *Server, tr writeTransport, tool mutatingTool, result *mcp.CallToolResult) {
+	t.Helper()
+	if result.IsError {
+		t.Fatalf("%s over %s with write granted returned a tool error: %+v", tool.name, tr.name, result.Content)
+	}
+	tool.verifyDone(t, s)
+}
+
+func assertToolRefused(t *testing.T, s *Server, tr writeTransport, tool mutatingTool, g writeGateCase, result *mcp.CallToolResult) {
+	t.Helper()
+	if !result.IsError {
+		t.Fatalf("%s over %s expected a refusal for gate %q, got success", tool.name, tr.name, g.name)
+	}
+	text, _ := result.Content[0].(*mcp.TextContent)
+	if text == nil || !strings.Contains(strings.ToLower(text.Text), g.wantErrIs) {
+		t.Errorf("%s refusal message = %+v, want it to contain %q", tool.name, result.Content, g.wantErrIs)
+	}
+	if tool.name == "delete_resource" {
+		return // nothing to compare against a still-present baseline
+	}
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+	if !strings.Contains(rec.Body.String(), `"0/2"`) {
+		t.Errorf("%s was refused but the deployment changed anyway: %s", tool.name, rec.Body.String())
 	}
 }
 
