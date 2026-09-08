@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -61,11 +60,18 @@ func mcpConnect(t *testing.T, s *Server) *mcp.ClientSession {
 	return session
 }
 
-// enableMCP flips the server's runtime flags directly — the fast path used
-// by most tests here; TestMCPHandler_GateRoundTrip below additionally
-// exercises the real PUT /api/mcp/gate -> flag-update wiring end to end.
+// enableMCP puts the server's flags into an enabled state through the same
+// applyFromGate path handlePutMCPGate persists — not a raw s.mcpFlags.set(),
+// so even the "fast path" tests exercise the gate→flags derivation (the
+// enabled&&allowWrite invariant included) rather than a shortcut around it.
+// TestMCPHandler_GateRoundTrip additionally covers the HTTP handler itself;
+// mcp_tools_write_test.go covers both transports against the persisted gate.
 func enableMCP(s *Server, allowWrite bool) {
-	s.mcpFlags.set(true, allowWrite, nil, nil)
+	raw := `{"enabled":true}`
+	if allowWrite {
+		raw = `{"enabled":true,"allowWrite":true}`
+	}
+	s.mcpFlags.applyFromGate(json.RawMessage(raw))
 }
 
 func TestMCPHandler_DisabledReturns404(t *testing.T) {
@@ -264,229 +270,6 @@ func TestMCPHandler_UnknownContextRejectedBySchema(t *testing.T) {
 	}
 }
 
-func TestMCPHandler_WriteToolBlockedUntilAllowWrite(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, false) // enabled, but writes not yet allowed
-	session := mcpConnect(t, s)
-	ctx := t.Context()
-
-	scaleArgs := map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "replicas": 5}
-
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "scale_resource", Arguments: scaleArgs})
-	if err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected scale_resource to be blocked while allowWrite is false")
-	}
-	text, _ := result.Content[0].(*mcp.TextContent)
-	if text == nil || !strings.Contains(strings.ToLower(text.Text), "write") {
-		t.Errorf("error message = %+v, want it to mention write access", result.Content)
-	}
-
-	// Grant write access and retry — should now actually mutate the cluster.
-	enableMCP(s, true)
-	result2, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "scale_resource", Arguments: scaleArgs})
-	if err != nil {
-		t.Fatalf("CallTool (after allowWrite): %v", err)
-	}
-	if result2.IsError {
-		t.Fatalf("scale_resource still blocked after allowWrite=true: %+v", result2.Content)
-	}
-
-	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
-	var out []kube.DeploymentView
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if len(out) != 1 || out[0].Ready != "0/5" {
-		t.Errorf("after scale_resource, got %+v, want replicas=5 reflected", out)
-	}
-}
-
-// TestMCPHandler_CallApplyManifest exercises apply_manifest's handler
-// closure — registerWriteTools' registration alone (covered by every other
-// MCP test's ListTools) doesn't run its body, only an actual CallTool does.
-func TestMCPHandler_CallApplyManifest(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, true)
-	session := mcpConnect(t, s)
-	ctx := t.Context()
-
-	yaml := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: prod\nspec:\n  replicas: 7\n"
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "apply_manifest",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "yaml": yaml},
-	})
-	if err != nil {
-		t.Fatalf("CallTool apply_manifest: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("apply_manifest returned a tool error: %+v", result.Content)
-	}
-
-	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
-	var out []kube.DeploymentView
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if len(out) != 1 || out[0].Ready != "0/7" {
-		t.Errorf("after apply_manifest, got %+v, want replicas=7 reflected", out)
-	}
-}
-
-func TestMCPHandler_CallApplyManifest_BlockedWithoutWriteAccess(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, false)
-	session := mcpConnect(t, s)
-
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "apply_manifest",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "yaml": "kind: Deployment"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool apply_manifest: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected apply_manifest to be blocked while allowWrite is false")
-	}
-}
-
-// TestMCPHandler_CallDeleteResource exercises delete_resource's handler
-// closure, uncovered by any other test.
-func TestMCPHandler_CallDeleteResource(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, true)
-	session := mcpConnect(t, s)
-
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "delete_resource",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool delete_resource: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("delete_resource returned a tool error: %+v", result.Content)
-	}
-
-	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
-	var out []kube.DeploymentView
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if len(out) != 0 {
-		t.Errorf("after delete_resource, got %d deployments, want 0", len(out))
-	}
-}
-
-func TestMCPHandler_CallDeleteResource_BlockedWithoutWriteAccess(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, false)
-	session := mcpConnect(t, s)
-
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "delete_resource",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool delete_resource: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected delete_resource to be blocked while allowWrite is false")
-	}
-}
-
-// TestMCPHandler_CallRestartRollout exercises restart_rollout's handler
-// closure, uncovered by any other test.
-func TestMCPHandler_CallRestartRollout(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, true)
-	session := mcpConnect(t, s)
-
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "restart_rollout",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool restart_rollout: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("restart_rollout returned a tool error: %+v", result.Content)
-	}
-
-	rec := doRequest(t, s, "GET", "/api/contexts/test/manifest/deployment/prod/web", "")
-	var out map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out["yaml"], "kubectl.kubernetes.io/restartedAt") {
-		t.Errorf("expected restartedAt annotation in manifest, got:\n%s", out["yaml"])
-	}
-}
-
-func TestMCPHandler_CallRestartRollout_BlockedWithoutWriteAccess(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	enableMCP(s, false)
-	session := mcpConnect(t, s)
-
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "restart_rollout",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool restart_rollout: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected restart_rollout to be blocked while allowWrite is false")
-	}
-}
-
-func TestMCPHandler_WriteToolBlockedForReadOnlyContext(t *testing.T) {
-	s := newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
-	s.mcpFlags.set(true, true, map[string]bool{"test": true}, nil) // globally allowed, but "test" pinned read-only
-	session := mcpConnect(t, s)
-
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "scale_resource",
-		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "replicas": 5},
-	})
-	if err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected scale_resource to be blocked for a context pinned read-only")
-	}
-	text, _ := result.Content[0].(*mcp.TextContent)
-	if text == nil || !strings.Contains(text.Text, "read-only") {
-		t.Errorf("error message = %+v, want it to mention the context is pinned read-only", result.Content)
-	}
-}
-
 func TestMCPHandler_GetLogsIsBoundedNotStreaming(t *testing.T) {
 	s := newTestServer(t, &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "web-0", Namespace: "prod"},
@@ -594,6 +377,10 @@ func TestDedupeRepeatedTokens(t *testing.T) {
 func TestNewStdioMCPFlags(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg := config.NewStoreAt(path)
+	// enabled:false here so the ONLY thing that can grant write is the launch
+	// flag — this asserts the flag is honored, not that the persisted gate is
+	// ignored (see TestMCPGate_PanelToggleReachesFreshStdioServer for the
+	// other grant path).
 	if err := cfg.SetApp(json.RawMessage(`{"mcp":{"enabled":false,"allowWrite":false,"readOnlyContexts":["prod"]}}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -606,63 +393,13 @@ func TestNewStdioMCPFlags(t *testing.T) {
 		t.Error("Stdio() should be true for flags built by NewStdioMCPFlags")
 	}
 	if !f.AllowWrite() {
-		t.Error("allowWrite should come from the launch flag (true), not the persisted (false) preference")
+		t.Error("the --mcp-allow-write launch flag should grant write on its own")
 	}
 	if f.WriteAllowedFor("prod") {
 		t.Error("prod is pinned read-only in preferences — should stay read-only even with --mcp-allow-write")
 	}
 	if !f.WriteAllowedFor("staging") {
 		t.Error("staging isn't pinned read-only — should follow --mcp-allow-write")
-	}
-}
-
-// TestNewStdioMCPFlags_PersistedAllowWriteGrantsWrite covers the case that
-// motivated gateAllowsWrite: the stdio server was installed read-only (no
-// --mcp-allow-write), but the human later turned on "Allow write" in the
-// running app's MCP panel. That toggle must reach the next stdio spawn, not
-// be silently ignored.
-func TestNewStdioMCPFlags_PersistedAllowWriteGrantsWrite(t *testing.T) {
-	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
-	if err := cfg.SetApp(json.RawMessage(`{"mcp":{"enabled":true,"allowWrite":true,"readOnlyContexts":["prod"]}}`)); err != nil {
-		t.Fatal(err)
-	}
-
-	f := NewStdioMCPFlags(cfg, false) // installed WITHOUT --mcp-allow-write
-	if !f.AllowWrite() {
-		t.Error("persisted allowWrite:true from the MCP panel should grant write even without the launch flag")
-	}
-	if !f.WriteAllowedFor("staging") {
-		t.Error("staging isn't pinned read-only — should follow the persisted allowWrite")
-	}
-	if f.WriteAllowedFor("prod") {
-		t.Error("prod is pinned read-only — persisted allowWrite must not override that")
-	}
-}
-
-// TestNewStdioMCPFlags_PersistedAllowWriteNeedsEnabled guards the invariant
-// gateAllowsWrite borrows from applyFromGate: allowWrite:true is inert while
-// enabled:false (a pair only reachable by hand-editing config.json).
-func TestNewStdioMCPFlags_PersistedAllowWriteNeedsEnabled(t *testing.T) {
-	cfg := config.NewStoreAt(filepath.Join(t.TempDir(), "config.json"))
-	if err := cfg.SetMCPGate(json.RawMessage(`{"enabled":false,"allowWrite":true,"readOnlyContexts":[],"readDisabledContexts":[]}`)); err != nil {
-		t.Fatal(err)
-	}
-
-	if NewStdioMCPFlags(cfg, false).AllowWrite() {
-		t.Error("allowWrite:true with enabled:false must not grant write")
-	}
-}
-
-func TestWriteBlockedFor_StdioMessagePointsToRestart(t *testing.T) {
-	s := newTestServer(t)
-	s.SetMCPFlags(newStdioMCPFlags(json.RawMessage(`{}`), false))
-
-	err := s.writeBlockedFor("staging")
-	if err == nil {
-		t.Fatal("expected write to be blocked")
-	}
-	if !strings.Contains(err.Error(), "new session") || !strings.Contains(err.Error(), "mcp install --allow-write") {
-		t.Errorf("stdio error should tell the user to restart the client or reinstall, got: %v", err)
 	}
 }
 
