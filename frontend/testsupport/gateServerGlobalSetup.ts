@@ -1,8 +1,31 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { TestProject } from 'vitest/node'
+
+// The kubeconfig kubeconfigCrud.contract.test.ts starts from — one cluster,
+// one user, one current context. gateserver's kubeconfig.Editor needs a
+// readable, parseable file at startup; the tests only ever add their own
+// uniquely-named entries alongside these and clean them up, so this stays a
+// stable baseline they don't mutate.
+const SEED_KUBECONFIG = `apiVersion: v1
+kind: Config
+current-context: ctx1
+clusters:
+  - name: c1
+    cluster:
+      server: https://c1.example:6443
+users:
+  - name: u1
+    user:
+      token: seed-token
+contexts:
+  - name: ctx1
+    context:
+      cluster: c1
+      user: u1
+`
 
 // Spawns backend/cmd/gateserver — the real api.Server routes over a real
 // HTTP listener and a disposable config.json — for mcpGate.contract.test.ts.
@@ -22,6 +45,8 @@ export default async function setup({ provide }: TestProject) {
   workDir = mkdtempSync(path.join(tmpdir(), 'netsk8-gateserver-'))
   const binPath = path.join(workDir, process.platform === 'win32' ? 'gateserver.exe' : 'gateserver')
   const configPath = path.join(workDir, 'config.json')
+  const kubeconfigPath = path.join(workDir, 'kubeconfig')
+  writeFileSync(kubeconfigPath, SEED_KUBECONFIG)
 
   // `go run` spawns the compiled binary as a child of its own process, and
   // doesn't reliably forward a kill signal down to it — teardown was
@@ -31,7 +56,7 @@ export default async function setup({ provide }: TestProject) {
   execFileSync('go', ['build', '-o', binPath, './cmd/gateserver'], { cwd: backendDir, stdio: 'inherit' })
 
   const url = await new Promise<string>((resolve, reject) => {
-    const proc = spawn(binPath, ['-config', configPath])
+    const proc = spawn(binPath, ['-config', configPath, '-kubeconfig', kubeconfigPath])
     child = proc
     let out = ''
     const onData = (chunk: Buffer) => {

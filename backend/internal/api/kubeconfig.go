@@ -27,8 +27,12 @@ func (s *Server) kubeconfigUnavailable(w http.ResponseWriter) bool {
 // subsequent /api/contexts/* calls immediately reflect a write that already
 // succeeded on disk. A failure here is logged but never turned into an HTTP
 // error — the write itself is already durable; only the in-memory cache is
-// stale, and it'll catch up on the next natural reload or restart.
+// stale, and it'll catch up on the next natural reload or restart. A server
+// with no manager (no live cluster cache to refresh) skips it entirely.
 func (s *Server) reloadAfterWrite() {
+	if s.mgr == nil {
+		return
+	}
 	if err := s.mgr.Reload(); err != nil {
 		log.Printf("kubeconfig write succeeded but reloading the live context list failed: %v", err)
 	}

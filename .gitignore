@@ -8,6 +8,7 @@ Memory.md
 backend/backend-bin
 backend/*.exe
 backend/coverage.out
+backend/gateserver
 /dist/
 
 # Frontend
