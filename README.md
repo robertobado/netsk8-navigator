@@ -389,7 +389,16 @@ server-side `labelSelector` and `fieldSelector` (e.g.
 `status.phase=Running`, `spec.nodeName=…`), and `list_pods` a `compact`
 flag that drops per-pod detail — combine these when an unfiltered list
 would blow the token budget. `get_issues` always includes a `summary`
-grouping every issue by cause, computed before any truncation. `list_resources`/
+grouping every issue by cause, computed before any truncation. On top of
+that, **every read tool takes an optional `filter`** applied server-side
+before the response is sent, so the agent never spends tokens receiving a
+payload just to discard most of it: `jq` (a full [gojq](https://github.com/itchyny/gojq)
+program — `.items[] | {name, phase: .status}`, `.items | length`, `select(…)`;
+for a YAML manifest the document is parsed to JSON, filtered, then
+re-emitted as YAML), `grep`/`grepV` (RE2 line filters, ideal for `get_logs`),
+`head`/`tail`, and `maxBytes` (a hard cap that cuts at a line boundary and
+appends a truncation marker). They run in that order and compose with the
+`limit`/selector options above. `list_resources`/
 `get_resource_detail`/`get_manifest` only know the built-in Kubernetes
 kinds — for a CustomResourceDefinition (Gateway API route, cert-manager
 Certificate, etc.), `list_crd_kinds` finds its exact group/version/

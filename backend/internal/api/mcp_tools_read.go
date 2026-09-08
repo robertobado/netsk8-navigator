@@ -17,18 +17,24 @@ import (
 // contexts feeds contextInputSchema so every tool's "context" argument is
 // constrained to the kubeconfig's actual context names.
 
+// Every read tool takes an optional "filter" argument (outputFilter): the
+// jsonschema blurb below is repeated on each because struct-tag values must
+// be literals. The individual knobs are documented on outputFilter's fields.
+
 type ctxArgs struct {
-	Context string `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
+	Context string       `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
+	Filter  outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
 type namespaceScopedListArgs struct {
-	Context       string `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
-	Namespace     string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx,tier!=frontend; matched server-side"`
-	FieldSelector string `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector, e.g. status.phase=Running or spec.nodeName=node-1; matched server-side"`
-	Compact       bool   `json:"compact,omitempty" jsonschema:"when true, return only name/namespace/status/ready/restarts/node/age/reason per pod — drops containers, IP, owner refs and finalizers to keep a large list within the token budget"`
-	Limit         int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
-	Since         string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items created/changed at or after this are returned"`
+	Context       string       `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
+	Namespace     string       `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	LabelSelector string       `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx,tier!=frontend; matched server-side"`
+	FieldSelector string       `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector, e.g. status.phase=Running or spec.nodeName=node-1; matched server-side"`
+	Compact       bool         `json:"compact,omitempty" jsonschema:"when true, return only name/namespace/status/ready/restarts/node/age/reason per pod — drops containers, IP, owner refs and finalizers to keep a large list within the token budget"`
+	Limit         int          `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Since         string       `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items created/changed at or after this are returned"`
+	Filter        outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
 type resourceKindArgs struct {
@@ -38,27 +44,40 @@ type resourceKindArgs struct {
 	Name      string `json:"name" jsonschema:"resource name"`
 }
 
+// resourceGetArgs is resourceKindArgs plus the output filter — kept separate
+// so the mutating tools (delete_resource, restart_rollout) that share
+// resourceKindArgs don't advertise a result filter they never apply.
+type resourceGetArgs struct {
+	Context   string       `json:"context" jsonschema:"kubeconfig context name"`
+	Kind      string       `json:"kind" jsonschema:"manifest kind slug, e.g. pod, deployment, service, configmap, node, namespace, secret"`
+	Namespace string       `json:"namespace,omitempty" jsonschema:"resource namespace; omit for cluster-scoped kinds like node or namespace"`
+	Name      string       `json:"name" jsonschema:"resource name"`
+	Filter    outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
+}
+
 // crdListArgs/crdGetArgs address a CRD instance by its GVR straight from
 // list_crd_kinds, instead of the fixed manifest-kind slug resourceKindArgs
 // uses — that slug catalog only covers built-in kinds, never CRDs.
 type crdListArgs struct {
-	Context       string `json:"context" jsonschema:"kubeconfig context name"`
-	Group         string `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
-	Version       string `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
-	Resource      string `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
-	Namespace     string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx; matched server-side"`
-	FieldSelector string `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector; matched server-side"`
-	Limit         int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Context       string       `json:"context" jsonschema:"kubeconfig context name"`
+	Group         string       `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
+	Version       string       `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
+	Resource      string       `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
+	Namespace     string       `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	LabelSelector string       `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx; matched server-side"`
+	FieldSelector string       `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector; matched server-side"`
+	Limit         int          `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Filter        outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
 type crdGetArgs struct {
-	Context   string `json:"context" jsonschema:"kubeconfig context name"`
-	Group     string `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
-	Version   string `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
-	Resource  string `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for a cluster-scoped kind"`
-	Name      string `json:"name" jsonschema:"resource name"`
+	Context   string       `json:"context" jsonschema:"kubeconfig context name"`
+	Group     string       `json:"group" jsonschema:"CRD API group, e.g. secrets-store.csi.x-k8s.io — from list_crd_kinds"`
+	Version   string       `json:"version" jsonschema:"CRD API version, e.g. v1 — from list_crd_kinds"`
+	Resource  string       `json:"resource" jsonschema:"CRD plural resource name, e.g. secretproviderclasses — from list_crd_kinds"`
+	Namespace string       `json:"namespace,omitempty" jsonschema:"resource namespace; omit for a cluster-scoped kind"`
+	Name      string       `json:"name" jsonschema:"resource name"`
+	Filter    outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
 // readBlockedFor is the error every context-targeted read tool returns when
@@ -119,7 +138,8 @@ func registerSimpleGetTool(srv *mcp.Server, s *Server, contexts []string, name, 
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
-		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, subpath), nil))
+		status, body := s.callREST(ctx, "GET", contextPath(args.Context, subpath), nil)
+		return finishRead(status, body, args.Filter, false)
 	})
 }
 
@@ -127,17 +147,19 @@ func registerSimpleGetTool(srv *mcp.Server, s *Server, contexts []string, name, 
 // to /api/contexts/{context}/{urlSegment}/{kind}/{namespace}/{name} — the
 // shape get_resource_detail and get_manifest both share.
 func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name, description, urlSegment string) {
+	yamlResult := urlSegment == "manifest"
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        name,
 		Description: description,
 		Annotations: readOnly(),
-		InputSchema: contextInputSchema[resourceKindArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
+		InputSchema: contextInputSchema[resourceGetArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceGetArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
 		suffix := fmt.Sprintf("%s/%s/%s/%s", urlSegment, url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil))
+		status, body := s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil)
+		return finishRead(status, body, args.Filter, yamlResult)
 	})
 }
 
@@ -147,6 +169,7 @@ func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name
 // list_resources/get_resource_detail/get_manifest can't reach (any CRD, since
 // those three only know the fixed built-in catalog/manifest-slug map).
 func registerCRDGetTool(srv *mcp.Server, s *Server, contexts []string, name, description, urlSuffix string) {
+	yamlResult := urlSuffix == "manifest"
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        name,
 		Description: description,
@@ -159,31 +182,35 @@ func registerCRDGetTool(srv *mcp.Server, s *Server, contexts []string, name, des
 		suffix := fmt.Sprintf("crd/%s/%s/%s/%s/%s/%s",
 			url.PathEscape(args.Group), url.PathEscape(args.Version), url.PathEscape(args.Resource),
 			url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name), urlSuffix)
-		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil))
+		status, body := s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil)
+		return finishRead(status, body, args.Filter, yamlResult)
 	})
 }
 
 type listResourcesArgs struct {
-	Context       string `json:"context" jsonschema:"kubeconfig context name"`
-	Resource      string `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
-	Namespace     string `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
-	LabelSelector string `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx,tier!=frontend; matched server-side"`
-	FieldSelector string `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector, e.g. metadata.name=my-cm; matched server-side"`
-	Limit         int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Context       string       `json:"context" jsonschema:"kubeconfig context name"`
+	Resource      string       `json:"resource" jsonschema:"plural resource name, e.g. deployments, services, configmaps, jobs, secrets, ingresses"`
+	Namespace     string       `json:"namespace,omitempty" jsonschema:"optional namespace filter; omit for all namespaces"`
+	LabelSelector string       `json:"labelSelector,omitempty" jsonschema:"optional Kubernetes label selector, e.g. app=nginx,tier!=frontend; matched server-side"`
+	FieldSelector string       `json:"fieldSelector,omitempty" jsonschema:"optional Kubernetes field selector, e.g. metadata.name=my-cm; matched server-side"`
+	Limit         int          `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned; omit for no limit"`
+	Filter        outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
 type getLogsArgs struct {
-	Context   string `json:"context" jsonschema:"kubeconfig context name"`
-	Namespace string `json:"namespace" jsonschema:"pod namespace"`
-	Name      string `json:"name" jsonschema:"pod name"`
-	Container string `json:"container,omitempty" jsonschema:"container name; omit for a single-container pod"`
-	TailLines int64  `json:"tailLines,omitempty" jsonschema:"number of most recent lines to return (default 200, max 2000)"`
+	Context   string       `json:"context" jsonschema:"kubeconfig context name"`
+	Namespace string       `json:"namespace" jsonschema:"pod namespace"`
+	Name      string       `json:"name" jsonschema:"pod name"`
+	Container string       `json:"container,omitempty" jsonschema:"container name; omit for a single-container pod"`
+	TailLines int64        `json:"tailLines,omitempty" jsonschema:"number of most recent lines to return (default 200, max 2000)"`
+	Filter    outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters over the log text, to save context-window tokens: grep / grepV (RE2 line filters), head, tail, maxBytes (jq does not apply to plain-text logs)"`
 }
 
 type getIssuesArgs struct {
-	Context string `json:"context" jsonschema:"kubeconfig context name"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned per section; omit for no limit"`
-	Since   string `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items since this are returned"`
+	Context string       `json:"context" jsonschema:"kubeconfig context name"`
+	Limit   int          `json:"limit,omitempty" jsonschema:"optional cap on the number of items returned per section; omit for no limit"`
+	Since   string       `json:"since,omitempty" jsonschema:"optional RFC3339 timestamp; only items since this are returned"`
+	Filter  outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
 // registerListPodsTool, registerListResourcesTool, registerListCRDResourcesTool,
@@ -211,7 +238,7 @@ func registerListPodsTool(srv *mcp.Server, s *Server, contexts []string) {
 		if args.Compact {
 			body = compactPods(body)
 		}
-		return toolResult(status, shapeItemList(body, args.Limit, args.Since, "age"))
+		return finishRead(status, shapeItemList(body, args.Limit, args.Since, "age"), args.Filter, false)
 	})
 }
 
@@ -230,7 +257,7 @@ func registerListResourcesTool(srv *mcp.Server, s *Server, contexts []string) {
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
 		}
-		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
+		return finishRead(status, shapeItemList(body, args.Limit, "", ""), args.Filter, false)
 	})
 }
 
@@ -250,7 +277,7 @@ func registerListCRDResourcesTool(srv *mcp.Server, s *Server, contexts []string)
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
 		}
-		return toolResult(status, shapeItemList(body, args.Limit, "", ""))
+		return finishRead(status, shapeItemList(body, args.Limit, "", ""), args.Filter, false)
 	})
 }
 
@@ -268,7 +295,11 @@ func registerGetLogsTool(srv *mcp.Server, s *Server, contexts []string) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: logs}}}, nil, nil
+		out, err := args.Filter.apply([]byte(logs), false)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(out)}}}, nil, nil
 	})
 }
 
@@ -286,7 +317,7 @@ func registerGetIssuesTool(srv *mcp.Server, s *Server, contexts []string) {
 		if status < 200 || status >= 300 {
 			return toolResult(status, body)
 		}
-		return toolResult(status, shapeIssues(body, args.Limit, args.Since))
+		return finishRead(status, shapeIssues(body, args.Limit, args.Since), args.Filter, false)
 	})
 }
 
@@ -316,7 +347,8 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
-		return toolResult(s.callREST(ctx, "GET", contextPath(args.Context, "crdkinds"), nil))
+		status, body := s.callREST(ctx, "GET", contextPath(args.Context, "crdkinds"), nil)
+		return finishRead(status, body, args.Filter, false)
 	})
 	registerListCRDResourcesTool(srv, s, contexts)
 	registerCRDGetTool(srv, s, contexts, "get_crd_detail", "Get structured detail for a single CRD instance by group/version/resource/namespace/name (from list_crd_kinds).", "detail")
