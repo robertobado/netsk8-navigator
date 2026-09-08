@@ -47,6 +47,34 @@ func newRealKubeconfigTestServer(t *testing.T) *Server {
 	return srv
 }
 
+// TestKubeconfigWrite_NoManager_DoesNotPanic guards reloadAfterWrite's
+// nil-manager path: a Server can have a kubeconfig.Editor but no live
+// kube.Manager (cmd/gateserver is exactly this shape), and a successful
+// write must not panic trying to refresh a cache that doesn't exist.
+func TestKubeconfigWrite_NoManager_DoesNotPanic(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters["cluster-a"] = &clientcmdapi.Cluster{Server: "https://a.example.com"}
+	cfg.AuthInfos["user-a"] = &clientcmdapi.AuthInfo{Token: "s3cr3t"}
+	cfg.Contexts["ctx-a"] = &clientcmdapi.Context{Cluster: "cluster-a", AuthInfo: "user-a"}
+	if err := clientcmd.WriteToFile(*cfg, path); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", path)
+
+	ed, err := kubeconfig.NewEditor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(nil, config.NewStoreAt(filepath.Join(t.TempDir(), "prefs.json")), "") // mgr == nil, like gateserver
+	srv.SetKubeconfigEditor(ed)
+
+	rec := doRequest(t, srv, "POST", "/api/kubeconfig/contexts", `{"name":"ctx-b","cluster":"cluster-a","user":"user-a"}`)
+	if rec.Code < 200 || rec.Code >= 300 {
+		t.Fatalf("create context with no manager = %d, want 2xx (body %s)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestKubeconfig_UnavailableWhenNoEditor(t *testing.T) {
 	s := newTestServer(t) // fakeManager, no SetKubeconfigEditor call
 	for _, tc := range []struct {
