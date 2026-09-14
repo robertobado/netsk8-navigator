@@ -133,6 +133,32 @@ func (s *Store) SetMCPGate(raw json.RawMessage) error {
 	return s.save()
 }
 
+// ReloadMCPGate re-reads the persisted /mcp security gate directly from
+// disk, bypassing this Store's in-memory cache, and refreshes that cache
+// with what it found. Every other accessor on Store trusts the in-memory
+// copy because, within one process, this Store is the only writer — but a
+// --mcp-stdio process holds its own Store for its entire lifetime while a
+// human can flip "Allow write" from a completely different OS process (the
+// app serving the panel) that writes this same file; without a real re-read,
+// that toggle would never reach an already-running stdio client, only its
+// next spawn. Falls back to the in-memory MCPGate() if the file can't be
+// read or parsed (e.g. a transient error) — SetMCPGate's atomic
+// write-then-rename means a concurrent reader never sees a torn write.
+func (s *Store) ReloadMCPGate() json.RawMessage {
+	raw, err := os.ReadFile(s.path)
+	if err != nil {
+		return s.MCPGate()
+	}
+	var fd fileData
+	if err := json.Unmarshal(raw, &fd); err != nil {
+		return s.MCPGate()
+	}
+	s.mu.Lock()
+	s.data.MCPGate = fd.MCPGate
+	s.mu.Unlock()
+	return orEmpty(fd.MCPGate)
+}
+
 // DesktopPort returns the loopback port the desktop app bound on its last
 // run, or 0 when none has been persisted yet (first launch).
 func (s *Store) DesktopPort() int {

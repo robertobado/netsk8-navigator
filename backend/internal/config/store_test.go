@@ -107,6 +107,54 @@ func jsonEqual(t *testing.T, a, b json.RawMessage) bool {
 	return string(x) == string(y)
 }
 
+// TestStore_ReloadMCPGate_SeesWritesFromAnotherStoreInstance is the core
+// guarantee ReloadMCPGate exists for: two independent Store instances over
+// the SAME file — modeling the main app process (which owns the MCP panel's
+// "Allow write" toggle) and a --mcp-stdio subprocess's own long-lived Store,
+// loaded once at spawn — where a write through one must be visible through
+// the other WITHOUT reconstructing it. Plain MCPGate() only ever sees
+// whatever this instance itself last wrote or loaded at construction.
+func TestStore_ReloadMCPGate_SeesWritesFromAnotherStoreInstance(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	writer := NewStoreAt(path) // e.g. the app process serving the panel
+	reader := NewStoreAt(path) // e.g. a --mcp-stdio subprocess
+
+	if got := reader.MCPGate(); string(got) != "{}" {
+		t.Fatalf("reader's initial MCPGate() = %s, want {}", got)
+	}
+
+	if err := writer.SetMCPGate(json.RawMessage(`{"enabled":true,"allowWrite":true}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := reader.MCPGate(); string(got) != "{}" {
+		t.Errorf("reader.MCPGate() changed without a reload — got %s, this defeats the point of the test", got)
+	}
+	if got := reader.ReloadMCPGate(); !jsonEqual(t, got, json.RawMessage(`{"enabled":true,"allowWrite":true}`)) {
+		t.Errorf("reader.ReloadMCPGate() = %s, want the writer's update", got)
+	}
+	// And it refreshed the in-memory cache too, so a plain MCPGate() call
+	// right after also reflects it.
+	if got := reader.MCPGate(); !jsonEqual(t, got, json.RawMessage(`{"enabled":true,"allowWrite":true}`)) {
+		t.Errorf("reader.MCPGate() after ReloadMCPGate() = %s, want it refreshed", got)
+	}
+}
+
+func TestStore_ReloadMCPGate_FallsBackOnUnreadableFile(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetMCPGate(json.RawMessage(`{"enabled":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(s.path); err != nil {
+		t.Fatal(err)
+	}
+	// The file is gone (e.g. a transient issue) — fall back to the
+	// in-memory value rather than losing the gate.
+	if got := s.ReloadMCPGate(); !jsonEqual(t, got, json.RawMessage(`{"enabled":true}`)) {
+		t.Errorf("ReloadMCPGate() with the file gone = %s, want the last known in-memory value", got)
+	}
+}
+
 func TestStore_MCPGateIsIndependentOfApp(t *testing.T) {
 	s := newTestStore(t)
 	if err := s.SetMCPGate(json.RawMessage(`{"enabled":true,"allowWrite":true}`)); err != nil {

@@ -16,13 +16,18 @@ import (
 )
 
 // This file is the cross-boundary contract for the four cluster-mutating
-// MCP tools. The bug it exists to prevent: a write path that is "covered"
-// by per-unit tests (applyFromGate, newStdioMCPFlags, PUT /api/mcp/gate)
-// yet broken at the seam between them — e.g. the stdio transport freezing
-// allowWrite at spawn and never reading the panel toggle the persisted gate
-// carries. Every case here drives the flags through the SAME path the real
-// system uses (PUT /api/mcp/gate for HTTP; a fresh NewStdioMCPFlags off the
-// persisted store for stdio), never a raw s.mcpFlags.set().
+// MCP tools. The bug it exists to prevent: a write path that is "covered" by
+// per-unit tests (applyFromGate, newStdioMCPFlags, PUT /api/mcp/gate) yet
+// broken at the seam between them. Two real bugs of exactly that shape have
+// lived here: (1) the stdio transport freezing allowWrite at spawn and never
+// reading the panel toggle the persisted gate carries at all, and (2), after
+// (1) was fixed, freezing it at spawn time rather than re-reading it live —
+// so the toggle only ever reached a stdio client's NEXT spawn, not an
+// already-connected session, even though its read tools work in that same
+// session with no restart. Every case here drives the flags through the SAME
+// path the real system uses (PUT /api/mcp/gate for HTTP; a stdio session
+// connected BEFORE the gate is armed, exactly like a real MCP client's
+// process outliving any one toggle flip), never a raw s.mcpFlags.set().
 
 // mutatingTool is one row of the write-tool matrix: the tool name, the
 // arguments for its happy path against the web/prod deployment the matrix
@@ -117,13 +122,19 @@ func writeTransports() []writeTransport {
 		{
 			name: "stdio",
 			arm: func(t *testing.T, s *Server, gate string) *mcp.ClientSession {
-				// The panel persists the gate; a freshly spawned stdio
-				// server rebuilds its flags from that store with NO
-				// --mcp-allow-write launch flag. This is the path that was
-				// broken: the persisted "allowWrite" must reach it.
-				putGate(t, s, gate)
+				// Build the flags and connect the session BEFORE the gate is
+				// armed — a real stdio client's process is already running
+				// and already talking to the server by the time a human
+				// touches the panel. NO --mcp-allow-write launch flag, so
+				// the only way this tool call can see the gate's state is a
+				// live re-read on every check (see MCPFlags.store); arming
+				// the gate up front (the old shape of this helper) would
+				// only prove a freshly built MCPFlags sees it, not an
+				// already-connected one.
 				s.SetMCPFlags(NewStdioMCPFlags(s.cfg, false))
-				return stdioConnect(t, s)
+				session := stdioConnect(t, s)
+				putGate(t, s, gate)
+				return session
 			},
 		},
 	}
@@ -245,11 +256,12 @@ func assertToolRefused(t *testing.T, s *Server, tr writeTransport, tool mutating
 }
 
 // TestMCPGate_PanelToggleReachesFreshStdioServer is the regression test for
-// the specific bug: the operator flips "Allow write" in the running app's
-// MCP panel (the real HTTP handler), and a stdio server spawned afterwards
-// with no --mcp-allow-write flag must still see write granted. Before the
-// fix, NewStdioMCPFlags read only readOnlyContexts/readDisabledContexts from
-// the persisted gate and ignored allowWrite entirely.
+// the first of the two stdio bugs this file guards: the operator flips
+// "Allow write" in the running app's MCP panel (the real HTTP handler), and
+// a stdio server spawned afterward with no --mcp-allow-write flag must still
+// see write granted. Before the fix, NewStdioMCPFlags read only
+// readOnlyContexts/readDisabledContexts from the persisted gate and ignored
+// allowWrite entirely.
 func TestMCPGate_PanelToggleReachesFreshStdioServer(t *testing.T) {
 	s := newTestServer(t)
 
@@ -272,6 +284,51 @@ func TestMCPGate_PanelToggleReachesFreshStdioServer(t *testing.T) {
 	}
 }
 
+// TestMCPGate_PanelToggleReachesAlreadyRunningStdioServer is the regression
+// test for the second, subtler stdio bug: even after the first fix, the
+// toggle only reached a stdio client's NEXT process spawn — an operator who
+// flips "Allow write" mid-session, without restarting their already-running
+// MCP client, kept getting refused, even though read tools worked fine in
+// that same session (they don't depend on the gate at all — see
+// MCPFlags.Enabled). The fix makes every check re-read the gate live off
+// disk (see MCPFlags.store) instead of trusting a snapshot frozen at
+// construction, exactly like reads never needed a snapshot in the first
+// place.
+func TestMCPGate_PanelToggleReachesAlreadyRunningStdioServer(t *testing.T) {
+	s := newTestServer(t)
+	// Flags built, and effectively "in use", BEFORE any gate is set — the
+	// shape of an MCP client's long-lived process.
+	flags := NewStdioMCPFlags(s.cfg, false)
+	s.SetMCPFlags(flags)
+
+	if flags.AllowWrite() {
+		t.Fatal("a fresh install with no gate set should start write-blocked")
+	}
+
+	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
+	if !flags.AllowWrite() {
+		t.Fatal("the panel's Allow write toggle did not reach the SAME already-running MCPFlags instance — a stdio client would need a restart it shouldn't need")
+	}
+	if !flags.WriteAllowedFor("staging") {
+		t.Fatal("WriteAllowedFor should also observe the live toggle on the same instance")
+	}
+
+	putGate(t, s, `{"allowWrite":false}`)
+	if flags.AllowWrite() {
+		t.Fatal("clearing Allow write did not reach the same already-running MCPFlags instance")
+	}
+
+	// A context pinned read-only afterward must also apply live, without a
+	// fresh MCPFlags.
+	putGate(t, s, `{"enabled":true,"allowWrite":true,"readOnlyContexts":["prod"]}`)
+	if flags.WriteAllowedFor("prod") {
+		t.Fatal("pinning a context read-only did not reach the same already-running MCPFlags instance")
+	}
+	if !flags.WriteAllowedFor("staging") {
+		t.Fatal("an unpinned context should still be writable on the same instance")
+	}
+}
+
 // TestMCPGate_DisabledStillBlocksStdioWrites guards the enabled&&allowWrite
 // invariant across the boundary: a hand-edited store with allowWrite:true
 // but enabled:false must not grant stdio writes.
@@ -286,18 +343,24 @@ func TestMCPGate_DisabledStillBlocksStdioWrites(t *testing.T) {
 }
 
 // TestWriteBlockedFor_MessagesAreTransportAware checks that each transport's
-// refusal points the user at something that will actually help: the stdio
-// message must mention starting a new session / reinstalling, because
-// toggling the panel does nothing for the already-running stdio process.
+// refusal is accurate about what fixes it: the stdio message must not claim
+// a restart is needed (it isn't, since the toggle is live) but does mention
+// the --mcp-allow-write launch flag as an alternative.
 func TestWriteBlockedFor_MessagesAreTransportAware(t *testing.T) {
 	stdio := newTestServer(t)
-	stdio.SetMCPFlags(newStdioMCPFlags(json.RawMessage(`{}`), false))
+	stdio.SetMCPFlags(NewStdioMCPFlags(stdio.cfg, false))
 	err := stdio.writeBlockedFor("staging")
 	if err == nil {
 		t.Fatal("expected stdio write to be blocked")
 	}
-	if !strings.Contains(err.Error(), "new session") || !strings.Contains(err.Error(), "mcp install --allow-write") {
-		t.Errorf("stdio refusal should tell the user to start a new session or reinstall, got: %v", err)
+	if strings.Contains(err.Error(), "new session") || strings.Contains(err.Error(), "needs a restart") || strings.Contains(err.Error(), "requires a restart") {
+		t.Errorf("stdio refusal should not claim a restart is needed — the toggle is live now, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "no restart needed") && !strings.Contains(err.Error(), "immediately") {
+		t.Errorf("stdio refusal should reassure the user no restart is needed, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "mcp install --allow-write") {
+		t.Errorf("stdio refusal should still mention the launch-flag alternative, got: %v", err)
 	}
 
 	httpSrv := newTestServer(t)
