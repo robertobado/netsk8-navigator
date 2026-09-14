@@ -174,13 +174,13 @@ func filterLines(lines []string, re *regexp.Regexp, keepMatches bool) []string {
 	return out
 }
 
-// capBytes truncates body at the last newline at or before max bytes and
+// capBytes truncates body at the last newline at or before maxBytes and
 // appends a marker naming how much was dropped.
-func capBytes(body []byte, max int) []byte {
-	if len(body) <= max {
+func capBytes(body []byte, maxBytes int) []byte {
+	if len(body) <= maxBytes {
 		return body
 	}
-	cut := body[:max]
+	cut := body[:maxBytes]
 	if i := bytes.LastIndexByte(cut, '\n'); i > 0 {
 		cut = cut[:i]
 	}
