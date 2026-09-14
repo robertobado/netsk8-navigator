@@ -298,7 +298,13 @@ function ReadOnlyContextsPicker({
             className="z-[95] overflow-hidden rounded-lg border bg-popover/95 shadow-2xl shadow-black/40 backdrop-blur-2xl"
           >
             <input
-              autoFocus
+              // Deliberate: this popover only mounts in response to the
+              // user's own click to open it, so moving focus to its search
+              // box is the accessible combobox pattern (macOS Spotlight,
+              // VSCode's command palette), not the "autofocus on page load"
+              // anti-pattern the rule targets — a keyboard user shouldn't
+              // need an extra Tab to reach the thing they just opened.
+              autoFocus // NOSONAR typescript:S9379 -- see comment above
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('ns.search')}

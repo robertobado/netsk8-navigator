@@ -74,7 +74,11 @@ export function ContextSwitcher({ contexts, selected, onSelect, onManageKubeconf
           <div className="flex items-center gap-2 border-b px-3">
             <Search className="size-4 text-muted-foreground" />
             <input
-              autoFocus
+              // Deliberate: this popover only mounts once `open` is true (the
+              // user's own click), so autofocus here is the accessible
+              // combobox pattern, not the "autofocus on page load"
+              // anti-pattern the rule targets.
+              autoFocus // NOSONAR typescript:S9379 -- see comment above
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('Search cluster...')}

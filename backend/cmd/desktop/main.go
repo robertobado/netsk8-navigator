@@ -269,7 +269,11 @@ func main() {
 	fixPathForGUILaunch()
 	mux, srv, cfg := buildMux()
 	addr := startServer(mux, cfg)
-	url := fmt.Sprintf("http://%s/", addr)
+	// addr is always 127.0.0.1:<port> (see listenPreferring) — a loopback
+	// address only this machine's own processes can reach, never a network
+	// endpoint, so there's no peer to authenticate via TLS and no self-signed
+	// cert would do anything but produce a browser warning for zero benefit.
+	url := fmt.Sprintf("http://%s/", addr) // NOSONAR go:S5332 -- loopback-only, see comment above
 
 	app := NewApp(srv)
 	appMenu := menu.NewMenu()

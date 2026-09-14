@@ -109,7 +109,12 @@ export function HelmInstallDialog({ ctx, mode, open, namespace, existingRelease,
             <div className="flex items-center gap-2 border-b px-4 py-2.5">
               <Search className="size-4 text-muted-foreground" />
               <input
-                autoFocus
+                // Deliberate: this whole dialog only mounts when the user
+                // opens it (HelmInstallDialogLazy returns null while
+                // !open), so autofocus here is the accessible combobox
+                // pattern, not the "autofocus on page load" anti-pattern
+                // the rule targets.
+                autoFocus // NOSONAR typescript:S9379 -- see comment above
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('Search charts...')}

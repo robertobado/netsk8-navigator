@@ -409,11 +409,11 @@ type PVCView struct {
 }
 
 func ToPVCView(c *corev1.PersistentVolumeClaim) PVCView {
-	cap := ""
+	capacity := ""
 	if q, ok := c.Status.Capacity[corev1.ResourceStorage]; ok {
-		cap = q.String()
+		capacity = q.String()
 	} else if q, ok := c.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
-		cap = q.String()
+		capacity = q.String()
 	}
 	sc := ""
 	if c.Spec.StorageClassName != nil {
@@ -424,7 +424,7 @@ func ToPVCView(c *corev1.PersistentVolumeClaim) PVCView {
 		Namespace:    c.Namespace,
 		Status:       string(c.Status.Phase),
 		Volume:       c.Spec.VolumeName,
-		Capacity:     cap,
+		Capacity:     capacity,
 		AccessModes:  ShortAccessModes(c.Status.AccessModes),
 		StorageClass: sc,
 		Age:          formatAge(c.CreationTimestamp.Time),
@@ -444,9 +444,9 @@ type PVView struct {
 }
 
 func ToPVView(p *corev1.PersistentVolume) PVView {
-	cap := ""
+	capacity := ""
 	if q, ok := p.Spec.Capacity[corev1.ResourceStorage]; ok {
-		cap = q.String()
+		capacity = q.String()
 	}
 	claim := ""
 	if p.Spec.ClaimRef != nil {
@@ -454,7 +454,7 @@ func ToPVView(p *corev1.PersistentVolume) PVView {
 	}
 	return PVView{
 		Name:         p.Name,
-		Capacity:     cap,
+		Capacity:     capacity,
 		AccessModes:  ShortAccessModes(p.Spec.AccessModes),
 		Reclaim:      string(p.Spec.PersistentVolumeReclaimPolicy),
 		Status:       string(p.Status.Phase),
@@ -506,15 +506,15 @@ type HPAView struct {
 }
 
 func ToHPAView(h *autoscalingv2.HorizontalPodAutoscaler) HPAView {
-	min := int32(1)
+	minPods := int32(1)
 	if h.Spec.MinReplicas != nil {
-		min = *h.Spec.MinReplicas
+		minPods = *h.Spec.MinReplicas
 	}
 	return HPAView{
 		Name:      h.Name,
 		Namespace: h.Namespace,
 		Reference: h.Spec.ScaleTargetRef.Kind + "/" + h.Spec.ScaleTargetRef.Name,
-		MinPods:   min,
+		MinPods:   minPods,
 		MaxPods:   h.Spec.MaxReplicas,
 		Replicas:  h.Status.CurrentReplicas,
 		Age:       formatAge(h.CreationTimestamp.Time),

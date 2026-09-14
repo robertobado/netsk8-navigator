@@ -791,13 +791,13 @@ func storageClassDetail(o *storagev1.StorageClass) *resourceDetail {
 
 func hpaDetail(o *autoscalingv2.HorizontalPodAutoscaler) *resourceDetail {
 	d := base("HorizontalPodAutoscaler", o.ObjectMeta)
-	min := int32(1)
+	minReplicas := int32(1)
 	if o.Spec.MinReplicas != nil {
-		min = *o.Spec.MinReplicas
+		minReplicas = *o.Spec.MinReplicas
 	}
 	d.Status = []chip{
 		replicaChip("Replicas", o.Status.CurrentReplicas, o.Status.DesiredReplicas),
-		countChip("Min", min, "muted"),
+		countChip("Min", minReplicas, "muted"),
 		countChip("Max", o.Spec.MaxReplicas, "muted"),
 	}
 	// Metrics: pair each configured target with its current reading. Status

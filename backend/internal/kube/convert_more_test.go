@@ -177,10 +177,10 @@ func TestToResourceQuotaAndLimitRangeViews(t *testing.T) {
 }
 
 func TestToPDBView(t *testing.T) {
-	min := intstr.FromInt(2)
+	minAvail := intstr.FromInt(2)
 	p := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{Name: "pdb", Namespace: "prod"},
-		Spec:       policyv1.PodDisruptionBudgetSpec{MinAvailable: &min},
+		Spec:       policyv1.PodDisruptionBudgetSpec{MinAvailable: &minAvail},
 		Status:     policyv1.PodDisruptionBudgetStatus{CurrentHealthy: 3, DesiredHealthy: 2, DisruptionsAllowed: 1},
 	}
 	v := ToPDBView(p)
@@ -188,8 +188,8 @@ func TestToPDBView(t *testing.T) {
 		t.Errorf("got %+v", v)
 	}
 
-	max := intstr.FromInt(1)
-	p2 := &policyv1.PodDisruptionBudget{Spec: policyv1.PodDisruptionBudgetSpec{MaxUnavailable: &max}}
+	maxUnavail := intstr.FromInt(1)
+	p2 := &policyv1.PodDisruptionBudget{Spec: policyv1.PodDisruptionBudgetSpec{MaxUnavailable: &maxUnavail}}
 	if got := ToPDBView(p2).Criteria; got != "max 1" {
 		t.Errorf("Criteria = %q, want %q", got, "max 1")
 	}

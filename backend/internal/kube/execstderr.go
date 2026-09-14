@@ -29,7 +29,7 @@ var tap struct {
 // captures its output target at init time, before this swap, so it keeps
 // writing straight to the original fd.
 func InstallStderrTap() {
-	real := os.Stderr
+	origStderr := os.Stderr
 	r, w, err := os.Pipe()
 	if err != nil {
 		return // best-effort: exec-error enrichment just won't have detail
@@ -40,7 +40,7 @@ func InstallStderrTap() {
 		for {
 			n, readErr := r.Read(buf)
 			if n > 0 {
-				_, _ = real.Write(buf[:n])
+				_, _ = origStderr.Write(buf[:n])
 				tap.mu.Lock()
 				tap.buf.Write(buf[:n])
 				if tap.buf.Len() > tapMax {

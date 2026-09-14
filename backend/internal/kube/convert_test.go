@@ -519,9 +519,9 @@ func TestToStorageClassView_ReclaimAndBindingModes(t *testing.T) {
 }
 
 func TestToHPAView_ExplicitMinReplicas(t *testing.T) {
-	min := int32(3)
+	minReplicas := int32(3)
 	h := &autoscalingv2.HorizontalPodAutoscaler{Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-		MinReplicas: &min,
+		MinReplicas: &minReplicas,
 		MaxReplicas: 10,
 	}}
 	if got := ToHPAView(h).MinPods; got != 3 {
