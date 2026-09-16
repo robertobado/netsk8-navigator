@@ -48,6 +48,16 @@ describe('AboutDialog', () => {
     expect(screen.getByText('about.upToDate')).toBeInTheDocument()
   })
 
+  it('shows the config file path when provided', () => {
+    render(<AboutDialog open={true} onClose={vi.fn()} version="1.2.3" configPath="/Users/bado/Library/Application Support/netsk8/config.json" />)
+    expect(screen.getByText('/Users/bado/Library/Application Support/netsk8/config.json')).toBeInTheDocument()
+  })
+
+  it('omits the config file row when configPath is not provided', () => {
+    render(<AboutDialog open={true} onClose={vi.fn()} version="1.2.3" />)
+    expect(screen.queryByText('about.configFile')).not.toBeInTheDocument()
+  })
+
   it('links to the GitHub repo', () => {
     render(<AboutDialog open={true} onClose={vi.fn()} version="1.2.3" />)
     expect(screen.getByRole('link', { name: /about.viewOnGithub/ })).toHaveAttribute('href', 'https://github.com/robertobado/netsk8-navigator')

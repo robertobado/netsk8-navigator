@@ -348,6 +348,7 @@ func TestMCPGate_DisabledStillBlocksStdioWrites(t *testing.T) {
 // the --mcp-allow-write launch flag as an alternative.
 func TestWriteBlockedFor_MessagesAreTransportAware(t *testing.T) {
 	stdio := newTestServer(t)
+	stdio.Version = "1.2.3"
 	stdio.SetMCPFlags(NewStdioMCPFlags(stdio.cfg, false))
 	err := stdio.writeBlockedFor("staging")
 	if err == nil {
@@ -361,6 +362,17 @@ func TestWriteBlockedFor_MessagesAreTransportAware(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "mcp install --allow-write") {
 		t.Errorf("stdio refusal should still mention the launch-flag alternative, got: %v", err)
+	}
+	// The self-diagnosing bit: a "the toggle is on but this still fails"
+	// report is otherwise nearly impossible to remotely diagnose (the #1
+	// real cause is the stdio process and the app resolving different
+	// config directories) — so the error names its own build and the exact
+	// file it's reading, comparable against GET /api/health's configPath.
+	if !strings.Contains(err.Error(), "1.2.3") {
+		t.Errorf("stdio refusal should report its own version, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), stdio.cfg.Path()) {
+		t.Errorf("stdio refusal should report the config path it reads the gate from, got: %v", err)
 	}
 
 	httpSrv := newTestServer(t)

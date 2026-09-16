@@ -64,6 +64,24 @@ func TestHandleHealth_VersionAndAuthEnabled(t *testing.T) {
 	}
 }
 
+// TestHandleHealth_ReportsConfigPath backs the diagnostic writeBlockedFor's
+// stdio message points at: an operator comparing this against a
+// --mcp-stdio process's own MCPFlags.GatePath() is how a "the toggle is on
+// but writes are still refused" report gets diagnosed in one step instead
+// of a guessing match — the #1 real cause is the two processes resolving
+// different config directories entirely.
+func TestHandleHealth_ReportsConfigPath(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "GET", "/api/health", "")
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["configPath"] != s.cfg.Path() {
+		t.Errorf("configPath field = %v, want %v", body["configPath"], s.cfg.Path())
+	}
+}
+
 func TestHandleHealth_DemoMode(t *testing.T) {
 	s := newTestServer(t)
 	s.DemoMode = true

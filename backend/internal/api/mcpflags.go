@@ -42,6 +42,24 @@ type MCPFlags struct {
 // --mcp-allow-write launch flag as a stdio-only alternative to the panel.
 func (f *MCPFlags) Stdio() bool { return f.stdio }
 
+// GatePath reports the on-disk config.json path this stdio server reads the
+// gate from ("" for the HTTP path, where store is nil). Surfaced in the
+// "write disabled" error specifically because "I turned the toggle on and
+// it's still refused" is otherwise nearly impossible to diagnose remotely —
+// the number one cause in practice is the MCP client's process and the app
+// serving the panel resolving DIFFERENT config directories (a stdio client
+// spawned with a different $HOME/$XDG_CONFIG_HOME/%AppData%, e.g. a
+// sandboxed launcher), so the two are durably reading and writing two
+// unrelated files no amount of live-reloading can ever reconcile. Comparing
+// this path against the app's own "configPath" (see GET /api/health)
+// answers that in one look instead of a guessing match.
+func (f *MCPFlags) GatePath() string {
+	if f.store == nil {
+		return ""
+	}
+	return f.store.Path()
+}
+
 // Enabled reports whether /mcp should serve requests at all.
 func (f *MCPFlags) Enabled() bool {
 	f.mu.RLock()

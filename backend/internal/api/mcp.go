@@ -33,17 +33,25 @@ const mcpInstructions = "Always call list_contexts first and use one of the retu
 // registered once at startup, and each mutating tool checks s.mcpFlags at
 // call time instead of the tool list changing dynamically.
 func (s *Server) buildMCPServer() *mcp.Server {
-	version := s.Version
-	if version == "" {
-		version = "dev" // unset in tests / a plain `go build` with no -ldflags — matches main.version's own convention
-	}
-	srv := mcp.NewServer(&mcp.Implementation{Name: "netsk8-navigator", Version: version}, &mcp.ServerOptions{
+	srv := mcp.NewServer(&mcp.Implementation{Name: "netsk8-navigator", Version: versionOrDev(s.Version)}, &mcp.ServerOptions{
 		Instructions: mcpInstructions,
 	})
 	contexts := contextNames(s.mgr.Contexts())
 	registerReadTools(srv, s, contexts)
 	registerWriteTools(srv, s, contexts)
 	return srv
+}
+
+// versionOrDev returns v, or "dev" when unset — unset in tests / a plain
+// `go build` with no -ldflags, matching main.version's own convention.
+// Shared by buildMCPServer (the MCP client's reported server version) and
+// writeBlockedFor's stdio diagnostic (so a "which build is this" report
+// never comes back empty).
+func versionOrDev(v string) string {
+	if v == "" {
+		return "dev"
+	}
+	return v
 }
 
 func contextNames(contexts []kube.ContextInfo) []string {

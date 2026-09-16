@@ -313,7 +313,7 @@ function AppMain() {
         />
         {ctx && <ResourceDrawer target={searchTarget} ctx={ctx} onClose={() => setSearchTarget(null)} />}
         <PreferencesDialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} vanta={vanta} />
-        <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} version={healthQ.data?.version} update={updateQ.data} />
+        <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} version={healthQ.data?.version} configPath={healthQ.data?.configPath} update={updateQ.data} />
         <KubeconfigManagerDialog open={kubeconfigOpen} onClose={() => setKubeconfigOpen(false)} activeCtx={ctx} onSelectContext={updateCtx} />
       </div>
       {healthQ.data?.demo && <FloatingBubble message={t('demo.banner')} href="https://github.com/robertobado/netsk8-navigator" />}

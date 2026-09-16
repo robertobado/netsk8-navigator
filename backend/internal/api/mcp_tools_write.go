@@ -22,7 +22,9 @@ func (s *Server) writeBlockedFor(contextName string) error {
 		return fmt.Errorf("write operations are disabled for context %q (pinned read-only in netsk8-navigator's MCP panel)", contextName)
 	}
 	if s.mcpFlags.Stdio() {
-		return fmt.Errorf("write operations are disabled — enable 'Allow write' in netsk8-navigator's MCP panel (takes effect immediately, no restart needed); or reinstall with: netsk8-navigator mcp install --allow-write")
+		return fmt.Errorf("write operations are disabled — enable 'Allow write' in netsk8-navigator's MCP panel (takes effect immediately, no restart needed); or reinstall with: netsk8-navigator mcp install --allow-write. "+
+			"This stdio server (version %s) reads that setting from %s — if you just enabled it and this still fails, compare that against the app's own About dialog ('Config file', from GET /api/health's configPath); a different path means this MCP client process can't see the app's config at all, no matter what the toggle says",
+			versionOrDev(s.Version), s.mcpFlags.GatePath())
 	}
 	return fmt.Errorf("write operations are disabled — enable 'Allow write' in netsk8-navigator's MCP panel to permit this")
 }

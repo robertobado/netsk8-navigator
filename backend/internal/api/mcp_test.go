@@ -401,6 +401,19 @@ func TestNewStdioMCPFlags(t *testing.T) {
 	if !f.WriteAllowedFor("staging") {
 		t.Error("staging isn't pinned read-only — should follow --mcp-allow-write")
 	}
+	if f.GatePath() != path {
+		t.Errorf("GatePath() = %q, want %q", f.GatePath(), path)
+	}
+}
+
+// TestMCPFlags_GatePath_EmptyForHTTP guards the other half of GatePath's
+// contract: the HTTP path has no per-process config-directory mismatch to
+// diagnose (it's the single writer of its own Store), so it reports "".
+func TestMCPFlags_GatePath_EmptyForHTTP(t *testing.T) {
+	f := &MCPFlags{}
+	if got := f.GatePath(); got != "" {
+		t.Errorf("GatePath() for HTTP-style flags = %q, want empty", got)
+	}
 }
 
 // TestServer_RunStdioServesToolsOverAnyPersistentTransport exercises

@@ -8,6 +8,14 @@ export interface Health {
   version: string
   authEnabled: boolean
   kubeconfigEditable: boolean
+  // The preferences file THIS process reads/writes — shown in AboutDialog so
+  // it can be compared, by eye, against a --mcp-stdio MCP client's own
+  // config path (surfaced in its "write disabled" tool error) when the two
+  // disagree about the MCP gate: the #1 real cause is the two processes
+  // resolving different config directories entirely (e.g. a stdio client
+  // spawned with a different $HOME/$XDG_CONFIG_HOME/%AppData%), which no
+  // amount of live gate-reloading on the backend can ever reconcile.
+  configPath: string
 }
 
 export interface UpdateCheck {

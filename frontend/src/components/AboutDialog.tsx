@@ -9,6 +9,7 @@ interface Props {
   open: boolean
   onClose: () => void
   version?: string
+  configPath?: string
   update?: UpdateCheck
 }
 
@@ -16,7 +17,7 @@ interface Props {
 // Escape-to-close, z-[90]) — opened from the version badge next to the
 // sidebar logo, and (desktop app only) from the native "About" menu item via
 // the show-about SSE event App.tsx listens for on /api/app-events.
-export function AboutDialog({ open, onClose, version, update }: Readonly<Props>) {
+export function AboutDialog({ open, onClose, version, configPath, update }: Readonly<Props>) {
   const t = useT()
 
   useEffect(() => {
@@ -61,6 +62,16 @@ export function AboutDialog({ open, onClose, version, update }: Readonly<Props>)
               <p className="mt-0.5 font-mono text-xs text-muted-foreground">{versionLabel}</p>
             </div>
             <p className="text-xs text-muted-foreground">{t('about.tagline')}</p>
+
+            {configPath && (
+              <p className="max-w-full text-center text-[10px] text-muted-foreground">
+                {t('about.configFile')}
+                <br />
+                <span className="font-mono break-all select-all" title={configPath}>
+                  {configPath}
+                </span>
+              </p>
+            )}
 
             {update?.available ? (
               <a

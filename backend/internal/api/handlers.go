@@ -245,6 +245,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version":            s.Version,
 		"authEnabled":        s.AuthEnabled,
 		"kubeconfigEditable": s.kcfg != nil,
+		// The preferences file this HTTP-serving process reads/writes —
+		// surfaced so it can be compared against a --mcp-stdio process's own
+		// MCPFlags.GatePath() (in its "write disabled" error) when the two
+		// disagree about the gate: the #1 real-world cause is the two
+		// processes resolving different config directories entirely (a
+		// stdio client spawned with a different $HOME/$XDG_CONFIG_HOME/
+		// %AppData%), which no amount of live gate-reloading can reconcile.
+		"configPath": s.cfg.Path(),
 	})
 }
 
