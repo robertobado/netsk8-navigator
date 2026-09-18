@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -288,9 +289,16 @@ func (s *Server) handleCRDApply(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCRDDelete: DELETE /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}
-// Mirrors handleDeleteResource, same GVR-from-URL approach as handleCRDApply.
+// Mirrors handleDeleteResource, same GVR-from-URL approach as handleCRDApply,
+// and the same cascade/gracePeriodSeconds/force/dryRun/ignoreNotFound query
+// switches — see deleteQueryOptions.
 func (s *Server) handleCRDDelete(w http.ResponseWriter, r *http.Request) {
 	dyn, err := s.dynFor(r.PathValue("ctx"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	opts, ignoreNotFound, err := deleteQueryOptions(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -304,11 +312,19 @@ func (s *Server) handleCRDDelete(w http.ResponseWriter, r *http.Request) {
 		ns = ""
 	}
 	audit(r, "crd-delete", "resource", gvr.String(), "namespace", ns, "name", r.PathValue("name"))
-	if err := dyn.Resource(gvr).Namespace(ns).Delete(ctx, r.PathValue("name"), metav1.DeleteOptions{}); err != nil {
+	if err := dyn.Resource(gvr).Namespace(ns).Delete(ctx, r.PathValue("name"), opts); err != nil {
+		if ignoreNotFound && apierrors.IsNotFound(err) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "note": "already gone (ignoreNotFound)"})
+			return
+		}
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	status := "deleted"
+	if len(opts.DryRun) > 0 {
+		status = "would-delete"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": status})
 }
 
 // handleCRDDetail: GET /api/contexts/{ctx}/crd/{group}/{version}/{resource}/{namespace}/{name}/detail

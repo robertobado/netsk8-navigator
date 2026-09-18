@@ -37,16 +37,11 @@ type namespaceScopedListArgs struct {
 	Filter        outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters that shrink the response before it's returned, to save context-window tokens: jq (gojq program), grep / grepV (RE2 line filters), head, tail, maxBytes"`
 }
 
-type resourceKindArgs struct {
-	Context   string `json:"context" jsonschema:"kubeconfig context name"`
-	Kind      string `json:"kind" jsonschema:"manifest kind slug, e.g. pod, deployment, service, configmap, node, namespace, secret"`
-	Namespace string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for cluster-scoped kinds like node or namespace"`
-	Name      string `json:"name" jsonschema:"resource name"`
-}
-
-// resourceGetArgs is resourceKindArgs plus the output filter — kept separate
-// so the mutating tools (delete_resource, restart_rollout) that share
-// resourceKindArgs don't advertise a result filter they never apply.
+// resourceGetArgs addresses a resource by its fixed manifest-kind slug, plus
+// the output filter every read tool advertises. The mutating tools that
+// address resources the same way (delete_resource, restart_rollout,
+// scale_resource) each have their own args struct in mcp_tools_write.go,
+// since they don't apply a result filter and each has its own extra knobs.
 type resourceGetArgs struct {
 	Context   string       `json:"context" jsonschema:"kubeconfig context name"`
 	Kind      string       `json:"kind" jsonschema:"manifest kind slug, e.g. pod, deployment, service, configmap, node, namespace, secret"`
@@ -56,7 +51,7 @@ type resourceGetArgs struct {
 }
 
 // crdListArgs/crdGetArgs address a CRD instance by its GVR straight from
-// list_crd_kinds, instead of the fixed manifest-kind slug resourceKindArgs
+// list_crd_kinds, instead of the fixed manifest-kind slug resourceGetArgs
 // uses — that slug catalog only covers built-in kinds, never CRDs.
 type crdListArgs struct {
 	Context       string       `json:"context" jsonschema:"kubeconfig context name"`

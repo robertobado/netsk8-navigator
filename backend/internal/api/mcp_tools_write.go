@@ -54,21 +54,22 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 		}
 		path := fmt.Sprintf("/api/contexts/%s/manifest/%s/%s/%s",
 			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "PUT", path, body))
+		return toolResult(s.callREST(ctx, "PUT", withDryRunQuery(path, args.DryRun), body))
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "delete_resource",
-		Description: "Delete a resource by kind/namespace/name. Irreversible for most kinds. Requires write access to be enabled.",
+		Name: "delete_resource",
+		Description: "Delete a resource by kind/namespace/name. Irreversible for most kinds. Supports the same switches as `kubectl delete`: " +
+			"cascade (background/foreground/orphan), gracePeriodSeconds, force, dryRun, and ignoreNotFound. Requires write access to be enabled.",
 		Annotations: annotations(true, false),
-		InputSchema: contextInputSchema[resourceKindArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
+		InputSchema: contextInputSchema[deleteResourceArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args deleteResourceArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.writeBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
 		path := fmt.Sprintf("/api/contexts/%s/manifest/%s/%s/%s",
 			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "DELETE", path, nil))
+		return toolResult(s.callREST(ctx, "DELETE", withDeleteQuery(path, args), nil))
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -86,22 +87,57 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 		}
 		path := fmt.Sprintf("/api/contexts/%s/scale/%s/%s/%s",
 			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(args.Namespace), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "PUT", path, body))
+		return toolResult(s.callREST(ctx, "PUT", withDryRunQuery(path, args.DryRun), body))
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "restart_rollout",
 		Description: "Trigger a rolling restart of a deployment, statefulset, or daemonset (same mechanism as `kubectl rollout restart`). Requires write access to be enabled.",
 		Annotations: annotations(false, false),
-		InputSchema: contextInputSchema[resourceKindArgs](contexts),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args resourceKindArgs) (*mcp.CallToolResult, any, error) {
+		InputSchema: contextInputSchema[restartRolloutArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args restartRolloutArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.writeBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
 		path := fmt.Sprintf("/api/contexts/%s/rollout-restart/%s/%s/%s",
 			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(args.Namespace), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "POST", path, nil))
+		return toolResult(s.callREST(ctx, "POST", withDryRunQuery(path, args.DryRun), nil))
 	})
+}
+
+// withDryRunQuery appends ?dryRun=true — the single knob apply_manifest,
+// scale_resource, and restart_rollout all share — when requested.
+func withDryRunQuery(path string, dryRun bool) string {
+	if !dryRun {
+		return path
+	}
+	return path + "?dryRun=true"
+}
+
+// withDeleteQuery appends delete_resource's kubectl-delete-style switches as
+// a query string; deleteQueryOptions (actions.go) parses it back out
+// server-side, including validating cascade.
+func withDeleteQuery(path string, args deleteResourceArgs) string {
+	q := url.Values{}
+	if args.Cascade != "" {
+		q.Set("cascade", args.Cascade)
+	}
+	if args.GracePeriodSeconds != nil {
+		q.Set("gracePeriodSeconds", fmt.Sprintf("%d", *args.GracePeriodSeconds))
+	}
+	if args.Force {
+		q.Set("force", "true")
+	}
+	if args.DryRun {
+		q.Set("dryRun", "true")
+	}
+	if args.IgnoreNotFound {
+		q.Set("ignoreNotFound", "true")
+	}
+	if len(q) == 0 {
+		return path
+	}
+	return path + "?" + q.Encode()
 }
 
 type applyManifestArgs struct {
@@ -110,6 +146,27 @@ type applyManifestArgs struct {
 	Namespace string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for cluster-scoped kinds"`
 	Name      string `json:"name" jsonschema:"resource name"`
 	YAML      string `json:"yaml" jsonschema:"the full replacement manifest, as YAML"`
+	DryRun    bool   `json:"dryRun,omitempty" jsonschema:"validate and run admission/defaulting server-side without persisting, like kubectl apply --dry-run=server"`
+}
+
+type deleteResourceArgs struct {
+	Context            string `json:"context" jsonschema:"kubeconfig context name"`
+	Kind               string `json:"kind" jsonschema:"manifest kind slug, e.g. pod, deployment, service, configmap, node, namespace, secret"`
+	Namespace          string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for cluster-scoped kinds like node or namespace"`
+	Name               string `json:"name" jsonschema:"resource name"`
+	Cascade            string `json:"cascade,omitempty" jsonschema:"deletion propagation, like kubectl delete --cascade: background (default) deletes dependents async, foreground waits for dependents to be deleted first, orphan deletes only this object and leaves dependents behind (e.g. a Deployment's ReplicaSets/Pods keep running)"`
+	GracePeriodSeconds *int64 `json:"gracePeriodSeconds,omitempty" jsonschema:"seconds to wait for graceful termination, like kubectl delete --grace-period; omit to use the resource's own terminationGracePeriodSeconds"`
+	Force              bool   `json:"force,omitempty" jsonschema:"skip graceful termination and delete immediately, like kubectl delete --force --grace-period=0; use with care"`
+	IgnoreNotFound     bool   `json:"ignoreNotFound,omitempty" jsonschema:"treat 'already gone' as success instead of an error, like kubectl delete --ignore-not-found; useful for idempotent cleanup"`
+	DryRun             bool   `json:"dryRun,omitempty" jsonschema:"validate the delete server-side without actually removing anything, like kubectl delete --dry-run=server"`
+}
+
+type restartRolloutArgs struct {
+	Context   string `json:"context" jsonschema:"kubeconfig context name"`
+	Kind      string `json:"kind" jsonschema:"deployment, statefulset, or daemonset"`
+	Namespace string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for cluster-scoped kinds"`
+	Name      string `json:"name" jsonschema:"resource name"`
+	DryRun    bool   `json:"dryRun,omitempty" jsonschema:"validate server-side without actually bumping the restart annotation, like kubectl rollout restart --dry-run=server"`
 }
 
 type scaleResourceArgs struct {
@@ -118,4 +175,5 @@ type scaleResourceArgs struct {
 	Namespace string `json:"namespace" jsonschema:"resource namespace"`
 	Name      string `json:"name" jsonschema:"resource name"`
 	Replicas  int32  `json:"replicas" jsonschema:"desired replica count, >= 0"`
+	DryRun    bool   `json:"dryRun,omitempty" jsonschema:"validate server-side without actually scaling, like kubectl scale --dry-run=server"`
 }

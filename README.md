@@ -405,6 +405,16 @@ Certificate, etc.), `list_crd_kinds` finds its exact group/version/
 resource, then `list_crd_resources`/`get_crd_detail`/`get_crd_manifest`
 address it by that instead of a fixed kind slug.
 
+**Write tools accept the same switches their `kubectl` equivalent does.**
+`delete_resource` takes `cascade` (`background` — the default, `foreground`,
+or `orphan`, to delete a Deployment without touching its ReplicaSets/Pods),
+`gracePeriodSeconds`, `force` (immediate deletion, like `--force
+--grace-period=0`), and `ignoreNotFound` (treat "already gone" as success,
+for idempotent cleanup) — mirroring `kubectl delete`'s own flags.
+`apply_manifest`, `delete_resource`, `scale_resource`, and `restart_rollout`
+all take an optional `dryRun`, which validates server-side (admission,
+defaulting) without persisting anything, like `--dry-run=server`.
+
 **Write access is a second, separate gate.** Turning MCP on only exposes
 the read tools — the same data the UI already shows. A write tool call is
 rejected until you also flip **Allow write** (behind its own inline

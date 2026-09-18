@@ -864,3 +864,45 @@ func TestHandleCRDDelete_DeleteFails(t *testing.T) {
 		t.Errorf("status = %d, want 502 (Delete failed)", rec.Code)
 	}
 }
+
+// TestHandleCRDDelete_DryRunAndIgnoreNotFound proves handleCRDDelete wires
+// deleteQueryOptions (shared with handleDeleteResource, unit-tested in
+// TestDeleteQueryOptions) the same way for CRDs: ?dryRun=true leaves the
+// instance in place, and ?ignoreNotFound=true turns deleting an already-gone
+// one into 200 instead of a 502.
+func TestHandleCRDDelete_DryRunAndIgnoreNotFound(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+	}})
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("delete", "widgets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		da, ok := action.(ktesting.DeleteActionImpl)
+		if !ok || len(da.GetDeleteOptions().DryRun) == 0 {
+			return false, nil, nil
+		}
+		return true, nil, nil // dry-run: report success without touching the tracker
+	})
+
+	rec := doRequest(t, s, "DELETE", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1?dryRun=true", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dryRun delete status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	rec2 := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets?namespace=prod", "")
+	var out []crdItem
+	if err := json.Unmarshal(rec2.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 {
+		t.Errorf("dryRun delete removed the widget: got %d, want 1", len(out))
+	}
+
+	rec3 := doRequest(t, s, "DELETE", "/api/contexts/test/crd/example.com/v1/widgets/prod/ghost", "")
+	if rec3.Code != http.StatusBadGateway {
+		t.Fatalf("without ignoreNotFound, status = %d, want 502", rec3.Code)
+	}
+	rec4 := doRequest(t, s, "DELETE", "/api/contexts/test/crd/example.com/v1/widgets/prod/ghost?ignoreNotFound=true", "")
+	if rec4.Code != http.StatusOK {
+		t.Fatalf("with ignoreNotFound, status = %d, body=%s, want 200", rec4.Code, rec4.Body.String())
+	}
+}

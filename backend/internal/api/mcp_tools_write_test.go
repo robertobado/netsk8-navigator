@@ -9,6 +9,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -386,5 +388,129 @@ func TestWriteBlockedFor_MessagesAreTransportAware(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Allow write") {
 		t.Errorf("http refusal should point at the panel toggle, got: %v", err)
+	}
+}
+
+// TestMCPDeleteResource_SwitchesReachTheRESTLayer is the MCP-side proof for
+// the switches agents kept asking for (cascade=orphan, force,
+// gracePeriodSeconds, dryRun, ignoreNotFound) — deleteQueryOptions itself is
+// unit-tested in TestDeleteQueryOptions, and handleDeleteResource's HTTP
+// contract in the *_test.go files next to it, but this is what proves the
+// MCP tool's own args struct actually threads them through, not just its
+// REST counterpart.
+func TestMCPDeleteResource_SwitchesReachTheRESTLayer(t *testing.T) {
+	s := seededDeploymentServer(t)
+	// The fake dynamic client doesn't implement dry-run itself — it deletes
+	// for real regardless of DeleteOptions.DryRun — so a reactor mimics real
+	// dry-run semantics, same as TestHandleDeleteResource_DryRun.
+	fakeDynamic(t, s).PrependReactor("delete", "deployments", func(action ktesting.Action) (bool, runtime.Object, error) {
+		da, ok := action.(ktesting.DeleteActionImpl)
+		if !ok || len(da.GetDeleteOptions().DryRun) == 0 {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	})
+	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
+	session := mcpConnect(t, s)
+
+	deployments := func(t *testing.T) []kube.DeploymentView {
+		t.Helper()
+		rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+		var out []kube.DeploymentView
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("read deployments back: %v", err)
+		}
+		return out
+	}
+
+	// dryRun: the tool call succeeds but nothing is actually deleted.
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "delete_resource",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "dryRun": true},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("delete_resource dryRun: err=%v result=%+v", err, result)
+	}
+	if len(deployments(t)) != 1 {
+		t.Fatal("dryRun delete_resource removed the resource")
+	}
+
+	// ignoreNotFound: deleting a name that never existed still succeeds.
+	result, err = session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "delete_resource",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "ghost", "ignoreNotFound": true},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("delete_resource ignoreNotFound: err=%v result=%+v", err, result)
+	}
+
+	// An invalid cascade value is refused with a clear message, not silently ignored.
+	result, err = session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name:      "delete_resource",
+		Arguments: map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "cascade": "bogus"},
+	})
+	if err != nil {
+		t.Fatalf("delete_resource bad cascade: transport err=%v", err)
+	}
+	if !result.IsError {
+		t.Fatal("delete_resource with cascade=bogus should have been refused")
+	}
+	text, _ := result.Content[0].(*mcp.TextContent)
+	if text == nil || !strings.Contains(text.Text, "cascade") {
+		t.Errorf("delete_resource cascade=bogus error = %+v, want it to mention cascade", result.Content)
+	}
+
+	// cascade=orphan, gracePeriodSeconds and force are all accepted and the delete proceeds.
+	result, err = session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name: "delete_resource",
+		Arguments: map[string]any{
+			"context": "test", "kind": "deployment", "namespace": "prod", "name": "web",
+			"cascade": "orphan", "gracePeriodSeconds": 30, "force": true,
+		},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("delete_resource cascade=orphan+force: err=%v result=%+v", err, result)
+	}
+	if len(deployments(t)) != 0 {
+		t.Error("delete_resource with cascade=orphan should still have deleted the object itself")
+	}
+}
+
+// TestMCPApplyScaleRestart_DryRun proves the dryRun switch on the other
+// three mutating tools reaches the REST layer without persisting, mirroring
+// TestMCPDeleteResource_SwitchesReachTheRESTLayer's dryRun case for delete.
+func TestMCPApplyScaleRestart_DryRun(t *testing.T) {
+	s := seededDeploymentServer(t)
+	dryRunUpdateReactor(t, s, "deployments")
+	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
+	session := mcpConnect(t, s)
+
+	cases := []struct {
+		name string
+		args map[string]any
+	}{
+		{"apply_manifest", map[string]any{
+			"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "dryRun": true,
+			"yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: prod\nspec:\n  replicas: 9\n",
+		}},
+		{"scale_resource", map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "replicas": 9, "dryRun": true}},
+		{"restart_rollout", map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web", "dryRun": true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: c.name, Arguments: c.args})
+			if err != nil || result.IsError {
+				t.Fatalf("%s dryRun: err=%v result=%+v", c.name, err, result)
+			}
+		})
+	}
+
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+	var out []kube.DeploymentView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Ready != "0/2" {
+		t.Errorf("dryRun tool calls mutated the live resource: %+v", out)
 	}
 }
