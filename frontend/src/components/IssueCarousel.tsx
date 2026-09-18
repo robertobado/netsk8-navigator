@@ -81,7 +81,7 @@ export function IssueCarousel({
             >
               {cur.reason}
             </span>
-            <span className="truncate text-[11px] text-muted-foreground" title={cur.message}>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={cur.message}>
               {cur.message || t('no detail')}
             </span>
             <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70" />
