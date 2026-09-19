@@ -374,8 +374,9 @@ running. Both stay available — use whichever fits.
 
 **Tools:** 14 read tools (list contexts/namespaces/nodes/pods/resources,
 get resource detail/manifest/logs/overview/issues, plus list CRD
-kinds/resources and get CRD detail/manifest) plus 4 write tools (apply
-manifest, delete resource, scale, restart rollout), every one a thin
+kinds/resources and get CRD detail/manifest) plus 6 write tools (apply
+manifest, delete resource, scale, restart rollout, and apply/delete for
+custom-resource instances), every one a thin
 adapter over the same REST handlers the UI itself uses. Each is tagged
 with MCP annotations (`readOnlyHint`/`destructiveHint`/`idempotentHint`)
 so a client can tell read from write without guessing, and `context`
@@ -411,9 +412,18 @@ or `orphan`, to delete a Deployment without touching its ReplicaSets/Pods),
 `gracePeriodSeconds`, `force` (immediate deletion, like `--force
 --grace-period=0`), and `ignoreNotFound` (treat "already gone" as success,
 for idempotent cleanup) — mirroring `kubectl delete`'s own flags.
-`apply_manifest`, `delete_resource`, `scale_resource`, and `restart_rollout`
-all take an optional `dryRun`, which validates server-side (admission,
-defaulting) without persisting anything, like `--dry-run=server`.
+`apply_manifest`, `delete_resource`, `scale_resource`, `restart_rollout`, and
+the two custom-resource tools all take an optional `dryRun`, which validates
+server-side (admission, defaulting) without persisting anything, like
+`--dry-run=server`. `apply_crd_manifest` and `delete_crd_resource` edit and
+delete instances of a CRD (a Traefik `IngressRoute`, a cert-manager
+`Certificate`, …) addressed by the group/version/resource `list_crd_kinds`
+reports, with the same switches as their built-in counterparts; deleting a
+CustomResourceDefinition itself is deliberately not offered, since it would
+take every instance of it down cluster-wide. `apply_manifest` and
+`apply_crd_manifest` refuse a YAML whose `metadata.name`/`namespace` differ
+from the target they were asked to update, and every tool accepts kubectl-style
+kinds (`Deployment`, `deployments`, `deploy`).
 
 **Write access is a second, separate gate.** Turning MCP on only exposes
 the read tools — the same data the UI already shows. A write tool call is

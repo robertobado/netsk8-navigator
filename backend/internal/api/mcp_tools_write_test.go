@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
 
@@ -83,6 +84,28 @@ func writeToolMatrix() []mutatingTool {
 			verifyDone: func(t *testing.T, s *Server) {
 				if d := deployments(t, s); len(d) != 0 {
 					t.Errorf("after delete_resource, deployments = %+v, want none", d)
+				}
+			},
+		},
+		{
+			name: "apply_crd_manifest",
+			args: map[string]any{
+				"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1",
+				"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  size: 7\n",
+			},
+			verifyDone: func(t *testing.T, s *Server) {
+				rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "")
+				if !strings.Contains(rec.Body.String(), "size: 7") {
+					t.Errorf("after apply_crd_manifest, widget manifest lacks size: 7:\n%s", rec.Body.String())
+				}
+			},
+		},
+		{
+			name: "delete_crd_resource",
+			args: map[string]any{"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1"},
+			verifyDone: func(t *testing.T, s *Server) {
+				if n := widgetCount(t, s); n != 0 {
+					t.Errorf("after delete_crd_resource, %d widgets remain, want 0", n)
 				}
 			},
 		},
@@ -175,10 +198,28 @@ func stdioConnect(t *testing.T, s *Server) *mcp.ClientSession {
 }
 
 func seededDeploymentServer(t *testing.T) *Server {
-	return newTestServer(t, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
-		Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
-	})
+	return newTestServer(t,
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+			Spec:       appsv1.DeploymentSpec{Replicas: replicas(2)},
+		},
+		// A custom-resource instance for the CRD write tools to act on.
+		&unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": "example.com/v1", "kind": "Widget",
+			"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+			"spec":     map[string]any{"size": int64(1)},
+		}},
+	)
+}
+
+func widgetCount(t *testing.T, s *Server) int {
+	t.Helper()
+	rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets?namespace=prod", "")
+	var out []crdItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("read widgets back: %v", err)
+	}
+	return len(out)
 }
 
 // writeGateCase is one gate state and the outcome every mutating tool must
@@ -248,12 +289,18 @@ func assertToolRefused(t *testing.T, s *Server, tr writeTransport, tool mutating
 	if text == nil || !strings.Contains(strings.ToLower(text.Text), g.wantErrIs) {
 		t.Errorf("%s refusal message = %+v, want it to contain %q", tool.name, result.Content, g.wantErrIs)
 	}
-	if tool.name == "delete_resource" {
-		return // nothing to compare against a still-present baseline
-	}
+	// A refusal must leave everything exactly as seeded — including for the
+	// delete tools, where "did the object survive" is the whole point.
 	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
 	if !strings.Contains(rec.Body.String(), `"0/2"`) {
 		t.Errorf("%s was refused but the deployment changed anyway: %s", tool.name, rec.Body.String())
+	}
+	if n := widgetCount(t, s); n != 1 {
+		t.Errorf("%s was refused but the widget count changed to %d, want 1", tool.name, n)
+	}
+	rec = doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "")
+	if strings.Contains(rec.Body.String(), "size: 7") {
+		t.Errorf("%s was refused but the widget was modified anyway", tool.name)
 	}
 }
 
@@ -548,4 +595,92 @@ func TestMCPApplyManifest_RefusesRetargetedYAML(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("apply_manifest whose YAML names a different object than name= must be refused")
 	}
+}
+
+// TestMCPCRDWriteTools covers what the gate matrix doesn't: the CRD tools'
+// own switches and guards. The fake dynamic client doesn't implement
+// dry-run, so reactors mimic it (see TestHandleDeleteResource_DryRun).
+func TestMCPCRDWriteTools(t *testing.T) {
+	s := seededDeploymentServer(t)
+	dyn := fakeDynamic(t, s)
+	dyn.PrependReactor("delete", "widgets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if da, ok := action.(ktesting.DeleteActionImpl); ok && len(da.GetDeleteOptions().DryRun) > 0 {
+			return true, nil, nil
+		}
+		return false, nil, nil
+	})
+	dryRunUpdateReactor(t, s, "widgets")
+	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
+	session := mcpConnect(t, s)
+	id := func(extra map[string]any) map[string]any {
+		m := map[string]any{"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	call := func(tool string, args map[string]any) *mcp.CallToolResult {
+		t.Helper()
+		res, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args})
+		if err != nil {
+			t.Fatalf("%s: %v", tool, err)
+		}
+		return res
+	}
+	text := func(res *mcp.CallToolResult) string {
+		tc, _ := res.Content[0].(*mcp.TextContent)
+		if tc == nil {
+			return ""
+		}
+		return tc.Text
+	}
+
+	t.Run("apply dryRun does not persist", func(t *testing.T) {
+		res := call("apply_crd_manifest", id(map[string]any{"dryRun": true,
+			"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  size: 9\n"}))
+		if res.IsError {
+			t.Fatalf("dryRun apply: %s", text(res))
+		}
+		rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "")
+		if strings.Contains(rec.Body.String(), "size: 9") {
+			t.Error("dryRun apply_crd_manifest persisted the change")
+		}
+	})
+
+	t.Run("apply refuses YAML naming another object", func(t *testing.T) {
+		res := call("apply_crd_manifest", id(map[string]any{
+			"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: other\n  namespace: prod\nspec:\n  size: 9\n"}))
+		if !res.IsError || !strings.Contains(text(res), "does not match") {
+			t.Errorf("want a name-mismatch refusal, got isError=%v %s", res.IsError, text(res))
+		}
+	})
+
+	t.Run("delete refuses a CustomResourceDefinition itself", func(t *testing.T) {
+		res := call("delete_crd_resource", map[string]any{"context": "test", "group": "apiextensions.k8s.io", "version": "v1",
+			"resource": "customresourcedefinitions", "name": "widgets.example.com", "dryRun": true})
+		if !res.IsError || !strings.Contains(text(res), "CustomResourceDefinition") {
+			t.Errorf("want a CRD-definition refusal, got isError=%v %s", res.IsError, text(res))
+		}
+	})
+
+	t.Run("delete switches", func(t *testing.T) {
+		if res := call("delete_crd_resource", id(map[string]any{"dryRun": true})); res.IsError || widgetCount(t, s) != 1 {
+			t.Fatalf("dryRun delete: isError=%v count=%d %s", res.IsError, widgetCount(t, s), text(res))
+		}
+		if res := call("delete_crd_resource", id(map[string]any{"cascade": "bogus"})); !res.IsError || !strings.Contains(text(res), "cascade") {
+			t.Errorf("bad cascade should be refused mentioning cascade, got isError=%v %s", res.IsError, text(res))
+		}
+		if res := call("delete_crd_resource", id(map[string]any{"name": "ghost"})); !res.IsError {
+			t.Error("deleting a missing widget should fail without ignoreNotFound")
+		}
+		if res := call("delete_crd_resource", id(map[string]any{"name": "ghost", "ignoreNotFound": true})); res.IsError {
+			t.Errorf("ignoreNotFound should make a missing widget a success: %s", text(res))
+		}
+		if res := call("delete_crd_resource", id(map[string]any{"cascade": "orphan", "gracePeriodSeconds": 5, "force": true})); res.IsError {
+			t.Fatalf("delete with cascade=orphan+force: %s", text(res))
+		}
+		if n := widgetCount(t, s); n != 0 {
+			t.Errorf("widget survived a real delete: %d remain", n)
+		}
+	})
 }

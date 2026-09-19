@@ -69,7 +69,43 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 		}
 		path := fmt.Sprintf("/api/contexts/%s/manifest/%s/%s/%s",
 			url.PathEscape(args.Context), url.PathEscape(normalizeKindSlug(args.Kind)), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
-		return toolResult(s.callREST(ctx, "DELETE", withDeleteQuery(path, args), nil))
+		return toolResult(s.callREST(ctx, "DELETE", withDeleteQuery(path, args.Cascade, args.GracePeriodSeconds, args.Force, args.DryRun, args.IgnoreNotFound), nil))
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "apply_crd_manifest",
+		Description: "Apply a full YAML manifest to update an existing custom resource (an instance of a CRD, e.g. a Traefik IngressRoute or a cert-manager Certificate), addressed by group/version/resource from list_crd_kinds. " +
+			"Fetch the current manifest with get_crd_manifest first and edit it. The YAML's metadata.name/namespace must match name/namespace. Requires write access to be enabled.",
+		Annotations: annotations(true, true),
+		InputSchema: contextInputSchema[applyCRDManifestArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args applyCRDManifestArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.writeBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
+		body, err := json.Marshal(map[string]string{"yaml": args.YAML})
+		if err != nil {
+			return nil, nil, err
+		}
+		path := crdInstancePath(args.Context, args.Group, args.Version, args.Resource, args.Namespace, args.Name)
+		return toolResult(s.callREST(ctx, "PUT", withDryRunQuery(path, args.DryRun), body))
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "delete_crd_resource",
+		Description: "Delete a custom resource (an instance of a CRD) addressed by group/version/resource from list_crd_kinds. Irreversible. " +
+			"Supports the same switches as delete_resource: cascade (background/foreground/orphan), gracePeriodSeconds, force, dryRun, and ignoreNotFound. " +
+			"Deleting a CustomResourceDefinition itself is not offered. Requires write access to be enabled.",
+		Annotations: annotations(true, false),
+		InputSchema: contextInputSchema[deleteCRDResourceArgs](contexts),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, args deleteCRDResourceArgs) (*mcp.CallToolResult, any, error) {
+		if err := s.writeBlockedFor(args.Context); err != nil {
+			return nil, nil, err
+		}
+		if err := checkNotCRDDefinition(args.Group, args.Resource); err != nil {
+			return nil, nil, err
+		}
+		path := crdInstancePath(args.Context, args.Group, args.Version, args.Resource, args.Namespace, args.Name)
+		return toolResult(s.callREST(ctx, "DELETE", withDeleteQuery(path, args.Cascade, args.GracePeriodSeconds, args.Force, args.DryRun, args.IgnoreNotFound), nil))
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -114,30 +150,50 @@ func withDryRunQuery(path string, dryRun bool) string {
 	return path + "?dryRun=true"
 }
 
-// withDeleteQuery appends delete_resource's kubectl-delete-style switches as
-// a query string; deleteQueryOptions (actions.go) parses it back out
-// server-side, including validating cascade.
-func withDeleteQuery(path string, args deleteResourceArgs) string {
+// withDeleteQuery appends the kubectl-delete-style switches shared by
+// delete_resource and delete_crd_resource as a query string;
+// deleteQueryOptions (actions.go) parses it back out server-side, including
+// validating cascade.
+func withDeleteQuery(path, cascade string, gracePeriodSeconds *int64, force, dryRun, ignoreNotFound bool) string {
 	q := url.Values{}
-	if args.Cascade != "" {
-		q.Set("cascade", args.Cascade)
+	if cascade != "" {
+		q.Set("cascade", cascade)
 	}
-	if args.GracePeriodSeconds != nil {
-		q.Set("gracePeriodSeconds", fmt.Sprintf("%d", *args.GracePeriodSeconds))
+	if gracePeriodSeconds != nil {
+		q.Set("gracePeriodSeconds", fmt.Sprintf("%d", *gracePeriodSeconds))
 	}
-	if args.Force {
+	if force {
 		q.Set("force", "true")
 	}
-	if args.DryRun {
+	if dryRun {
 		q.Set("dryRun", "true")
 	}
-	if args.IgnoreNotFound {
+	if ignoreNotFound {
 		q.Set("ignoreNotFound", "true")
 	}
 	if len(q) == 0 {
 		return path
 	}
 	return path + "?" + q.Encode()
+}
+
+// crdInstancePath builds the REST route the CRD write tools replay against,
+// addressing an instance by GVR exactly like the CRD read tools do.
+func crdInstancePath(context, group, version, resource, namespace, name string) string {
+	return fmt.Sprintf("/api/contexts/%s/crd/%s/%s/%s/%s/%s",
+		url.PathEscape(context), url.PathEscape(group), url.PathEscape(version), url.PathEscape(resource),
+		url.PathEscape(pathNamespace(namespace)), url.PathEscape(name))
+}
+
+// checkNotCRDDefinition refuses to route a delete for a CustomResourceDefinition
+// itself through the CRD-instance tool: deleting the definition cascades to
+// every instance of it cluster-wide, a blast radius nothing else in this
+// tool set has. Instances are what these tools are for.
+func checkNotCRDDefinition(group, resource string) error {
+	if group == "apiextensions.k8s.io" && resource == "customresourcedefinitions" {
+		return fmt.Errorf("delete_crd_resource deletes CRD instances; deleting a CustomResourceDefinition itself would also delete every instance of it cluster-wide, so it is not offered here — use kubectl for that")
+	}
+	return nil
 }
 
 type applyManifestArgs struct {
@@ -158,6 +214,31 @@ type deleteResourceArgs struct {
 	GracePeriodSeconds *int64 `json:"gracePeriodSeconds,omitempty" jsonschema:"seconds to wait for graceful termination, like kubectl delete --grace-period; omit to use the resource's own terminationGracePeriodSeconds"`
 	Force              bool   `json:"force,omitempty" jsonschema:"skip graceful termination and delete immediately, like kubectl delete --force --grace-period=0; use with care"`
 	IgnoreNotFound     bool   `json:"ignoreNotFound,omitempty" jsonschema:"treat 'already gone' as success instead of an error, like kubectl delete --ignore-not-found; useful for idempotent cleanup"`
+	DryRun             bool   `json:"dryRun,omitempty" jsonschema:"validate the delete server-side without actually removing anything, like kubectl delete --dry-run=server"`
+}
+
+type applyCRDManifestArgs struct {
+	Context   string `json:"context" jsonschema:"kubeconfig context name"`
+	Group     string `json:"group" jsonschema:"CRD API group, e.g. traefik.io — from list_crd_kinds"`
+	Version   string `json:"version" jsonschema:"CRD API version, e.g. v1alpha1 — from list_crd_kinds"`
+	Resource  string `json:"resource" jsonschema:"CRD plural resource name, e.g. ingressroutes — from list_crd_kinds"`
+	Namespace string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for a cluster-scoped kind"`
+	Name      string `json:"name" jsonschema:"resource name"`
+	YAML      string `json:"yaml" jsonschema:"the full replacement manifest, as YAML"`
+	DryRun    bool   `json:"dryRun,omitempty" jsonschema:"validate and run admission/defaulting server-side without persisting, like kubectl apply --dry-run=server"`
+}
+
+type deleteCRDResourceArgs struct {
+	Context            string `json:"context" jsonschema:"kubeconfig context name"`
+	Group              string `json:"group" jsonschema:"CRD API group, e.g. traefik.io — from list_crd_kinds"`
+	Version            string `json:"version" jsonschema:"CRD API version, e.g. v1alpha1 — from list_crd_kinds"`
+	Resource           string `json:"resource" jsonschema:"CRD plural resource name, e.g. ingressroutes — from list_crd_kinds"`
+	Namespace          string `json:"namespace,omitempty" jsonschema:"resource namespace; omit for a cluster-scoped kind"`
+	Name               string `json:"name" jsonschema:"resource name"`
+	Cascade            string `json:"cascade,omitempty" jsonschema:"deletion propagation, like kubectl delete --cascade: background (default), foreground (wait for dependents first), or orphan (leave dependents behind)"`
+	GracePeriodSeconds *int64 `json:"gracePeriodSeconds,omitempty" jsonschema:"seconds to wait for graceful termination, like kubectl delete --grace-period"`
+	Force              bool   `json:"force,omitempty" jsonschema:"delete immediately, like kubectl delete --force --grace-period=0; use with care"`
+	IgnoreNotFound     bool   `json:"ignoreNotFound,omitempty" jsonschema:"treat 'already gone' as success instead of an error, like kubectl delete --ignore-not-found"`
 	DryRun             bool   `json:"dryRun,omitempty" jsonschema:"validate the delete server-side without actually removing anything, like kubectl delete --dry-run=server"`
 }
 
