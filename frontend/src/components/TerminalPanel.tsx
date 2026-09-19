@@ -75,5 +75,13 @@ export function TerminalPanel({ ctx, namespace, pod, container }: Readonly<{ ctx
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, namespace, pod, container])
 
-  return <div ref={host} className="h-full w-full bg-[#0b0e14] p-2" />
+  // The padding lives on the outer box, not on `host`: FitAddon sizes the
+  // terminal from its parent's full computed width/height and only subtracts
+  // the padding of the .xterm element itself, so padding on the parent made
+  // the terminal fill the whole box and run flush against the border.
+  return (
+    <div className="h-full w-full bg-[#0b0e14] p-2">
+      <div ref={host} className="h-full w-full" />
+    </div>
+  )
 }

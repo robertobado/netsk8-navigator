@@ -97,6 +97,17 @@ describe('TerminalPanel', () => {
     expect(ws.binaryType).toBe('arraybuffer')
   })
 
+  it('keeps the padding off the element xterm opens into', () => {
+    // FitAddon sizes the terminal from its parent's full computed box and only
+    // subtracts the .xterm element's own padding, so padding on the parent
+    // makes the terminal overflow flush against the border. The padding must
+    // sit on an outer wrapper instead.
+    render(<TerminalPanel ctx="c" namespace="prod" pod="web-1" />)
+    const host = FakeTerminal.instances[0].open.mock.calls[0][0] as HTMLElement
+    expect(host.className).not.toMatch(/\bp[xytrbl]?-\d/)
+    expect(host.parentElement?.className).toMatch(/\bp-2\b/)
+  })
+
   it('greets, resizes, and focuses the terminal once the socket opens', () => {
     render(<TerminalPanel ctx="c" namespace="prod" pod="web-1" />)
     const ws = FakeWebSocket.instances[0]
