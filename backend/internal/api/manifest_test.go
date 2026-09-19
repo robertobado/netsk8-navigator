@@ -211,3 +211,68 @@ func TestHandleApplyManifest_DryRunDoesNotPersist(t *testing.T) {
 		t.Errorf("dry-run must not persist — live deployment should still want 2 replicas, got %+v", list)
 	}
 }
+
+// TestHandleApplyManifest_RefusesMismatchedTarget guards a bug found running
+// the MCP write tools against a real cluster: dynamic Update addresses the
+// object by the YAML's own metadata.name, so a request for "web" whose YAML
+// said "other" silently updated "other" (while the audit log said "web").
+func TestHandleApplyManifest_RefusesMismatchedTarget(t *testing.T) {
+	s := newTestServer(t,
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"}, Spec: appsv1.DeploymentSpec{Replicas: replicas(1)}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "prod"}, Spec: appsv1.DeploymentSpec{Replicas: replicas(1)}},
+	)
+	cases := map[string]string{
+		"different name":      "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: other\n  namespace: prod\nspec:\n  replicas: 9\n",
+		"missing name":        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  namespace: prod\nspec:\n  replicas: 9\n",
+		"different namespace": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: staging\nspec:\n  replicas: 9\n",
+	}
+	for name, y := range cases {
+		t.Run(name, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"yaml": y})
+			rec := doRequest(t, s, "PUT", "/api/contexts/test/manifest/deployment/prod/web", string(body))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+	if strings.Contains(rec.Body.String(), "0/9") {
+		t.Errorf("a refused apply still mutated a deployment: %s", rec.Body.String())
+	}
+}
+
+func TestNormalizeKindSlug(t *testing.T) {
+	cases := map[string]string{
+		"deployment": "deployment", "Deployment": "deployment", " DEPLOYMENT ": "deployment",
+		"deployments": "deployment", "deploy": "deployment", "sts": "statefulset",
+		"ingresses": "ingress", "networkpolicies": "networkpolicy", "svc": "service",
+		"po": "pod", "pvc": "pvc", "notakind": "notakind",
+	}
+	for in, want := range cases {
+		if got := normalizeKindSlug(in); got != want {
+			t.Errorf("normalizeKindSlug(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, slug := range sortedKeys(manifestSlugToResource) {
+		if got := normalizeKindSlug(manifestSlugToResource[slug]); got != slug {
+			t.Errorf("plural %q should normalize to %q, got %q", manifestSlugToResource[slug], slug, got)
+		}
+	}
+	for short, slug := range kindShortNames {
+		if _, ok := manifestSlugToResource[slug]; !ok {
+			t.Errorf("short name %q maps to %q, which is not a real slug", short, slug)
+		}
+	}
+}
+
+func TestUnsupportedKindErrorListsValidKinds(t *testing.T) {
+	s := newTestServer(t)
+	rec := doRequest(t, s, "GET", "/api/contexts/test/manifest/widget/prod/x", "")
+	if !strings.Contains(rec.Body.String(), "valid kinds:") || !strings.Contains(rec.Body.String(), "deployment") {
+		t.Errorf("unsupported-kind error should list the valid kinds, got %s", rec.Body.String())
+	}
+	rec = doRequest(t, s, "PUT", "/api/contexts/test/scale/service/prod/x", `{"replicas":1}`)
+	if !strings.Contains(rec.Body.String(), "scalable kinds:") {
+		t.Errorf("cannot-be-scaled error should list scalable kinds, got %s", rec.Body.String())
+	}
+}

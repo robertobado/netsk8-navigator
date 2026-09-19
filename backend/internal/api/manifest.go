@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -119,6 +121,10 @@ func (s *Server) handleApplyManifest(w http.ResponseWriter, r *http.Request) {
 	if res.Namespaced {
 		ns = r.PathValue("namespace")
 	}
+	if err := checkApplyTarget(obj, r.PathValue("name"), ns); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 
 	// ?dryRun=true validates + runs admission/defaulting server-side without
 	// persisting, so the frontend can preview what applying would actually do
@@ -174,9 +180,64 @@ func (s *Server) getUnstructured(ctx context.Context, contextName, kind, ns, nam
 func (s *Server) resolveSlug(contextName, slug string) (kube.Resource, error) {
 	plural, ok := manifestSlugToResource[slug]
 	if !ok {
-		return kube.Resource{}, fmt.Errorf("unsupported kind %q", slug)
+		return kube.Resource{}, fmt.Errorf("unsupported kind %q (valid kinds: %s)", slug, strings.Join(sortedKeys(manifestSlugToResource), ", "))
 	}
 	return s.mgr.ResolveResource(contextName, plural)
+}
+
+// kindShortNames are kubectl's own short names for the kinds in
+// manifestSlugToResource that have one — what an agent trained on kubectl
+// reaches for first ("deploy", "svc", "sts").
+var kindShortNames = map[string]string{
+	"po": "pod", "deploy": "deployment", "svc": "service", "cm": "configmap",
+	"rs": "replicaset", "sts": "statefulset", "ds": "daemonset", "cj": "cronjob",
+	"no": "node", "ns": "namespace", "sc": "storageclass", "netpol": "networkpolicy",
+	"ing": "ingress", "sa": "serviceaccount", "quota": "resourcequota",
+	"limits": "limitrange", "pdb": "poddisruptionbudget", "pc": "priorityclass",
+}
+
+// normalizeKindSlug maps what an agent naturally types — "Deployment",
+// "deployments", "deploy" — onto the singular lowercase slug the REST routes
+// key on. Anything unrecognized comes back lowercased, so the handler's own
+// "unsupported kind" error (which lists the valid ones) still fires.
+func normalizeKindSlug(kind string) string {
+	k := strings.ToLower(strings.TrimSpace(kind))
+	if _, ok := manifestSlugToResource[k]; ok {
+		return k
+	}
+	if slug, ok := kindShortNames[k]; ok {
+		return slug
+	}
+	for slug, plural := range manifestSlugToResource {
+		if plural == k {
+			return slug
+		}
+	}
+	return k
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// checkApplyTarget refuses a manifest whose own metadata names a different
+// object than the one the request addresses. The dynamic client's Update
+// addresses the object by obj.GetName(), so without this a request for "web"
+// whose YAML says "other" silently updates "other" — while the audit log and
+// the caller's own intent both say "web".
+func checkApplyTarget(obj *unstructured.Unstructured, name, namespace string) error {
+	if obj.GetName() != name {
+		return fmt.Errorf("manifest metadata.name %q does not match the target %q", obj.GetName(), name)
+	}
+	if namespace != "" && obj.GetNamespace() != "" && obj.GetNamespace() != namespace {
+		return fmt.Errorf("manifest metadata.namespace %q does not match the target namespace %q", obj.GetNamespace(), namespace)
+	}
+	return nil
 }
 
 // cleanUnstructured strips server-managed noise so the YAML reads cleanly.

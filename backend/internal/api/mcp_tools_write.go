@@ -53,7 +53,7 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 			return nil, nil, err
 		}
 		path := fmt.Sprintf("/api/contexts/%s/manifest/%s/%s/%s",
-			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
+			url.PathEscape(args.Context), url.PathEscape(normalizeKindSlug(args.Kind)), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
 		return toolResult(s.callREST(ctx, "PUT", withDryRunQuery(path, args.DryRun), body))
 	})
 
@@ -68,7 +68,7 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 			return nil, nil, err
 		}
 		path := fmt.Sprintf("/api/contexts/%s/manifest/%s/%s/%s",
-			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
+			url.PathEscape(args.Context), url.PathEscape(normalizeKindSlug(args.Kind)), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
 		return toolResult(s.callREST(ctx, "DELETE", withDeleteQuery(path, args), nil))
 	})
 
@@ -86,7 +86,7 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 			return nil, nil, err
 		}
 		path := fmt.Sprintf("/api/contexts/%s/scale/%s/%s/%s",
-			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(args.Namespace), url.PathEscape(args.Name))
+			url.PathEscape(args.Context), url.PathEscape(normalizeKindSlug(args.Kind)), url.PathEscape(args.Namespace), url.PathEscape(args.Name))
 		return toolResult(s.callREST(ctx, "PUT", withDryRunQuery(path, args.DryRun), body))
 	})
 
@@ -100,7 +100,7 @@ func registerWriteTools(srv *mcp.Server, s *Server, contexts []string) {
 			return nil, nil, err
 		}
 		path := fmt.Sprintf("/api/contexts/%s/rollout-restart/%s/%s/%s",
-			url.PathEscape(args.Context), url.PathEscape(args.Kind), url.PathEscape(args.Namespace), url.PathEscape(args.Name))
+			url.PathEscape(args.Context), url.PathEscape(normalizeKindSlug(args.Kind)), url.PathEscape(args.Namespace), url.PathEscape(args.Name))
 		return toolResult(s.callREST(ctx, "POST", withDryRunQuery(path, args.DryRun), nil))
 	})
 }

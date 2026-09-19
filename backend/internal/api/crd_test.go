@@ -906,3 +906,15 @@ func TestHandleCRDDelete_DryRunAndIgnoreNotFound(t *testing.T) {
 		t.Fatalf("with ignoreNotFound, status = %d, body=%s, want 200", rec4.Code, rec4.Body.String())
 	}
 }
+
+func TestHandleCRDApply_RefusesMismatchedTarget(t *testing.T) {
+	s := newTestServer(t, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": "w1", "namespace": "prod"},
+	}})
+	body := `{"yaml":"apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w2\n  namespace: prod\n"}`
+	rec := doRequest(t, s, "PUT", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+}

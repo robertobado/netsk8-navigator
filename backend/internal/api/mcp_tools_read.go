@@ -152,7 +152,7 @@ func registerResourceGetTool(srv *mcp.Server, s *Server, contexts []string, name
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
-		suffix := fmt.Sprintf("%s/%s/%s/%s", urlSegment, url.PathEscape(args.Kind), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
+		suffix := fmt.Sprintf("%s/%s/%s/%s", urlSegment, url.PathEscape(normalizeKindSlug(args.Kind)), url.PathEscape(pathNamespace(args.Namespace)), url.PathEscape(args.Name))
 		status, body := s.callREST(ctx, "GET", contextPath(args.Context, suffix), nil)
 		return finishRead(status, body, args.Filter, yamlResult)
 	})

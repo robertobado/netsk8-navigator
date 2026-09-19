@@ -268,6 +268,10 @@ func (s *Server) handleCRDApply(w http.ResponseWriter, r *http.Request) {
 	if ns == "-" {
 		ns = ""
 	}
+	if err := checkApplyTarget(obj, r.PathValue("name"), ns); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 
 	dryRun := r.URL.Query().Get("dryRun") == "true"
 	opts := metav1.UpdateOptions{}

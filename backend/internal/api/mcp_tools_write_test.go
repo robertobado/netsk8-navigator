@@ -514,3 +514,38 @@ func TestMCPApplyScaleRestart_DryRun(t *testing.T) {
 		t.Errorf("dryRun tool calls mutated the live resource: %+v", out)
 	}
 }
+
+// TestMCPWriteTools_AcceptKubectlStyleKinds: agents type "Deployment",
+// "deployments" or "deploy", not the internal singular slug. Found against a
+// real cluster, where all three were rejected (with a misleading "cannot be
+// scaled" for the scale tool).
+func TestMCPWriteTools_AcceptKubectlStyleKinds(t *testing.T) {
+	s := seededDeploymentServer(t)
+	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
+	session := mcpConnect(t, s)
+	for _, kind := range []string{"Deployment", "deployments", "deploy"} {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "restart_rollout",
+			Arguments: map[string]any{"context": "test", "kind": kind, "namespace": "prod", "name": "web"}})
+		if err != nil || result.IsError {
+			t.Errorf("restart_rollout kind=%q: err=%v result=%+v", kind, err, result)
+		}
+	}
+}
+
+// TestMCPApplyManifest_RefusesRetargetedYAML is the MCP-level counterpart of
+// TestHandleApplyManifest_RefusesMismatchedTarget.
+func TestMCPApplyManifest_RefusesRetargetedYAML(t *testing.T) {
+	s := seededDeploymentServer(t)
+	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
+	session := mcpConnect(t, s)
+	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "apply_manifest", Arguments: map[string]any{
+		"context": "test", "kind": "deployment", "namespace": "prod", "name": "web",
+		"yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: other\n  namespace: prod\nspec:\n  replicas: 9\n",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("apply_manifest whose YAML names a different object than name= must be refused")
+	}
+}

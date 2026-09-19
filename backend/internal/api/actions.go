@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -119,7 +120,7 @@ func (s *Server) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleScaleResource(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("kind")
 	if !scalableKinds[kind] {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("kind %q cannot be scaled", kind))
+		writeError(w, http.StatusBadRequest, fmt.Errorf("kind %q cannot be scaled (scalable kinds: %s)", kind, strings.Join(sortedKeys(scalableKinds), ", ")))
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
@@ -194,7 +195,7 @@ func (s *Server) handleScaleResource(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRestartRollout(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("kind")
 	if !restartableKinds[kind] {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("kind %q cannot be restarted", kind))
+		writeError(w, http.StatusBadRequest, fmt.Errorf("kind %q cannot be restarted (restartable kinds: %s)", kind, strings.Join(sortedKeys(restartableKinds), ", ")))
 		return
 	}
 
