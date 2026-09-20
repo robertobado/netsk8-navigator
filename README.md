@@ -372,9 +372,10 @@ The trade-off between the two: stdio has no shared cache with the GUI
 (each client spawns its own process), HTTP depends on the app already
 running. Both stay available — use whichever fits.
 
-**Tools:** 14 read tools (list contexts/namespaces/nodes/pods/resources,
-get resource detail/manifest/logs/overview/issues, plus list CRD
-kinds/resources and get CRD detail/manifest) plus 6 write tools (apply
+**Tools:** 16 read tools (list contexts/namespaces/nodes/pods/resources,
+get resource detail/manifest/logs/overview/issues, list CRD
+kinds/resources and get CRD detail/manifest, plus `get_events` and
+`get_usage` — the `kubectl events` / `kubectl top` equivalents) plus 6 write tools (apply
 manifest, delete resource, scale, restart rollout, and apply/delete for
 custom-resource instances), every one a thin
 adapter over the same REST handlers the UI itself uses. Each is tagged
@@ -399,7 +400,13 @@ for a YAML manifest the document is parsed to JSON, filtered, then
 re-emitted as YAML), `grep`/`grepV` (RE2 line filters, ideal for `get_logs`),
 `head`/`tail`, and `maxBytes` (a hard cap that cuts at a line boundary and
 appends a truncation marker). They run in that order and compose with the
-`limit`/selector options above. `list_resources`/
+`limit`/selector options above. `get_manifest` and `get_crd_manifest` return
+the YAML itself (not a JSON-wrapped string), so `jq` reaches the document
+(`.spec.template.spec.containers[].resources`) and `head`/`tail`/`grep` work
+per line; `get_resource_detail` is only a display summary, so use the manifest
+for limits/requests, env, volumes, probes or `hostNetwork`. In list results
+`age` is relative (`3d`) with the absolute time in `created`, and Jobs carry
+`startTime`, `completionTime` and `duration`. `list_resources`/
 `get_resource_detail`/`get_manifest` only know the built-in Kubernetes
 kinds — for a CustomResourceDefinition (Gateway API route, cert-manager
 Certificate, etc.), `list_crd_kinds` finds its exact group/version/

@@ -528,3 +528,43 @@ func TestToHPAView_ExplicitMinReplicas(t *testing.T) {
 		t.Errorf("MinPods = %d, want the explicit 3, not the default", got)
 	}
 }
+
+func TestToJobView_Timing(t *testing.T) {
+	start := metav1.NewTime(time.Date(2026, 9, 20, 3, 0, 0, 0, time.UTC))
+	done := metav1.NewTime(start.Add(2*time.Minute + 30*time.Second))
+
+	t.Run("complete job reports start, completion and duration", func(t *testing.T) {
+		v := ToJobView(&batchv1.Job{Status: batchv1.JobStatus{
+			StartTime: &start, CompletionTime: &done, Succeeded: 1,
+			Conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}},
+		}})
+		if v.StartTime != "2026-09-20T03:00:00Z" || v.CompletionTime != "2026-09-20T03:02:30Z" || v.Duration != "2m30s" {
+			t.Errorf("got %+v", v)
+		}
+	})
+
+	t.Run("failed job has no completionTime, so the Failed condition ends it", func(t *testing.T) {
+		v := ToJobView(&batchv1.Job{Status: batchv1.JobStatus{
+			StartTime:  &start,
+			Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, LastTransitionTime: done}},
+		}})
+		if v.Status != "Failed" || v.CompletionTime != "2026-09-20T03:02:30Z" || v.Duration != "2m30s" {
+			t.Errorf("got %+v", v)
+		}
+	})
+
+	t.Run("running job measures against now", func(t *testing.T) {
+		began := metav1.NewTime(time.Now().Add(-90 * time.Second))
+		v := ToJobView(&batchv1.Job{Status: batchv1.JobStatus{StartTime: &began}})
+		if v.Status != "Running" || v.CompletionTime != "" || v.Duration == "" {
+			t.Errorf("got %+v", v)
+		}
+	})
+
+	t.Run("a job that never started has none of them", func(t *testing.T) {
+		v := ToJobView(&batchv1.Job{})
+		if v.StartTime != "" || v.CompletionTime != "" || v.Duration != "" {
+			t.Errorf("got %+v", v)
+		}
+	})
+}

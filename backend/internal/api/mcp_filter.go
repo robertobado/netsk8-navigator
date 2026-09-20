@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/itchyny/gojq"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -196,9 +197,74 @@ func finishRead(status int, body []byte, f outputFilter, isYAML bool) (*mcp.Call
 	if status < 200 || status >= 300 {
 		return toolResult(status, body)
 	}
+	if isYAML {
+		body = unwrapYAMLEnvelope(body)
+	} else {
+		body = humanizeAges(body, time.Now())
+	}
 	out, err := f.apply(body, isYAML)
 	if err != nil {
 		return nil, nil, err
 	}
 	return toolResult(status, out)
+}
+
+// unwrapYAMLEnvelope returns the document inside the {"yaml": "<document>"}
+// envelope the manifest REST routes reply with, so a manifest tool hands the
+// agent (and its jq / grep / head / tail filters) the YAML itself rather than
+// one JSON string holding it. A body that isn't that envelope comes back
+// unchanged.
+func unwrapYAMLEnvelope(body []byte) []byte {
+	var env struct {
+		YAML *string `json:"yaml"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil || env.YAML == nil {
+		return body
+	}
+	return []byte(*env.YAML)
+}
+
+// ageFieldRE matches the "age":"<RFC3339>" members the REST views emit — the
+// creation timestamp the web UI turns into "3d"/"2h" itself.
+var ageFieldRE = regexp.MustCompile(`"age":\s*"(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)"`)
+
+// humanizeAges rewrites each such member for an agent: "age" becomes the
+// compact relative age ("3d", "2h", "40s") it is named for, and the original
+// timestamp moves to a sibling "created" (the absolute time is what matters
+// when correlating with a job window or an event). Only a body that is one
+// valid JSON document is touched, so plain-text results (logs) that happen to
+// contain the same characters are left alone.
+func humanizeAges(body []byte, now time.Time) []byte {
+	if !json.Valid(body) {
+		return body
+	}
+	return ageFieldRE.ReplaceAllFunc(body, func(m []byte) []byte {
+		ts := ageFieldRE.FindSubmatch(m)[1]
+		t, err := time.Parse(time.RFC3339, string(ts))
+		if err != nil {
+			return m
+		}
+		return []byte(fmt.Sprintf(`"age":%q,"created":%q`, compactAge(now.Sub(t)), ts))
+	})
+}
+
+// compactAge formats d like kubectl's AGE column (and the UI's age()): the
+// largest whole unit of s/m/h/d/y.
+func compactAge(d time.Duration) string {
+	secs := int64(d / time.Second)
+	if secs < 0 {
+		secs = 0
+	}
+	switch {
+	case secs < 60:
+		return fmt.Sprintf("%ds", secs)
+	case secs < 3600:
+		return fmt.Sprintf("%dm", secs/60)
+	case secs < 86400:
+		return fmt.Sprintf("%dh", secs/3600)
+	case secs/86400 < 365:
+		return fmt.Sprintf("%dd", secs/86400)
+	default:
+		return fmt.Sprintf("%dy", secs/86400/365)
+	}
 }

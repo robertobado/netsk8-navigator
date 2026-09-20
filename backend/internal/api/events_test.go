@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -196,4 +198,35 @@ func TestHandleAllEvents(t *testing.T) {
 			t.Errorf("got %+v", out)
 		}
 	})
+}
+
+func TestFilterEvents(t *testing.T) {
+	evs := []eventView{{Type: "Warning", Reason: "a"}, {Type: "Normal", Reason: "b"}, {Type: "Warning", Reason: "c"}}
+	req := func(q string) *http.Request { return httptest.NewRequest(http.MethodGet, "/x?"+q, nil) }
+	reasons := func(in []eventView) string {
+		var out []string
+		for _, e := range in {
+			out = append(out, e.Reason)
+		}
+		return strings.Join(out, "")
+	}
+
+	if got := reasons(filterEvents(evs, req(""))); got != "abc" {
+		t.Errorf("no switches must be a passthrough, got %s", got)
+	}
+	if got := reasons(filterEvents(evs, req("type=warning"))); got != "ac" {
+		t.Errorf("type is case-insensitive, got %s", got)
+	}
+	if got := reasons(filterEvents(evs, req("limit=2"))); got != "ab" {
+		t.Errorf("limit=2 keeps the first two (already most-recent-first), got %s", got)
+	}
+	if got := reasons(filterEvents(evs, req("type=Warning&limit=1"))); got != "a" {
+		t.Errorf("type is applied before limit, got %s", got)
+	}
+	if got := reasons(filterEvents(evs, req("limit=bogus"))); got != "abc" {
+		t.Errorf("an unparseable limit is ignored, got %s", got)
+	}
+	if len(evs) != 3 {
+		t.Error("filtering must not mutate the caller's slice")
+	}
 }

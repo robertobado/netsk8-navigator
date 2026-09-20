@@ -887,6 +887,12 @@ type JobView struct {
 	Completions string `json:"completions"` // "1/1"
 	Status      string `json:"status"`      // Complete | Running | Failed | Suspended
 	Age         string `json:"age"`
+	// StartTime/CompletionTime are RFC3339 (empty until set); Duration is
+	// start→finish, or start→now while the job is still running, e.g. "2m30s".
+	// Investigating a backup or batch job is mostly these three.
+	StartTime      string `json:"startTime,omitempty"`
+	CompletionTime string `json:"completionTime,omitempty"`
+	Duration       string `json:"duration,omitempty"`
 }
 
 func ToJobView(o *batchv1.Job) JobView {
@@ -905,13 +911,46 @@ func ToJobView(o *batchv1.Job) JobView {
 			status = "Suspended"
 		}
 	}
+	start, finish := jobTimes(o)
 	return JobView{
-		Name:        o.Name,
-		Namespace:   o.Namespace,
-		Completions: fmt.Sprintf("%d/%d", o.Status.Succeeded, completions),
-		Status:      status,
-		Age:         formatAge(o.CreationTimestamp.Time),
+		Name:           o.Name,
+		Namespace:      o.Namespace,
+		Completions:    fmt.Sprintf("%d/%d", o.Status.Succeeded, completions),
+		Status:         status,
+		Age:            formatAge(o.CreationTimestamp.Time),
+		StartTime:      formatAge(start),
+		CompletionTime: formatAge(finish),
+		Duration:       jobDuration(start, finish),
 	}
+}
+
+// jobTimes returns when the job started and when it finished. A failed job has
+// no CompletionTime, so its Failed condition's transition time stands in.
+func jobTimes(o *batchv1.Job) (start, finish time.Time) {
+	if o.Status.StartTime != nil {
+		start = o.Status.StartTime.Time
+	}
+	if o.Status.CompletionTime != nil {
+		return start, o.Status.CompletionTime.Time
+	}
+	for _, c := range o.Status.Conditions {
+		if c.Type == batchv1.JobFailed && c.Status == corev1.ConditionTrue {
+			return start, c.LastTransitionTime.Time
+		}
+	}
+	return start, time.Time{}
+}
+
+// jobDuration is start→finish, or start→now for a job still running; empty
+// when the job never started.
+func jobDuration(start, finish time.Time) string {
+	if start.IsZero() {
+		return ""
+	}
+	if finish.IsZero() {
+		finish = time.Now()
+	}
+	return finish.Sub(start).Round(time.Second).String()
 }
 
 // CronJobView is the UI projection of a CronJob.

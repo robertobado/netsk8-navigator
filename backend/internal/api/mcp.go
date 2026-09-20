@@ -25,7 +25,11 @@ import (
 // the natural place to head off the two mistakes real usage turned up:
 // guessing at a context name (each tool's schema also hard-enforces this via
 // an enum, see contextInputSchema) and not knowing where to start triaging.
-const mcpInstructions = "Always call list_contexts first and use one of the returned names verbatim as `context` in every other tool call — arbitrary strings are rejected. To triage what's wrong in a cluster, start with get_issues rather than listing pods yourself."
+const mcpInstructions = "Always call list_contexts first and use one of the returned names verbatim as `context` in every other tool call — arbitrary strings are rejected. " +
+	"To triage what's wrong in a cluster, start with get_issues rather than listing pods yourself; get_events (like kubectl events) and get_usage (like kubectl top) explain why. " +
+	"get_resource_detail is a summary meant for display, not the full object — for limits/requests, env, volumes, probes or hostNetwork read get_manifest with a jq filter, e.g. `.spec.template.spec.containers[] | {name, resources}`. " +
+	"In list results `age` is relative (\"3d\") and `created` is the absolute RFC3339 time. " +
+	"The write tools (apply_*, delete_*, scale_resource, restart_rollout) are refused unless the user turned on 'Allow write' in the app's MCP panel, and can be pinned read-only per context; every read tool works regardless."
 
 // buildMCPServer registers every tool exactly once against a single
 // *mcp.Server instance. Per NewStreamableHTTPHandler's own doc comment, it's
@@ -38,6 +42,7 @@ func (s *Server) buildMCPServer() *mcp.Server {
 	})
 	contexts := contextNames(s.mgr.Contexts())
 	registerReadTools(srv, s, contexts)
+	registerObserveTools(srv, s, contexts)
 	registerWriteTools(srv, s, contexts)
 	return srv
 }

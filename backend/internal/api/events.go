@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -93,7 +95,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Last > out[j].Last })
 
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, filterEvents(out, r))
 }
 
 // handleAllEvents: GET /api/contexts/{ctx}/events?namespace=
@@ -119,5 +121,25 @@ func (s *Server) handleAllEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Last > out[j].Last })
 
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, filterEvents(out, r))
+}
+
+// filterEvents applies the optional ?type= (Warning | Normal, case-insensitive)
+// and ?limit= query switches to an already most-recent-first event list, so a
+// caller after "the latest warnings" doesn't have to pull the whole list.
+func filterEvents(events []eventView, r *http.Request) []eventView {
+	q := r.URL.Query()
+	if t := q.Get("type"); t != "" {
+		kept := events[:0:0]
+		for _, e := range events {
+			if strings.EqualFold(e.Type, t) {
+				kept = append(kept, e)
+			}
+		}
+		events = kept
+	}
+	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > 0 && n < len(events) {
+		events = events[:n]
+	}
+	return events
 }

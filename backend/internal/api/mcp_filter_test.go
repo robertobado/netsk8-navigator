@@ -220,3 +220,64 @@ func TestMCPHandler_FilterJqError_IsToolError(t *testing.T) {
 		t.Fatal("a malformed jq program should come back as a tool error, not a silent passthrough")
 	}
 }
+
+// TestMCPManifestTools_FiltersReachTheDocument is the end-to-end guard for a
+// bug an agent hit on a real cluster: the manifest REST routes reply with a
+// {"yaml": "<document>"} envelope, and the filter used to run over that
+// envelope, so `.spec.replicas` came back null and head/tail/grep saw a single
+// line. The unit tests fed the filter raw YAML directly and never went
+// through the real handler, so they couldn't see it.
+func TestMCPManifestTools_FiltersReachTheDocument(t *testing.T) {
+	s := seededDeploymentServer(t)
+	enableMCP(s, false)
+	session := mcpConnect(t, s)
+
+	call := func(tool string, args map[string]any) string {
+		t.Helper()
+		res, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args})
+		if err != nil {
+			t.Fatalf("%s: %v", tool, err)
+		}
+		text, _ := res.Content[0].(*mcp.TextContent)
+		if res.IsError || text == nil {
+			t.Fatalf("%s returned an error: %+v", tool, res.Content)
+		}
+		return text.Text
+	}
+	deploy := func(filter map[string]any) string {
+		args := map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"}
+		if filter != nil {
+			args["filter"] = filter
+		}
+		return call("get_manifest", args)
+	}
+
+	full := deploy(nil)
+	if strings.HasPrefix(full, "{") || !strings.HasPrefix(full, "apiVersion: apps/v1") {
+		t.Fatalf("get_manifest should return the YAML itself, not a JSON envelope; got:\n%.200s", full)
+	}
+	if n := strings.Count(full, "\n"); n < 5 {
+		t.Errorf("manifest should be multi-line YAML so line filters work, got %d newlines", n)
+	}
+
+	if got := strings.TrimSpace(deploy(map[string]any{"jq": ".spec.replicas"})); got != "2" {
+		t.Errorf("jq .spec.replicas = %q, want 2", got)
+	}
+	if got := strings.TrimSpace(deploy(map[string]any{"jq": ".metadata.name"})); got != "web" {
+		t.Errorf("jq .metadata.name = %q, want web", got)
+	}
+	if got := deploy(map[string]any{"head": 2}); strings.Count(strings.TrimRight(got, "\n"), "\n") != 1 {
+		t.Errorf("head=2 should return exactly 2 lines, got:\n%s", got)
+	}
+	if got := deploy(map[string]any{"grep": "replicas"}); !strings.Contains(got, "replicas: 2") || strings.Contains(got, "apiVersion") {
+		t.Errorf("grep=replicas should keep only matching lines, got:\n%s", got)
+	}
+
+	crd := call("get_crd_manifest", map[string]any{
+		"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1",
+		"filter": map[string]any{"jq": ".spec.size"},
+	})
+	if strings.TrimSpace(crd) != "1" {
+		t.Errorf("get_crd_manifest jq .spec.size = %q, want 1", crd)
+	}
+}

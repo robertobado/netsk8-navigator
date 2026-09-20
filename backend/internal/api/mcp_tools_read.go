@@ -330,8 +330,8 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 	registerListPodsTool(srv, s, contexts)
 	registerListResourcesTool(srv, s, contexts)
 
-	registerResourceGetTool(srv, s, contexts, "get_resource_detail", "Get structured detail (status, conditions, images, related resources, etc.) for a single built-in resource by kind/namespace/name. For a CRD instance, use get_crd_detail instead.", "detail")
-	registerResourceGetTool(srv, s, contexts, "get_manifest", "Get a built-in resource's current manifest as YAML — read this before apply_manifest to edit the live version rather than guessing its shape. For a CRD instance, use get_crd_manifest instead.", "manifest")
+	registerResourceGetTool(srv, s, contexts, "get_resource_detail", "Get a display-oriented summary of a single built-in resource by kind/namespace/name: a status list of {label, value, tone}, conditions, images, and related resources. It is NOT the full object — it omits resource limits/requests, env, volumes/mounts, probes and hostNetwork; for those use get_manifest with a jq filter, e.g. `.spec.template.spec.containers[] | {name, resources}`. For a CRD instance, use get_crd_detail instead.", "detail")
+	registerResourceGetTool(srv, s, contexts, "get_manifest", "Get a built-in resource's current manifest as YAML text — read this before apply_manifest to edit the live version rather than guessing its shape, or to pull just the fields you need with the jq filter (e.g. `.spec.template.spec.containers[].resources`) instead of the whole ~6 KB document; head/tail/grep work per line. For a CRD instance, use get_crd_manifest instead.", "manifest")
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_crd_kinds",
@@ -346,8 +346,8 @@ func registerReadTools(srv *mcp.Server, s *Server, contexts []string) {
 		return finishRead(status, body, args.Filter, false)
 	})
 	registerListCRDResourcesTool(srv, s, contexts)
-	registerCRDGetTool(srv, s, contexts, "get_crd_detail", "Get structured detail for a single CRD instance by group/version/resource/namespace/name (from list_crd_kinds).", "detail")
-	registerCRDGetTool(srv, s, contexts, "get_crd_manifest", "Get a CRD instance's current manifest as YAML, by group/version/resource/namespace/name (from list_crd_kinds).", "manifest")
+	registerCRDGetTool(srv, s, contexts, "get_crd_detail", "Get a display-oriented summary of a single CRD instance by group/version/resource/namespace/name (from list_crd_kinds); for the full object use get_crd_manifest, optionally with a jq filter.", "detail")
+	registerCRDGetTool(srv, s, contexts, "get_crd_manifest", "Get a CRD instance's current manifest as YAML text, by group/version/resource/namespace/name (from list_crd_kinds); the jq filter runs over the parsed document.", "manifest")
 
 	registerGetLogsTool(srv, s, contexts)
 	registerSimpleGetTool(srv, s, contexts, "get_overview", "Get cluster-wide counts: node/pod/namespace totals, ready nodes, and pods by phase (running/pending/failed).", "overview")
