@@ -397,10 +397,17 @@ before the response is sent, so the agent never spends tokens receiving a
 payload just to discard most of it: `jq` (a full [gojq](https://github.com/itchyny/gojq)
 program — `.items[] | {name, phase: .status}`, `.items | length`, `select(…)`;
 for a YAML manifest the document is parsed to JSON, filtered, then
-re-emitted as YAML), `grep`/`grepV` (RE2 line filters, ideal for `get_logs`),
-`head`/`tail`, and `maxBytes` (a hard cap that cuts at a line boundary and
-appends a truncation marker). They run in that order and compose with the
-`limit`/selector options above. `get_manifest` and `get_crd_manifest` return
+re-emitted as YAML), `grep`/`grepV` (RE2 line filters, with `ignoreCase` for
+`grep -i` and `context` for `grep -C N`), `count` (`grep -c`), `head`/`tail`,
+`maxLineLength` (`cut -c1-N`), and `maxBytes` (a hard cap that cuts at a line
+boundary and appends a truncation marker). They run in that order and compose
+with the `limit`/selector options above — so `kubectl logs … | grep -i … |
+tail -20 | cut -c1-260` is one `get_logs` call. `get_logs` reads one pod, or
+with `kind` every pod behind a deployment, statefulset, daemonset, replicaset,
+job or service at once (`kubectl logs deploy/NAME`; lines are merged by time
+and prefixed `[pod/container]`), with `since` (`30m`, `2h`, `1d` or an
+RFC3339 time), `previous` for a crashed container, all containers by default,
+and `hideTimestamps`. `get_manifest` and `get_crd_manifest` return
 the YAML itself (not a JSON-wrapped string), so `jq` reaches the document
 (`.spec.template.spec.containers[].resources`) and `head`/`tail`/`grep` work
 per line; `get_resource_detail` is only a display summary, so use the manifest

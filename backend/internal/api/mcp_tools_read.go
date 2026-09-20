@@ -193,12 +193,16 @@ type listResourcesArgs struct {
 }
 
 type getLogsArgs struct {
-	Context   string       `json:"context" jsonschema:"kubeconfig context name"`
-	Namespace string       `json:"namespace" jsonschema:"pod namespace"`
-	Name      string       `json:"name" jsonschema:"pod name"`
-	Container string       `json:"container,omitempty" jsonschema:"container name; omit for a single-container pod"`
-	TailLines int64        `json:"tailLines,omitempty" jsonschema:"number of most recent lines to return (default 200, max 2000)"`
-	Filter    outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters over the log text, to save context-window tokens: grep / grepV (RE2 line filters), head, tail, maxBytes (jq does not apply to plain-text logs)"`
+	Context        string       `json:"context" jsonschema:"kubeconfig context name"`
+	Namespace      string       `json:"namespace" jsonschema:"namespace of the pod or workload"`
+	Name           string       `json:"name" jsonschema:"pod name — or, when kind is set, the workload's name"`
+	Kind           string       `json:"kind,omitempty" jsonschema:"omit (or pod) to read one pod; or deployment, statefulset, daemonset, replicaset, job or service to read every pod behind it in one call, like kubectl logs deploy/NAME — lines are merged by time and prefixed [pod/container]"`
+	Container      string       `json:"container,omitempty" jsonschema:"container name; omit to read every container of each pod"`
+	TailLines      int64        `json:"tailLines,omitempty" jsonschema:"most recent lines to read per container (default 200, max 2000; 2000 when since is set and this isn't)"`
+	Since          string       `json:"since,omitempty" jsonschema:"only lines newer than this: a duration like 30m, 2h or 1d (like kubectl --since) or an RFC3339 timestamp"`
+	HideTimestamps bool         `json:"hideTimestamps,omitempty" jsonschema:"drop the timestamp the API prepends to every line (about 30 characters each) — lines are still ordered by it, like kubectl logs without --timestamps"`
+	Previous       bool         `json:"previous,omitempty" jsonschema:"read the previous, terminated instance of the container, like kubectl logs -p — what a crash-looping pod said before it died"`
+	Filter         outputFilter `json:"filter,omitempty" jsonschema:"optional server-side filters over the log text, to save context-window tokens: grep / grepV (RE2 line filters; ignoreCase, context for grep -C), count, head, tail, maxLineLength (like cut -c1-N), maxBytes (jq does not apply to plain-text logs)"`
 }
 
 type getIssuesArgs struct {
@@ -278,15 +282,19 @@ func registerListCRDResourcesTool(srv *mcp.Server, s *Server, contexts []string)
 
 func registerGetLogsTool(srv *mcp.Server, s *Server, contexts []string) {
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "get_logs",
-		Description: "Get the most recent log lines from a pod container (bounded, non-streaming — not a live tail).",
+		Name: "get_logs",
+		Description: "Get recent log lines (bounded, non-streaming — not a live tail) from one pod, or with kind from every pod behind a deployment/statefulset/daemonset/replicaset/job/service in one call (like kubectl logs deploy/NAME), merged by time. " +
+			"Use since (e.g. 30m) for a time window and previous for a crashed container; then cut the result down with filter: grep (with ignoreCase / context), grepV, count, tail, maxLineLength — the equivalent of `| grep -i … | tail -20 | cut -c1-260`.",
 		Annotations: readOnly(),
 		InputSchema: contextInputSchema[getLogsArgs](contexts),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args getLogsArgs) (*mcp.CallToolResult, any, error) {
 		if err := s.readBlockedFor(args.Context); err != nil {
 			return nil, nil, err
 		}
-		logs, err := s.fetchBoundedPodLogs(ctx, args.Context, args.Namespace, args.Name, args.Container, args.TailLines)
+		logs, err := s.fetchBoundedLogs(ctx, logQuery{
+			Context: args.Context, Namespace: args.Namespace, Kind: args.Kind, Name: args.Name,
+			Container: args.Container, Since: args.Since, TailLines: args.TailLines, Previous: args.Previous, HideTimestamps: args.HideTimestamps,
+		})
 		if err != nil {
 			return nil, nil, err
 		}

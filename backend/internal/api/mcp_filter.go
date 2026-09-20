@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/itchyny/gojq"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,15 +20,21 @@ import (
 // tool accepts under its "filter" argument. It exists so an agent can cut a
 // large response down to what it actually needs on the server, rather than
 // spending context-window tokens receiving a payload just to discard most
-// of it. The steps run in a fixed order: jq, then grep, then grepV, then
-// head, then tail, then maxBytes.
+// of it — the job a `| grep -i … | tail -20 | cut -c1-260` pipeline does in a
+// terminal. The steps run in a fixed order: jq, then grep (with ignoreCase and
+// context), then grepV, then count, then head, then tail, then maxLineLength,
+// then maxBytes.
 type outputFilter struct {
-	Jq       string `json:"jq,omitempty" jsonschema:"jq program (github.com/itchyny/gojq syntax) run over the result server-side, e.g. '.items[] | {name, phase: .status}' or '.items | length'. A JSON result is filtered as-is; a YAML manifest result is parsed to JSON, filtered, then re-emitted as YAML. Multiple outputs come back newline-delimited, like jq -c."`
-	Grep     string `json:"grep,omitempty" jsonschema:"keep only result lines matching this RE2 regular expression (applied after jq)"`
-	GrepV    string `json:"grepV,omitempty" jsonschema:"drop result lines matching this RE2 regular expression (applied after grep)"`
-	Head     int    `json:"head,omitempty" jsonschema:"keep only the first N lines of the result"`
-	Tail     int    `json:"tail,omitempty" jsonschema:"keep only the last N lines of the result (applied after head if both are set)"`
-	MaxBytes int    `json:"maxBytes,omitempty" jsonschema:"hard cap on the returned size; the result is cut at a line boundary near this many bytes and a truncation marker is appended"`
+	Jq            string `json:"jq,omitempty" jsonschema:"jq program (github.com/itchyny/gojq syntax) run over the result server-side, e.g. '.items[] | {name, phase: .status}' or '.items | length'. A JSON result is filtered as-is; a YAML manifest result is parsed to JSON, filtered, then re-emitted as YAML. Multiple outputs come back newline-delimited, like jq -c."`
+	Grep          string `json:"grep,omitempty" jsonschema:"keep only result lines matching this RE2 regular expression, e.g. 'error|failed' (applied after jq)"`
+	GrepV         string `json:"grepV,omitempty" jsonschema:"drop result lines matching this RE2 regular expression (applied after grep)"`
+	IgnoreCase    bool   `json:"ignoreCase,omitempty" jsonschema:"make grep and grepV case-insensitive, like grep -i"`
+	Context       int    `json:"context,omitempty" jsonschema:"with grep: also keep N lines before and after every match, like grep -C N; a -- line separates groups that aren't adjacent"`
+	Count         bool   `json:"count,omitempty" jsonschema:"return only the number of lines left after grep/grepV, like grep -c, instead of the lines themselves"`
+	Head          int    `json:"head,omitempty" jsonschema:"keep only the first N lines of the result"`
+	Tail          int    `json:"tail,omitempty" jsonschema:"keep only the last N lines of the result (applied after head if both are set)"`
+	MaxLineLength int    `json:"maxLineLength,omitempty" jsonschema:"cut every line to this many characters and append …, like cut -c1-N; tames very long log or JSON lines"`
+	MaxBytes      int    `json:"maxBytes,omitempty" jsonschema:"hard cap on the returned size; the result is cut at a line boundary near this many bytes and a truncation marker is appended"`
 }
 
 func (f outputFilter) isZero() bool {
@@ -48,7 +56,7 @@ func (f outputFilter) apply(body []byte, isYAML bool) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if f.Grep != "" || f.GrepV != "" || f.Head > 0 || f.Tail > 0 {
+	if f.hasLineSteps() {
 		if out, err = applyLineFilters(out, f); err != nil {
 			return nil, err
 		}
@@ -126,36 +134,40 @@ func encodeJqOutput(v any, asYAML bool) ([]byte, error) {
 	return out, nil
 }
 
-// applyLineFilters runs the grep / grepV / head / tail steps over body,
-// treating it as newline-separated text. A single trailing newline is
-// preserved so line counts stay intuitive.
+// hasLineSteps reports whether any of the line-oriented steps is requested.
+func (f outputFilter) hasLineSteps() bool {
+	return f.Grep != "" || f.GrepV != "" || f.Count || f.Head > 0 || f.Tail > 0 || f.MaxLineLength > 0
+}
+
+// applyLineFilters runs the grep / grepV / count / head / tail /
+// maxLineLength steps over body, treating it as newline-separated text. A
+// single trailing newline is preserved so line counts stay intuitive.
 func applyLineFilters(body []byte, f outputFilter) ([]byte, error) {
 	text := string(body)
 	trailingNL := strings.HasSuffix(text, "\n")
 	if trailingNL {
 		text = text[:len(text)-1]
 	}
-	lines := strings.Split(text, "\n")
-
-	if f.Grep != "" {
-		re, err := regexp.Compile(f.Grep)
-		if err != nil {
-			return nil, fmt.Errorf("invalid grep regex: %w", err)
-		}
-		lines = filterLines(lines, re, true)
+	var lines []string
+	if text != "" {
+		lines = strings.Split(text, "\n")
 	}
-	if f.GrepV != "" {
-		re, err := regexp.Compile(f.GrepV)
-		if err != nil {
-			return nil, fmt.Errorf("invalid grepV regex: %w", err)
-		}
-		lines = filterLines(lines, re, false)
+
+	lines, err := grepSteps(lines, f)
+	if err != nil {
+		return nil, err
+	}
+	if f.Count {
+		return []byte(strconv.Itoa(len(lines)) + "\n"), nil
 	}
 	if f.Head > 0 && f.Head < len(lines) {
 		lines = lines[:f.Head]
 	}
 	if f.Tail > 0 && f.Tail < len(lines) {
 		lines = lines[len(lines)-f.Tail:]
+	}
+	if f.MaxLineLength > 0 {
+		lines = truncateLines(lines, f.MaxLineLength)
 	}
 
 	out := strings.Join(lines, "\n")
@@ -165,12 +177,83 @@ func applyLineFilters(body []byte, f outputFilter) ([]byte, error) {
 	return []byte(out), nil
 }
 
-func filterLines(lines []string, re *regexp.Regexp, keepMatches bool) []string {
-	out := lines[:0]
+// grepSteps applies grep (with its context window) and then grepV.
+func grepSteps(lines []string, f outputFilter) ([]string, error) {
+	if f.Grep != "" {
+		re, err := compileLineRegex(f.Grep, f.IgnoreCase, "grep")
+		if err != nil {
+			return nil, err
+		}
+		lines = grepLines(lines, re, f.Context)
+	}
+	if f.GrepV != "" {
+		re, err := compileLineRegex(f.GrepV, f.IgnoreCase, "grepV")
+		if err != nil {
+			return nil, err
+		}
+		lines = dropLines(lines, re)
+	}
+	return lines, nil
+}
+
+func compileLineRegex(pattern string, ignoreCase bool, name string) (*regexp.Regexp, error) {
+	if ignoreCase {
+		pattern = "(?i)" + pattern
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s regex: %w", name, err)
+	}
+	return re, nil
+}
+
+// grepLines keeps the lines matching re plus, when context > 0, that many
+// lines on each side — with a "--" line between groups that aren't adjacent,
+// exactly like grep -C.
+func grepLines(lines []string, re *regexp.Regexp, context int) []string {
+	keep := make([]bool, len(lines))
+	for i, l := range lines {
+		if !re.MatchString(l) {
+			continue
+		}
+		for j := max(0, i-context); j <= min(len(lines)-1, i+context); j++ {
+			keep[j] = true
+		}
+	}
+	var out []string
+	last := -1
+	for i, k := range keep {
+		if !k {
+			continue
+		}
+		if context > 0 && last >= 0 && i > last+1 {
+			out = append(out, "--")
+		}
+		out = append(out, lines[i])
+		last = i
+	}
+	return out
+}
+
+func dropLines(lines []string, re *regexp.Regexp) []string {
+	var out []string
 	for _, l := range lines {
-		if re.MatchString(l) == keepMatches {
+		if !re.MatchString(l) {
 			out = append(out, l)
 		}
+	}
+	return out
+}
+
+// truncateLines cuts every line longer than n characters (runes, not bytes)
+// and marks the cut with a trailing "…".
+func truncateLines(lines []string, n int) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		if utf8.RuneCountInString(l) > n {
+			l = string([]rune(l)[:n]) + "…"
+		}
+		out[i] = l
 	}
 	return out
 }

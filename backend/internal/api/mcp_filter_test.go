@@ -281,3 +281,97 @@ func TestMCPManifestTools_FiltersReachTheDocument(t *testing.T) {
 		t.Errorf("get_crd_manifest jq .spec.size = %q, want 1", crd)
 	}
 }
+
+func applyText(t *testing.T, f outputFilter, in string) string {
+	t.Helper()
+	out, err := f.apply([]byte(in), false)
+	if err != nil {
+		t.Fatalf("apply(%+v): %v", f, err)
+	}
+	return string(out)
+}
+
+func TestOutputFilter_IgnoreCase(t *testing.T) {
+	const in = "Error: disk\nwarn: slow\nERROR again\nok\n"
+	if got := applyText(t, outputFilter{Grep: "error"}, in); got != "" {
+		t.Errorf("case-sensitive grep should miss capitals, got %q", got)
+	}
+	if got := applyText(t, outputFilter{Grep: "error", IgnoreCase: true}, in); got != "Error: disk\nERROR again\n" {
+		t.Errorf("ignoreCase grep = %q", got)
+	}
+	if got := applyText(t, outputFilter{GrepV: "ERROR", IgnoreCase: true}, in); got != "warn: slow\nok\n" {
+		t.Errorf("ignoreCase must apply to grepV too, got %q", got)
+	}
+	if _, err := (outputFilter{Grep: "(", IgnoreCase: true}).apply([]byte("x"), false); err == nil || !strings.Contains(err.Error(), "grep") {
+		t.Errorf("a bad pattern is still reported with ignoreCase, got %v", err)
+	}
+}
+
+func TestOutputFilter_Context(t *testing.T) {
+	in := "1\n2\nHIT\n4\n5\n6\n7\nHIT\n9\n"
+	if got := applyText(t, outputFilter{Grep: "HIT", Context: 1}, in); got != "2\nHIT\n4\n--\n7\nHIT\n9\n" {
+		t.Errorf("context 1 =\n%s", got)
+	}
+	// Windows that touch or overlap merge into one group, with no separator.
+	if got := applyText(t, outputFilter{Grep: "HIT", Context: 3}, in); got != "1\n2\nHIT\n4\n5\n6\n7\nHIT\n9\n" {
+		t.Errorf("context 3 should merge overlapping windows, got\n%s", got)
+	}
+	// Without context there are never separators, as before.
+	if got := applyText(t, outputFilter{Grep: "HIT"}, in); got != "HIT\nHIT\n" {
+		t.Errorf("no context = %q", got)
+	}
+	// Matches at the edges don't index out of range.
+	if got := applyText(t, outputFilter{Grep: "^1$", Context: 5}, in); !strings.HasPrefix(got, "1\n2\n") {
+		t.Errorf("edge match = %q", got)
+	}
+}
+
+func TestOutputFilter_Count(t *testing.T) {
+	const in = "a error\nb\nc error\n"
+	if got := applyText(t, outputFilter{Grep: "error", Count: true}, in); got != "2\n" {
+		t.Errorf("count of matches = %q, want 2", got)
+	}
+	if got := applyText(t, outputFilter{Grep: "nope", Count: true}, in); got != "0\n" {
+		t.Errorf("no matches counts 0, got %q", got)
+	}
+	if got := applyText(t, outputFilter{Count: true}, in); got != "3\n" {
+		t.Errorf("count of all lines = %q, want 3", got)
+	}
+	if got := applyText(t, outputFilter{Count: true}, ""); got != "0\n" {
+		t.Errorf("an empty body has 0 lines, got %q", got)
+	}
+	// count is taken before head/tail, which would otherwise hide the total.
+	if got := applyText(t, outputFilter{Grep: "error", Count: true, Head: 1}, in); got != "2\n" {
+		t.Errorf("count ignores head, got %q", got)
+	}
+}
+
+func TestOutputFilter_MaxLineLength(t *testing.T) {
+	got := applyText(t, outputFilter{MaxLineLength: 5}, "abcdefgh\nshort\nção-ção-ção\n")
+	if got != "abcde…\nshort\nção-ç…\n" {
+		t.Errorf("maxLineLength counts characters, not bytes; got %q", got)
+	}
+}
+
+// The pipeline an agent fell back to kubectl for:
+//
+//	kubectl logs … | grep -i -E 'ngalert.*(state|firing)|Alerting' | cut -c1-260 | tail -20
+//
+// is now a single filter.
+func TestOutputFilter_ReplacesAGrepCutTailPipeline(t *testing.T) {
+	var in strings.Builder
+	for i := 0; i < 30; i++ {
+		in.WriteString("2026-09-20T06:00:00Z logger=NGALERT.state msg=" + strings.Repeat("x", 300) + "\n")
+		in.WriteString("2026-09-20T06:00:01Z logger=http noise\n")
+	}
+	f := outputFilter{Grep: `ngalert.*(state|firing)|alerting`, IgnoreCase: true, Tail: 20, MaxLineLength: 60}
+	lines := strings.Split(strings.TrimRight(applyText(t, f, in.String()), "\n"), "\n")
+	if len(lines) != 20 {
+		t.Fatalf("tail 20 => %d lines", len(lines))
+	}
+	for _, l := range lines {
+		if !strings.Contains(l, "NGALERT.state") || !strings.HasSuffix(l, "…") || len([]rune(l)) != 61 {
+			t.Fatalf("bad line %q (%d chars)", l, len([]rune(l)))
+		}
+	}
+}
