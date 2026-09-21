@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -42,23 +43,44 @@ type mutatingTool struct {
 	verifyDone func(t *testing.T, s *Server)
 }
 
+// mergeArgs returns base extended with extra (extra wins).
+func mergeArgs(base, extra map[string]any) map[string]any {
+	m := make(map[string]any, len(base)+len(extra))
+	maps.Copy(m, base)
+	maps.Copy(m, extra)
+	return m
+}
+
+func webDeploymentArgs(extra map[string]any) map[string]any {
+	return mergeArgs(map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"}, extra)
+}
+
+func readDeployments(t *testing.T, s *Server) []kube.DeploymentView {
+	t.Helper()
+	rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
+	var out []kube.DeploymentView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("read deployments back: %v", err)
+	}
+	return out
+}
+
+// verifyRestartAnnotation checks the web deployment's manifest, read back
+// through the REST layer, carries the rollout-restart annotation.
+func verifyRestartAnnotation(t *testing.T, s *Server) {
+	t.Helper()
+	rec := doRequest(t, s, "GET", "/api/contexts/test/manifest/deployment/prod/web", "")
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("read manifest back: %v", err)
+	}
+	if !strings.Contains(out["yaml"], "kubectl.kubernetes.io/restartedAt") {
+		t.Errorf("after restart_rollout, manifest lacks the restartedAt annotation:\n%s", out["yaml"])
+	}
+}
+
 func writeToolMatrix() []mutatingTool {
-	base := func(extra map[string]any) map[string]any {
-		m := map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"}
-		for k, v := range extra {
-			m[k] = v
-		}
-		return m
-	}
-	deployments := func(t *testing.T, s *Server) []kube.DeploymentView {
-		t.Helper()
-		rec := doRequest(t, s, "GET", "/api/contexts/test/resources/deployments?namespace=prod", "")
-		var out []kube.DeploymentView
-		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-			t.Fatalf("read deployments back: %v", err)
-		}
-		return out
-	}
+	base, deployments := webDeploymentArgs, readDeployments
 	return []mutatingTool{
 		{
 			name: "scale_resource",
@@ -110,18 +132,9 @@ func writeToolMatrix() []mutatingTool {
 			},
 		},
 		{
-			name: "restart_rollout",
-			args: base(nil),
-			verifyDone: func(t *testing.T, s *Server) {
-				rec := doRequest(t, s, "GET", "/api/contexts/test/manifest/deployment/prod/web", "")
-				var out map[string]string
-				if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-					t.Fatalf("read manifest back: %v", err)
-				}
-				if !strings.Contains(out["yaml"], "kubectl.kubernetes.io/restartedAt") {
-					t.Errorf("after restart_rollout, manifest lacks the restartedAt annotation:\n%s", out["yaml"])
-				}
-			},
+			name:       "restart_rollout",
+			args:       base(nil),
+			verifyDone: verifyRestartAnnotation,
 		},
 	}
 }
@@ -597,13 +610,20 @@ func TestMCPApplyManifest_RefusesRetargetedYAML(t *testing.T) {
 	}
 }
 
-// TestMCPCRDWriteTools covers what the gate matrix doesn't: the CRD tools'
-// own switches and guards. The fake dynamic client doesn't implement
-// dry-run, so reactors mimic it (see TestHandleDeleteResource_DryRun).
-func TestMCPCRDWriteTools(t *testing.T) {
+// crdWriteHarness is a write-enabled MCP session over the seeded server, with
+// the widget helpers the CRD write tests share.
+type crdWriteHarness struct {
+	t       *testing.T
+	s       *Server
+	session *mcp.ClientSession
+}
+
+// newCRDWriteHarness arms the write gate. The fake dynamic client doesn't
+// implement dry-run, so reactors mimic it (see TestHandleDeleteResource_DryRun).
+func newCRDWriteHarness(t *testing.T) *crdWriteHarness {
+	t.Helper()
 	s := seededDeploymentServer(t)
-	dyn := fakeDynamic(t, s)
-	dyn.PrependReactor("delete", "widgets", func(action ktesting.Action) (bool, runtime.Object, error) {
+	fakeDynamic(t, s).PrependReactor("delete", "widgets", func(action ktesting.Action) (bool, runtime.Object, error) {
 		if da, ok := action.(ktesting.DeleteActionImpl); ok && len(da.GetDeleteOptions().DryRun) > 0 {
 			return true, nil, nil
 		}
@@ -611,76 +631,84 @@ func TestMCPCRDWriteTools(t *testing.T) {
 	})
 	dryRunUpdateReactor(t, s, "widgets")
 	putGate(t, s, `{"enabled":true,"allowWrite":true}`)
-	session := mcpConnect(t, s)
-	id := func(extra map[string]any) map[string]any {
-		m := map[string]any{"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1"}
-		for k, v := range extra {
-			m[k] = v
-		}
-		return m
+	return &crdWriteHarness{t: t, s: s, session: mcpConnect(t, s)}
+}
+
+// id targets widget w1 in prod, plus any extra arguments.
+func (h *crdWriteHarness) id(extra map[string]any) map[string]any {
+	return mergeArgs(map[string]any{"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1"}, extra)
+}
+
+func (h *crdWriteHarness) call(tool string, args map[string]any) *mcp.CallToolResult {
+	h.t.Helper()
+	res, err := h.session.CallTool(h.t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil {
+		h.t.Fatalf("%s: %v", tool, err)
 	}
-	call := func(tool string, args map[string]any) *mcp.CallToolResult {
-		t.Helper()
-		res, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args})
-		if err != nil {
-			t.Fatalf("%s: %v", tool, err)
-		}
-		return res
-	}
-	text := func(res *mcp.CallToolResult) string {
-		tc, _ := res.Content[0].(*mcp.TextContent)
-		if tc == nil {
-			return ""
-		}
+	return res
+}
+
+func (h *crdWriteHarness) widgetManifest() string {
+	h.t.Helper()
+	return doRequest(h.t, h.s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "").Body.String()
+}
+
+func resultText(res *mcp.CallToolResult) string {
+	if tc, _ := res.Content[0].(*mcp.TextContent); tc != nil {
 		return tc.Text
 	}
+	return ""
+}
 
-	t.Run("apply dryRun does not persist", func(t *testing.T) {
-		res := call("apply_crd_manifest", id(map[string]any{"dryRun": true,
-			"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  size: 9\n"}))
-		if res.IsError {
-			t.Fatalf("dryRun apply: %s", text(res))
-		}
-		rec := doRequest(t, s, "GET", "/api/contexts/test/crd/example.com/v1/widgets/prod/w1/manifest", "")
-		if strings.Contains(rec.Body.String(), "size: 9") {
-			t.Error("dryRun apply_crd_manifest persisted the change")
-		}
-	})
+// The CRD tools' own switches and guards, which the gate matrix doesn't cover.
+func TestMCPCRDWriteTools_ApplyDryRunDoesNotPersist(t *testing.T) {
+	h := newCRDWriteHarness(t)
+	res := h.call("apply_crd_manifest", h.id(map[string]any{"dryRun": true,
+		"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: w1\n  namespace: prod\nspec:\n  size: 9\n"}))
+	if res.IsError {
+		t.Fatalf("dryRun apply: %s", resultText(res))
+	}
+	if strings.Contains(h.widgetManifest(), "size: 9") {
+		t.Error("dryRun apply_crd_manifest persisted the change")
+	}
+}
 
-	t.Run("apply refuses YAML naming another object", func(t *testing.T) {
-		res := call("apply_crd_manifest", id(map[string]any{
-			"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: other\n  namespace: prod\nspec:\n  size: 9\n"}))
-		if !res.IsError || !strings.Contains(text(res), "does not match") {
-			t.Errorf("want a name-mismatch refusal, got isError=%v %s", res.IsError, text(res))
-		}
-	})
+func TestMCPCRDWriteTools_ApplyRefusesAnotherObject(t *testing.T) {
+	h := newCRDWriteHarness(t)
+	res := h.call("apply_crd_manifest", h.id(map[string]any{
+		"yaml": "apiVersion: example.com/v1\nkind: Widget\nmetadata:\n  name: other\n  namespace: prod\nspec:\n  size: 9\n"}))
+	if !res.IsError || !strings.Contains(resultText(res), "does not match") {
+		t.Errorf("want a name-mismatch refusal, got isError=%v %s", res.IsError, resultText(res))
+	}
+}
 
-	t.Run("delete refuses a CustomResourceDefinition itself", func(t *testing.T) {
-		res := call("delete_crd_resource", map[string]any{"context": "test", "group": "apiextensions.k8s.io", "version": "v1",
-			"resource": "customresourcedefinitions", "name": "widgets.example.com", "dryRun": true})
-		if !res.IsError || !strings.Contains(text(res), "CustomResourceDefinition") {
-			t.Errorf("want a CRD-definition refusal, got isError=%v %s", res.IsError, text(res))
-		}
-	})
+func TestMCPCRDWriteTools_DeleteRefusesTheDefinitionItself(t *testing.T) {
+	h := newCRDWriteHarness(t)
+	res := h.call("delete_crd_resource", map[string]any{"context": "test", "group": "apiextensions.k8s.io", "version": "v1",
+		"resource": "customresourcedefinitions", "name": "widgets.example.com", "dryRun": true})
+	if !res.IsError || !strings.Contains(resultText(res), "CustomResourceDefinition") {
+		t.Errorf("want a CRD-definition refusal, got isError=%v %s", res.IsError, resultText(res))
+	}
+}
 
-	t.Run("delete switches", func(t *testing.T) {
-		if res := call("delete_crd_resource", id(map[string]any{"dryRun": true})); res.IsError || widgetCount(t, s) != 1 {
-			t.Fatalf("dryRun delete: isError=%v count=%d %s", res.IsError, widgetCount(t, s), text(res))
-		}
-		if res := call("delete_crd_resource", id(map[string]any{"cascade": "bogus"})); !res.IsError || !strings.Contains(text(res), "cascade") {
-			t.Errorf("bad cascade should be refused mentioning cascade, got isError=%v %s", res.IsError, text(res))
-		}
-		if res := call("delete_crd_resource", id(map[string]any{"name": "ghost"})); !res.IsError {
-			t.Error("deleting a missing widget should fail without ignoreNotFound")
-		}
-		if res := call("delete_crd_resource", id(map[string]any{"name": "ghost", "ignoreNotFound": true})); res.IsError {
-			t.Errorf("ignoreNotFound should make a missing widget a success: %s", text(res))
-		}
-		if res := call("delete_crd_resource", id(map[string]any{"cascade": "orphan", "gracePeriodSeconds": 5, "force": true})); res.IsError {
-			t.Fatalf("delete with cascade=orphan+force: %s", text(res))
-		}
-		if n := widgetCount(t, s); n != 0 {
-			t.Errorf("widget survived a real delete: %d remain", n)
-		}
-	})
+func TestMCPCRDWriteTools_DeleteSwitches(t *testing.T) {
+	h := newCRDWriteHarness(t)
+	if res := h.call("delete_crd_resource", h.id(map[string]any{"dryRun": true})); res.IsError || widgetCount(t, h.s) != 1 {
+		t.Fatalf("dryRun delete: isError=%v count=%d %s", res.IsError, widgetCount(t, h.s), resultText(res))
+	}
+	if res := h.call("delete_crd_resource", h.id(map[string]any{"cascade": "bogus"})); !res.IsError || !strings.Contains(resultText(res), "cascade") {
+		t.Errorf("bad cascade should be refused mentioning cascade, got isError=%v %s", res.IsError, resultText(res))
+	}
+	if res := h.call("delete_crd_resource", h.id(map[string]any{"name": "ghost"})); !res.IsError {
+		t.Error("deleting a missing widget should fail without ignoreNotFound")
+	}
+	if res := h.call("delete_crd_resource", h.id(map[string]any{"name": "ghost", "ignoreNotFound": true})); res.IsError {
+		t.Errorf("ignoreNotFound should make a missing widget a success: %s", resultText(res))
+	}
+	if res := h.call("delete_crd_resource", h.id(map[string]any{"cascade": "orphan", "gracePeriodSeconds": 5, "force": true})); res.IsError {
+		t.Fatalf("delete with cascade=orphan+force: %s", resultText(res))
+	}
+	if n := widgetCount(t, h.s); n != 0 {
+		t.Errorf("widget survived a real delete: %d remain", n)
+	}
 }

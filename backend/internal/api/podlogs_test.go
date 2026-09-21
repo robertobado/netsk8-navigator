@@ -294,45 +294,43 @@ func TestFetchBoundedLogs_OptionsReachTheAPI(t *testing.T) {
 	}
 }
 
-func TestFetchBoundedLogs_PartialFailureAndCap(t *testing.T) {
-	t.Run("a failing container is skipped with a note when others succeed", func(t *testing.T) {
-		s := newTestServer(t, ownedPod("db-0", "pg", "exporter"))
-		fakeClient(t, s).PrependReactor("get", "pods", func(a ktesting.Action) (bool, runtime.Object, error) {
-			if ga, ok := a.(ktesting.GenericActionImpl); ok && a.GetSubresource() == "log" {
-				if o, _ := ga.Value.(*corev1.PodLogOptions); o != nil && o.Container == "exporter" {
-					return true, nil, errors.New("previous terminated container not found")
-				}
+func TestFetchBoundedLogs_FailingContainerIsSkippedWithANote(t *testing.T) {
+	s := newTestServer(t, ownedPod("db-0", "pg", "exporter"))
+	fakeClient(t, s).PrependReactor("get", "pods", func(a ktesting.Action) (bool, runtime.Object, error) {
+		if ga, ok := a.(ktesting.GenericActionImpl); ok && a.GetSubresource() == "log" {
+			if o, _ := ga.Value.(*corev1.PodLogOptions); o != nil && o.Container == "exporter" {
+				return true, nil, errors.New("previous terminated container not found")
 			}
-			return false, nil, nil
-		})
-		got, err := s.fetchBoundedLogs(context.Background(), logQuery{Context: "test", Namespace: "prod", Kind: "statefulset", Name: "db"})
-		if err != nil || !strings.Contains(got, "[db-0/pg] fake logs") || !strings.Contains(got, "[note] skipped db-0/exporter:") || !strings.Contains(got, "previous terminated container not found") {
-			t.Errorf("got %q, %v", got, err)
 		}
+		return false, nil, nil
 	})
+	got, err := s.fetchBoundedLogs(context.Background(), logQuery{Context: "test", Namespace: "prod", Kind: "statefulset", Name: "db"})
+	if err != nil || !strings.Contains(got, "[db-0/pg] fake logs") || !strings.Contains(got, "[note] skipped db-0/exporter:") || !strings.Contains(got, "previous terminated container not found") {
+		t.Errorf("got %q, %v", got, err)
+	}
+}
 
-	t.Run("every container failing is an error", func(t *testing.T) {
-		s := newTestServer(t, ownedPod("db-0", "pg", "exporter"))
-		fakeClient(t, s).PrependReactor("get", "pods", getLogsErrorReactor(errors.New("boom")))
-		if _, err := s.fetchBoundedLogs(context.Background(), logQuery{Context: "test", Namespace: "prod", Kind: "statefulset", Name: "db"}); err == nil || !strings.Contains(err.Error(), "boom") {
-			t.Errorf("want the underlying error, got %v", err)
-		}
-	})
+func TestFetchBoundedLogs_EveryContainerFailingIsAnError(t *testing.T) {
+	s := newTestServer(t, ownedPod("db-0", "pg", "exporter"))
+	fakeClient(t, s).PrependReactor("get", "pods", getLogsErrorReactor(errors.New("boom")))
+	if _, err := s.fetchBoundedLogs(context.Background(), logQuery{Context: "test", Namespace: "prod", Kind: "statefulset", Name: "db"}); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("want the underlying error, got %v", err)
+	}
+}
 
-	t.Run("more than maxLogStreams containers are capped with a note", func(t *testing.T) {
-		var objs []runtime.Object
-		for i := 0; i < maxLogStreams+5; i++ {
-			objs = append(objs, ownedPod(fmt.Sprintf("db-%02d", i), "pg"))
-		}
-		s := newTestServer(t, objs...)
-		got, err := s.fetchBoundedLogs(context.Background(), logQuery{Context: "test", Namespace: "prod", Kind: "statefulset", Name: "db"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if n := strings.Count(got, "fake logs"); n != maxLogStreams || !strings.Contains(got, "25 containers match; showing the first 20") {
-			t.Errorf("%d streams, output tail: %.200s", n, got[max(0, len(got)-200):])
-		}
-	})
+func TestFetchBoundedLogs_MoreThanMaxLogStreamsAreCappedWithANote(t *testing.T) {
+	var objs []runtime.Object
+	for i := 0; i < maxLogStreams+5; i++ {
+		objs = append(objs, ownedPod(fmt.Sprintf("db-%02d", i), "pg"))
+	}
+	s := newTestServer(t, objs...)
+	got, err := s.fetchBoundedLogs(context.Background(), logQuery{Context: "test", Namespace: "prod", Kind: "statefulset", Name: "db"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(got, "fake logs"); n != maxLogStreams || !strings.Contains(got, "25 containers match; showing the first 20") {
+		t.Errorf("%d streams, output tail: %.200s", n, got[max(0, len(got)-200):])
+	}
 }
 
 // End to end through the tool: the whole reason for the feature — one call for

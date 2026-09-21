@@ -232,24 +232,12 @@ func TestMCPManifestTools_FiltersReachTheDocument(t *testing.T) {
 	enableMCP(s, false)
 	session := mcpConnect(t, s)
 
-	call := func(tool string, args map[string]any) string {
-		t.Helper()
-		res, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args})
-		if err != nil {
-			t.Fatalf("%s: %v", tool, err)
-		}
-		text, _ := res.Content[0].(*mcp.TextContent)
-		if res.IsError || text == nil {
-			t.Fatalf("%s returned an error: %+v", tool, res.Content)
-		}
-		return text.Text
-	}
 	deploy := func(filter map[string]any) string {
-		args := map[string]any{"context": "test", "kind": "deployment", "namespace": "prod", "name": "web"}
+		args := webDeploymentArgs(nil)
 		if filter != nil {
 			args["filter"] = filter
 		}
-		return call("get_manifest", args)
+		return manifestToolText(t, session, "get_manifest", args)
 	}
 
 	full := deploy(nil)
@@ -273,13 +261,23 @@ func TestMCPManifestTools_FiltersReachTheDocument(t *testing.T) {
 		t.Errorf("grep=replicas should keep only matching lines, got:\n%s", got)
 	}
 
-	crd := call("get_crd_manifest", map[string]any{
+	crd := manifestToolText(t, session, "get_crd_manifest", map[string]any{
 		"context": "test", "group": "example.com", "version": "v1", "resource": "widgets", "namespace": "prod", "name": "w1",
 		"filter": map[string]any{"jq": ".spec.size"},
 	})
 	if strings.TrimSpace(crd) != "1" {
 		t.Errorf("get_crd_manifest jq .spec.size = %q, want 1", crd)
 	}
+}
+
+// manifestToolText calls a tool that must succeed and returns its text.
+func manifestToolText(t *testing.T, session *mcp.ClientSession, tool string, args map[string]any) string {
+	t.Helper()
+	text, isErr := toolText(t, session, tool, args)
+	if isErr {
+		t.Fatalf("%s returned an error: %s", tool, text)
+	}
+	return text
 }
 
 func applyText(t *testing.T, f outputFilter, in string) string {
