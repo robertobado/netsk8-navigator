@@ -202,7 +202,10 @@ func stdioConnect(t *testing.T, s *Server) *mcp.ClientSession {
 	t.Cleanup(func() {
 		_ = session.Close()
 		select {
-		case <-runDone:
+		case err := <-runDone:
+			if err != nil {
+				t.Errorf("stdio MCP server exited with an error: %v", err)
+			}
 		case <-time.After(2 * time.Second):
 			t.Error("stdio MCP server didn't stop after the client session closed")
 		}

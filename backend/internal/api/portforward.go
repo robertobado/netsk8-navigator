@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -108,9 +109,12 @@ func (s *Server) handleStartPortForward(w http.ResponseWriter, r *http.Request) 
 	audit(r, "port-forward-start", "namespace", namespace, "pod", name, "port", fmt.Sprintf("%d", payload.Port))
 
 	// Self-clean once the tunnel ends, whether from handleStopPortForward
-	// closing stopCh or the connection dropping on its own (pod deleted, etc).
+	// closing stopCh (a nil err) or the connection dropping on its own (pod
+	// deleted, etc — worth a log line since nothing else surfaces it).
 	go func() {
-		<-errCh
+		if err := <-errCh; err != nil {
+			log.Printf("port-forward %s (pod %s/%s:%d) ended: %v", id, namespace, name, payload.Port, err)
+		}
 		s.pfMu.Lock()
 		delete(s.pf, id)
 		s.pfMu.Unlock()
