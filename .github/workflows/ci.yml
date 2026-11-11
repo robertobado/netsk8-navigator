@@ -57,6 +57,12 @@ jobs:
 
       - name: Upload coverage
         uses: actions/upload-artifact@v7
+        # Nothing downstream reads this artifact in CI itself — it's just
+        # there to inspect after the fact. A GitHub-side upload hiccup (seen
+        # 2026-11-11, a burst of "Unexpected token '<'... is not valid JSON"
+        # retries across several concurrent runs) shouldn't fail an otherwise
+        # green build over it.
+        continue-on-error: true
         with:
           name: backend-coverage
           path: backend/coverage.out
@@ -115,6 +121,9 @@ jobs:
 
       - name: Upload coverage
         uses: actions/upload-artifact@v7
+        # See the backend job's identical step: a non-essential artifact, not
+        # worth failing the (otherwise-passing) build over an upload hiccup.
+        continue-on-error: true
         with:
           name: frontend-coverage
           path: frontend/coverage/lcov.info
