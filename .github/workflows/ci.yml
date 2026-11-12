@@ -226,6 +226,17 @@ jobs:
         uses: actions/checkout@v7
       - name: Scan dependency changes
         uses: actions/dependency-review-action@v5.0.0
+        with:
+          # GHSA-99jh-6h7p-pp36 / GHSA-246p-cpwv-v3jq: echo/v4 (pulled in
+          # transitively by wails, bumped 2026-11) trusts X-Forwarded-For /
+          # X-Real-IP by default in its reverse-proxy and rate-limiter
+          # middleware. Neither applies here — wails only uses echo as the
+          # desktop app's own loopback-bound webview server, never as a
+          # public-facing reverse proxy, and we don't use those middlewares
+          # ourselves. echo/v4 has no fix for either (only v5 does; see the
+          # advisories' patched-version fields), so there's nothing to bump
+          # to and no reachable attack surface to allow around.
+          allow-ghsas: GHSA-99jh-6h7p-pp36, GHSA-246p-cpwv-v3jq
 
   sonarcloud:
     name: SonarCloud analysis
