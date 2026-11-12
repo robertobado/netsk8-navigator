@@ -1,0 +1,11 @@
+# Not a multi-package workspace — this file exists only to hold pnpm 10+
+# settings that package.json's "pnpm" field no longer supports.
+packages:
+  - .
+
+overrides:
+  # GHSA-cg2g-xh64-v4q7 (critical) / GHSA-mrv2-3pqr-j5jr (high): dompurify
+  # <=3.4.16 has XSS-relevant bugs, fixed in 3.4.17. monaco-editor@0.57.0
+  # bundles 3.4.15 as a direct dependency and hasn't picked up the fix yet;
+  # force the patched version instead of waiting on monaco to bump it.
+  dompurify: ^3.4.17
