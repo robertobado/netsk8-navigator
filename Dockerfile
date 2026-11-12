@@ -4,7 +4,7 @@
 FROM node:22-alpine AS frontend
 RUN corepack enable
 WORKDIR /src
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/
 RUN cd frontend && pnpm install --frozen-lockfile
 COPY frontend frontend/
 COPY backend/internal/web backend/internal/web
