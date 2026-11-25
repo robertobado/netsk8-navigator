@@ -225,7 +225,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Scan dependency changes
-        uses: actions/dependency-review-action@v5.0.0
+        uses: actions/dependency-review-action@v5.0.1
         with:
           # GHSA-99jh-6h7p-pp36 / GHSA-246p-cpwv-v3jq: echo/v4 (pulled in
           # transitively by wails, bumped 2026-11) trusts X-Forwarded-For /
