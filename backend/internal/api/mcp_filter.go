@@ -25,7 +25,7 @@ import (
 // context), then grepV, then count, then head, then tail, then maxLineLength,
 // then maxBytes.
 type outputFilter struct {
-	Jq            string `json:"jq,omitempty" jsonschema:"jq program (github.com/itchyny/gojq syntax) run over the result server-side, e.g. '.items[] | {name, phase: .status}' or '.items | length'. A JSON result is filtered as-is; a YAML manifest result is parsed to JSON, filtered, then re-emitted as YAML. Multiple outputs come back newline-delimited, like jq -c."`
+	Jq            string `json:"jq,omitempty" jsonschema:"jq program (github.com/itchyny/gojq syntax) run over the result server-side. list_resources, list_pods and list_crd_resources return a bare JSON array by default, so index straight into it, e.g. '.[] | {name, phase: .status}' or 'length' for a count — only with limit or since set does the result become an object, {items, total, returned}. get_usage is always that {items, ...} shape; get_issues is {pending, failed, nodesNotReady, summary}, each a plain array. A JSON result is filtered as-is; a YAML manifest result is parsed to JSON, filtered, then re-emitted as YAML. Multiple outputs come back newline-delimited, like jq -c."`
 	Grep          string `json:"grep,omitempty" jsonschema:"keep only result lines matching this RE2 regular expression, e.g. 'error|failed' (applied after jq)"`
 	GrepV         string `json:"grepV,omitempty" jsonschema:"drop result lines matching this RE2 regular expression (applied after grep)"`
 	IgnoreCase    bool   `json:"ignoreCase,omitempty" jsonschema:"make grep and grepV case-insensitive, like grep -i"`

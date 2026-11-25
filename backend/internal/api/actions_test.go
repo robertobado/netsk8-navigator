@@ -39,8 +39,8 @@ func TestHandleDeleteResource(t *testing.T) {
 func TestHandleDeleteResource_UnknownKind(t *testing.T) {
 	s := newTestServer(t)
 	rec := doRequest(t, s, "DELETE", "/api/contexts/test/manifest/notaresource/ns/name", "")
-	if rec.Code != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502 (unsupported kind)", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (unsupported kind is a client input error, not a gateway one)", rec.Code)
 	}
 }
 

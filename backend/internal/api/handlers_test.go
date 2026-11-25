@@ -273,8 +273,8 @@ func TestHandleGetManifest_PodBlocked(t *testing.T) {
 	// Pods aren't blocked on GET, only on apply — sanity-check unrelated slugs 404 cleanly instead.
 	s := newTestServer(t)
 	rec := doRequest(t, s, "GET", "/api/contexts/test/manifest/notaresource/ns/name", "")
-	if rec.Code != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502 (unsupported kind)", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (unsupported kind is a client input error, not a gateway one)", rec.Code)
 	}
 }
 

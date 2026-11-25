@@ -165,7 +165,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 
 	obj, err := s.getUnstructured(ctx, r.PathValue("ctx"), kind, r.PathValue("namespace"), r.PathValue("name"))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	d, err := build(obj)

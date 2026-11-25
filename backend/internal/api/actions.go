@@ -79,7 +79,7 @@ func (s *Server) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("kind")
 	res, err := s.resolveSlug(r.PathValue("ctx"), kind)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	dyn, err := s.mgr.DynamicFor(r.PathValue("ctx"))
@@ -144,7 +144,7 @@ func (s *Server) handleScaleResource(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	obj, err := s.getUnstructured(ctx, r.PathValue("ctx"), kind, r.PathValue("namespace"), r.PathValue("name"))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	if err := unstructured.SetNestedField(obj.Object, int64(*payload.Replicas), "spec", "replicas"); err != nil {
@@ -159,7 +159,7 @@ func (s *Server) handleScaleResource(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.resolveSlug(r.PathValue("ctx"), kind)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	ns := ""
@@ -203,7 +203,7 @@ func (s *Server) handleRestartRollout(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	obj, err := s.getUnstructured(ctx, r.PathValue("ctx"), kind, r.PathValue("namespace"), r.PathValue("name"))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	annotations, _, _ := unstructured.NestedStringMap(obj.Object, "spec", "template", "metadata", "annotations")
@@ -223,7 +223,7 @@ func (s *Server) handleRestartRollout(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.resolveSlug(r.PathValue("ctx"), kind)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	ns := ""

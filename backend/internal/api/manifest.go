@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -60,7 +61,7 @@ func (s *Server) handleGetManifest(w http.ResponseWriter, r *http.Request) {
 
 	obj, err := s.getUnstructured(ctx, r.PathValue("ctx"), r.PathValue("kind"), r.PathValue("namespace"), r.PathValue("name"))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	cleanUnstructured(obj)
@@ -96,7 +97,7 @@ func (s *Server) handleApplyManifest(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.resolveSlug(r.PathValue("ctx"), kind)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeKindError(w, err)
 		return
 	}
 	dyn, err := s.mgr.DynamicFor(r.PathValue("ctx"))
@@ -180,9 +181,30 @@ func (s *Server) getUnstructured(ctx context.Context, contextName, kind, ns, nam
 func (s *Server) resolveSlug(contextName, slug string) (kube.Resource, error) {
 	plural, ok := manifestSlugToResource[slug]
 	if !ok {
-		return kube.Resource{}, fmt.Errorf("unsupported kind %q (valid kinds: %s)", slug, strings.Join(sortedKeys(manifestSlugToResource), ", "))
+		return kube.Resource{}, &errUnsupportedKind{fmt.Errorf("unsupported kind %q (valid kinds: %s)", slug, strings.Join(sortedKeys(manifestSlugToResource), ", "))}
 	}
 	return s.mgr.ResolveResource(contextName, plural)
+}
+
+// errUnsupportedKind marks resolveSlug's own "I don't recognize this kind"
+// validation failure so callers can tell it apart from a genuine downstream
+// Kubernetes API/connectivity error and answer 400 instead of 502 — a bad
+// `kind` isn't a gateway problem.
+type errUnsupportedKind struct{ err error }
+
+func (e *errUnsupportedKind) Error() string { return e.err.Error() }
+func (e *errUnsupportedKind) Unwrap() error { return e.err }
+
+// writeKindError answers a resolveSlug/getUnstructured failure: 400 when the
+// kind itself wasn't recognized, 502 for everything else (the resource was
+// fine, but reaching the cluster for it failed).
+func writeKindError(w http.ResponseWriter, err error) {
+	var unsupported *errUnsupportedKind
+	status := http.StatusBadGateway
+	if errors.As(err, &unsupported) {
+		status = http.StatusBadRequest
+	}
+	writeError(w, status, err)
 }
 
 // kindShortNames are kubectl's own short names for the kinds in
@@ -209,7 +231,12 @@ func normalizeKindSlug(kind string) string {
 		return slug
 	}
 	for slug, plural := range manifestSlugToResource {
-		if plural == k {
+		// plural == k handles an agent passing the plural resource name
+		// outright (as list_resources' own "resource" argument takes it);
+		// +s/+es covers the singular long form ("persistentvolume",
+		// "storageclass") for a slug whose map key is a different
+		// abbreviation ("pv", "sc") than its own singular.
+		if plural == k || plural == k+"s" || plural == k+"es" {
 			return slug
 		}
 	}

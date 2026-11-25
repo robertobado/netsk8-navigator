@@ -29,7 +29,7 @@ type getEventsArgs struct {
 
 type getUsageArgs struct {
 	Context   string       `json:"context" jsonschema:"kubeconfig context name, from list_contexts"`
-	Scope     string       `json:"scope" jsonschema:"what to measure: pods (like kubectl top pods) or nodes (like kubectl top nodes)"`
+	Scope     string       `json:"scope,omitempty" jsonschema:"what to measure: pods (like kubectl top pods, the default) or nodes (like kubectl top nodes)"`
 	Namespace string       `json:"namespace,omitempty" jsonschema:"for scope=pods: optional namespace; omit for all namespaces"`
 	Sort      string       `json:"sort,omitempty" jsonschema:"cpu (default) or memory — highest first"`
 	Limit     int          `json:"limit,omitempty" jsonschema:"for scope=pods: cap on rows returned after sorting; defaults to 20"`
@@ -146,7 +146,11 @@ func percent(used, total float64) float64 {
 // UI-oriented payload (a map keyed "ns/pod", raw cores and bytes) into what an
 // agent wants: a list sorted by consumption, in millicores and MiB.
 func (s *Server) usageResult(ctx context.Context, args getUsageArgs) (*mcp.CallToolResult, any, error) {
-	scope := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(args.Scope)), "s")
+	rawScope := strings.TrimSpace(args.Scope)
+	if rawScope == "" {
+		rawScope = "pods"
+	}
+	scope := strings.TrimSuffix(strings.ToLower(rawScope), "s")
 	sortBy := strings.ToLower(strings.TrimSpace(args.Sort))
 	if sortBy == "" {
 		sortBy = "cpu"

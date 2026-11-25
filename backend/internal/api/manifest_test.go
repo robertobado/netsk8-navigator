@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -99,8 +100,10 @@ func TestCleanUnstructured_RemovesEmptyAnnotationsMap(t *testing.T) {
 
 func TestResolveSlug_UnknownSlug(t *testing.T) {
 	s := newTestServer(t)
-	if _, err := s.resolveSlug("test", "not-a-real-kind"); err == nil {
-		t.Error("expected an error for an unknown manifest slug")
+	_, err := s.resolveSlug("test", "not-a-real-kind")
+	var unsupported *errUnsupportedKind
+	if !errors.As(err, &unsupported) {
+		t.Errorf("expected an *errUnsupportedKind for an unknown manifest slug, got %v (%T)", err, err)
 	}
 }
 
@@ -134,8 +137,8 @@ func TestHandleApplyManifest_MalformedJSON(t *testing.T) {
 func TestHandleApplyManifest_UnsupportedKind(t *testing.T) {
 	s := newTestServer(t)
 	rec := doRequest(t, s, "PUT", "/api/contexts/test/manifest/frobnicator/ns/name", `{"yaml":""}`)
-	if rec.Code != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502 (unsupported kind)", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (unsupported kind is a client input error, not a gateway one)", rec.Code)
 	}
 }
 
@@ -247,6 +250,11 @@ func TestNormalizeKindSlug(t *testing.T) {
 		"deployments": "deployment", "deploy": "deployment", "sts": "statefulset",
 		"ingresses": "ingress", "networkpolicies": "networkpolicy", "svc": "service",
 		"po": "pod", "pvc": "pvc", "notakind": "notakind",
+		// The singular long form of a slug whose map key is an abbreviation
+		// rather than its own singular ("pv" for "persistentvolumes", "hpa"
+		// for "horizontalpodautoscalers") — an agent reasonably typing out
+		// the full Kubernetes kind name instead of the kubectl short one.
+		"persistentvolume": "pv", "PersistentVolume": "pv", "horizontalpodautoscaler": "hpa",
 	}
 	for in, want := range cases {
 		if got := normalizeKindSlug(in); got != want {
