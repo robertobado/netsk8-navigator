@@ -1,0 +1,153 @@
+name: Dependabot auto-merge + release
+
+# Weekly housekeeping: merge whatever Dependabot PRs are clean and green,
+# then cut a new patch release if that (or anything else) left main ahead of
+# the latest tag. Runs a couple of days after dependabot.yml's own weekly
+# schedule (Monday, GitHub's default) so PRs have had time to open and CI
+# has had time to run on them.
+on:
+  schedule:
+    - cron: "0 13 * * 3" # Wednesday 13:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge-dependabot:
+    name: Merge clean, green Dependabot PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # GITHUB_TOKEN-authored merges don't trigger other workflows (GitHub
+      # suppresses event cascades from its own token, to prevent recursive
+      # runs) — CI's `push: branches: [main]` would never refire for the
+      # merge commit, and release-if-needed below would wait forever for a
+      # CI run that never happens. AUTOMATION_PAT is a real account token, so
+      # every push/merge it makes triggers downstream workflows normally,
+      # same as a manual merge.
+      - name: Merge every open Dependabot PR that's conflict-free and green
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mapfile -t numbers < <(gh pr list --repo "$REPO" --author "app/dependabot" --state open --json number -q '.[].number')
+
+          if [ ${#numbers[@]} -eq 0 ]; then
+            echo "No open Dependabot PRs."
+            exit 0
+          fi
+
+          for number in "${numbers[@]}"; do
+            echo "::group::PR #$number"
+
+            # mergeable is computed asynchronously by GitHub right after a
+            # push; give it a few retries before treating UNKNOWN as "skip".
+            mergeable=$(gh pr view "$number" --repo "$REPO" --json mergeable -q '.mergeable')
+            tries=0
+            while [ "$mergeable" = "UNKNOWN" ] && [ "$tries" -lt 5 ]; do
+              sleep 5
+              mergeable=$(gh pr view "$number" --repo "$REPO" --json mergeable -q '.mergeable')
+              tries=$((tries + 1))
+            done
+            if [ "$mergeable" != "MERGEABLE" ]; then
+              echo "skip: mergeable=$mergeable (conflicts, or needs a manual fix like the react/react-dom version-pairing bug)"
+              echo "::endgroup::"
+              continue
+            fi
+
+            buckets=$(gh pr checks "$number" --repo "$REPO" --json bucket -q '[.[].bucket] | unique | sort | join(",")' 2>/dev/null || echo "none")
+            if [ "$buckets" != "pass" ] && [ "$buckets" != "pass,skipping" ] && [ "$buckets" != "skipping" ]; then
+              echo "skip: checks not all green yet (buckets=$buckets)"
+              echo "::endgroup::"
+              continue
+            fi
+
+            echo "merging (checks: $buckets)"
+            gh pr review "$number" --repo "$REPO" --approve --body "Aprovado automaticamente: checks verdes, sem conflito." || true
+            gh pr merge "$number" --repo "$REPO" --squash --delete-branch
+            echo "::endgroup::"
+          done
+
+  release-if-needed:
+    name: Cut a release if main moved past the latest tag
+    needs: merge-dependabot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check whether main has unreleased commits
+        id: diff
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags -q
+          latest_tag=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
+          main_sha=$(git rev-parse origin/main)
+          tag_sha=$(git rev-parse "${latest_tag}^{commit}")
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          if [ "$main_sha" = "$tag_sha" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Never tag a commit whose CI we haven't actually seen pass — the same
+      # invariant followed when cutting a release by hand. Self-healing: if
+      # this times out or CI comes back red, the job fails without tagging,
+      # and next week's run tries again (main still won't match the latest
+      # tag).
+      - name: Wait for main's CI to go green on this commit
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_PAT }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.diff.outputs.main_sha }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            info=$(gh run list --repo "$REPO" --branch main --workflow ci.yml \
+              --json headSha,status,conclusion --limit 20 \
+              --jq "[.[] | select(.headSha==\"$SHA\")] | .[0]")
+            status=$(echo "$info" | jq -r '.status // "missing"')
+            conclusion=$(echo "$info" | jq -r '.conclusion // "missing"')
+            echo "attempt $i: status=$status conclusion=$conclusion"
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                exit 0
+              fi
+              echo "CI concluded '$conclusion' for $SHA — not releasing this run"
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "timed out waiting for CI on $SHA"
+          exit 1
+
+      # AUTOMATION_PAT again, for the same reason as the merge job: a tag
+      # pushed with GITHUB_TOKEN would never trigger release.yml's
+      # `push: tags: v*.*.*` trigger.
+      - name: Tag and push the new release
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_PAT }}
+        run: |
+          set -euo pipefail
+          latest_tag="${{ steps.diff.outputs.latest_tag }}"
+          version="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+          new_tag="v${major}.${minor}.$((patch + 1))"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git tag -m "Automated release $new_tag" "$new_tag" origin/main
+          git push origin "$new_tag"
+          echo "Released $new_tag" >> "$GITHUB_STEP_SUMMARY"
