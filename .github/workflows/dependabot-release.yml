@@ -78,11 +78,18 @@ jobs:
     needs: merge-dependabot
     runs-on: ubuntu-latest
     steps:
+      # persist-credentials: false matters here — actions/checkout otherwise
+      # leaves a GITHUB_TOKEN auth header in git config (an
+      # `http.<url>.extraheader`) that wins over the PAT URL swapped in
+      # below for the push step, silently re-attributing it to GITHUB_TOKEN
+      # (whose pushes don't trigger other workflows) even though the URL
+      # itself says otherwise.
       - name: Checkout (full history + tags)
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Check whether main has unreleased commits
         id: diff
